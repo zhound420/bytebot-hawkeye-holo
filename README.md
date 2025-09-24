@@ -108,6 +108,9 @@ EOF
 # Build images locally (default)
 docker compose -f docker/docker-compose.proxy.yml up -d --build
 
+# Prefer a different Postgres registry?
+# export BYTEBOT_POSTGRES_IMAGE=postgres:16-alpine
+
 # Or use pre-built registry images after authenticating:
 # export BYTEBOT_DESKTOP_IMAGE=ghcr.io/bytebot-ai/bytebot-desktop:edge
 # export BYTEBOT_AGENT_IMAGE=ghcr.io/bytebot-ai/bytebot-agent:edge

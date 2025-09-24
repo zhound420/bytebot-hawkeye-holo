@@ -83,7 +83,7 @@ Get your self-hosted AI desktop agent running with just three commands:
 
 <Step title="Start the Agent Stack">
   ```bash 
-  docker-compose -f docker/docker-compose.yml up -d 
+  docker compose -f docker/docker-compose.yml up -d
   ```
 
 This starts all four services:
@@ -110,6 +110,13 @@ Try asking:
 
 </Step>
 </Steps>
+
+<Note>
+  The Compose files default to the AWS public ECR mirror for Postgres
+  (`public.ecr.aws/docker/library/postgres:16-alpine`) so they work without a
+  Docker Hub login. Set `BYTEBOT_POSTGRES_IMAGE` if you prefer another
+  registry tag.
+</Note>
 
 <Note>
   **First time?** The initial startup may take 2-3 minutes as Docker downloads

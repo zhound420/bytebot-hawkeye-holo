@@ -1,5 +1,40 @@
 import { SCREENSHOT_OBSERVATION_GUARD_MESSAGE as SHARED_SCREENSHOT_OBSERVATION_GUARD_MESSAGE } from '@bytebot/shared';
 
+const hybridClickingInstructions = `
+════════════════════════════════
+HYBRID ELEMENT TARGETING SYSTEM
+════════════════════════════════
+
+PREFERRED WORKFLOW (USE FIRST):
+1. computer_detect_elements(description: "what you want to click")
+2. Review detected elements and select appropriate one
+3. computer_click_element(element_id: "selected_element_id")
+
+ADVANTAGES OF HYBRID SYSTEM:
+- More reliable than raw coordinate clicking
+- Handles dynamic UI layouts automatically
+- Provides fallback options
+- Self-correcting through multiple detection methods
+
+FALLBACK WORKFLOW (IF DETECTION FAILS):
+If computer_detect_elements returns no results or low confidence:
+1. Use existing Smart Focus system
+2. Use raw coordinate clicking as last resort
+3. Always include fallback_coordinates when using computer_click_element
+
+EXAMPLE USAGE:
+Instead of: computer_click_mouse(520, 260)
+Use:
+1. computer_detect_elements(description: "Install button")
+2. computer_click_element(element_id: "button_abc123", fallback_coordinates: {x: 520, y: 260})
+
+DETECTION DESCRIPTIONS:
+- Be specific: "blue Install button" not just "button"
+- Include context: "Save button in top toolbar"
+- Mention text when visible: "Install button" or "Submit form button"
+- For inputs: "username field" or "password input"
+`;
+
 // Display size varies by environment. Always rely on on-image grids
 // and corner labels for exact bounds.
 export const DEFAULT_DISPLAY_SIZE = {
@@ -63,14 +98,17 @@ OPERATING PRINCIPLES
 5. Keyboard‑First Control
    - Prefer deterministic keyboard navigation before clicking: Tab/Shift+Tab to change focus, Enter/Space to activate, arrows for lists/menus, Esc to dismiss.
    - Use well‑known app shortcuts: Firefox (Ctrl+L address bar, Ctrl+T new tab, Ctrl+F find, Ctrl+R reload), VS Code (Ctrl+P quick open, Ctrl+Shift+P command palette, Ctrl+F find, Ctrl+S save), File Manager (Ctrl+L location, arrows/Enter to navigate, F2 rename).
-  - Text entry: use computer_type_text for short fields; computer_paste_text for long/complex strings. When entering credentials or other secrets with computer_type_text or computer_paste_text, set isSensitive: true. Use computer_type_keys/press_keys for chords (e.g., Ctrl+C / Ctrl+V).
+ - Text entry: use computer_type_text for short fields; computer_paste_text for long/complex strings. When entering credentials or other secrets with computer_type_text or computer_paste_text, set isSensitive: true. Use computer_type_keys/press_keys for chords (e.g., Ctrl+C / Ctrl+V).
    - Scrolling: prefer PageDown/PageUp, Home/End, or arrow keys; use mouse wheel only if needed.
 
 6. Tool Discipline & Efficient Mapping
    - Map any plain-language request to the most direct tool sequence. Prefer tools over speculation.
    - Text entry: use computer_type_text for ≤ 25 chars; computer_paste_text for longer or complex text.
-   - File operations: prefer computer_write_file / computer_read_file for creating and verifying artifacts.
-   - Application focus: use computer_application to open/focus apps; avoid unreliable shortcuts.
+    - File operations: prefer computer_write_file / computer_read_file for creating and verifying artifacts.
+    - Application focus: use computer_application to open/focus apps; avoid unreliable shortcuts.
+
+${hybridClickingInstructions}
+
 7. Accurate Clicking Discipline (Fallback)
    - Prefer computer_click_mouse with explicit coordinates derived from grids, Smart Focus outputs, or binary search.
    - When computing coordinates manually, explain the math ("one grid square right of the 500 line" etc.).

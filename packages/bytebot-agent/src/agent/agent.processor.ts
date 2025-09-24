@@ -17,6 +17,8 @@ import {
   isScreenshotToolUseBlock,
   isScreenshotRegionToolUseBlock,
   isScreenshotCustomRegionToolUseBlock,
+  isComputerDetectElementsToolUseBlock,
+  isComputerClickElementToolUseBlock,
   SetTaskStatusToolUseBlock,
 } from '@bytebot/shared';
 
@@ -25,7 +27,16 @@ import {
   MessageContentType,
   ToolResultContentBlock,
   TextContentBlock,
+  ComputerDetectElementsToolUseBlock,
+  ComputerClickElementToolUseBlock,
+  Coordinates,
 } from '@bytebot/shared';
+import {
+  ElementDetectorService,
+  DetectedElement,
+  BoundingBox,
+  ClickTarget,
+} from '@bytebot/cv';
 import { InputCaptureService } from './input-capture.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { OpenAIService } from '../openai/openai.service';
@@ -44,6 +55,12 @@ import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 
+type CachedDetectedElement = {
+  element: DetectedElement;
+  timestamp: number;
+  taskId: string | null;
+};
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -52,6 +69,9 @@ export class AgentProcessor {
   private abortController: AbortController | null = null;
   private services: Record<string, BytebotAgentService> = {};
   private pendingScreenshotObservation = false;
+  private readonly elementDetector = new ElementDetectorService();
+  private readonly elementCache = new Map<string, CachedDetectedElement>();
+  private readonly elementCacheTtlMs = 5 * 60 * 1000;
 
   constructor(
     private readonly tasksService: TasksService,
@@ -352,6 +372,18 @@ export class AgentProcessor {
         }
 
         if (isComputerToolUseContentBlock(block)) {
+          if (isComputerDetectElementsToolUseBlock(block)) {
+            const result = await this.handleComputerDetectElements(block);
+            generatedToolResults.push(result);
+            continue;
+          }
+
+          if (isComputerClickElementToolUseBlock(block)) {
+            const result = await this.handleComputerClickElement(block);
+            generatedToolResults.push(result);
+            continue;
+          }
+
           const result = await handleComputerToolUse(block, this.logger);
           generatedToolResults.push(result);
 
@@ -439,8 +471,7 @@ export class AgentProcessor {
                   content: [
                     {
                       type: MessageContentType.Text,
-                      text:
-                        'Cannot mark as completed yet. Please perform concrete actions (e.g., open the app, click/type/paste, write_file) and provide verification (screenshot of the result or computer_read_file content). Then try completion again.',
+                      text: 'Cannot mark as completed yet. Please perform concrete actions (e.g., open the app, click/type/paste, write_file) and provide verification (screenshot of the result or computer_read_file content). Then try completion again.',
                     },
                   ],
                 } as any,
@@ -456,7 +487,8 @@ export class AgentProcessor {
         } else if (desired === 'failed') {
           const failureTimestamp = new Date();
           const failureReason =
-            setTaskStatusToolUseBlock.input.description ?? 'no description provided';
+            setTaskStatusToolUseBlock.input.description ??
+            'no description provided';
           this.logger.warn(
             `Task ${taskId} marked as failed via set_task_status tool: ${failureReason}`,
           );
@@ -489,6 +521,394 @@ export class AgentProcessor {
     }
   }
 
+  private async handleComputerDetectElements(
+    block: ComputerDetectElementsToolUseBlock,
+  ): Promise<ToolResultContentBlock> {
+    try {
+      const screenshotBuffer = await this.captureScreenshotBuffer();
+      const description = block.input.description.trim();
+      const includeAll = block.input.includeAll ?? false;
+      const searchRegion = block.input.region
+        ? this.normalizeRegion(block.input.region)
+        : undefined;
+
+      const detectionConfig = {
+        enableOCR: true,
+        enableTemplateMatching: true,
+        enableEdgeDetection: true,
+        confidenceThreshold: 0.5,
+        ...(searchRegion ? { searchRegion } : {}),
+      };
+
+      let detectedElements = await this.elementDetector.detectElements(
+        screenshotBuffer,
+        detectionConfig,
+      );
+
+      if (searchRegion) {
+        detectedElements = this.filterElementsByRegion(
+          detectedElements,
+          searchRegion,
+        );
+      }
+
+      let selectedElements: DetectedElement[];
+      if (includeAll) {
+        selectedElements = detectedElements;
+      } else {
+        const matches: DetectedElement[] = [];
+        for (const element of detectedElements) {
+          const match = await this.elementDetector.findElementByDescription(
+            [element],
+            description,
+          );
+          if (match) {
+            matches.push(match);
+          }
+        }
+
+        if (matches.length > 0) {
+          selectedElements = matches.slice(0, 10);
+        } else {
+          selectedElements = detectedElements.slice(
+            0,
+            Math.min(5, detectedElements.length),
+          );
+        }
+      }
+
+      this.cacheDetectedElements(selectedElements);
+
+      const summary = {
+        description,
+        includeAll,
+        totalDetected: detectedElements.length,
+        returned: selectedElements.length,
+        elements: selectedElements.map((element) => ({
+          id: element.id,
+          type: element.type,
+          text: element.text ?? null,
+          confidence: Number(element.confidence.toFixed(3)),
+          coordinates: element.coordinates,
+          detectionMethod: element.metadata.detectionMethod,
+        })),
+      };
+
+      const content: MessageContentBlock[] = [];
+      if (selectedElements.length === 0) {
+        content.push({
+          type: MessageContentType.Text,
+          text:
+            detectedElements.length === 0
+              ? `No UI elements detected for description "${description}".`
+              : `No elements matched description "${description}". ${detectedElements.length} element(s) detected overall.`,
+        });
+      } else {
+        content.push({
+          type: MessageContentType.Text,
+          text: `Detected ${selectedElements.length} element(s) for "${description}" out of ${detectedElements.length} total. Use these element_id values for computer_click_element.`,
+        });
+      }
+
+      content.push({
+        type: MessageContentType.Text,
+        text: `Detection payload: ${JSON.stringify(summary, null, 2)}`,
+      });
+
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: block.id,
+        content,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: block.id,
+        content: [
+          {
+            type: MessageContentType.Text,
+            text: `Element detection failed: ${message}`,
+          },
+        ],
+        is_error: true,
+      };
+    }
+  }
+
+  private async handleComputerClickElement(
+    block: ComputerClickElementToolUseBlock,
+  ): Promise<ToolResultContentBlock> {
+    const { element_id: elementId, fallback_coordinates: fallbackCoordinates } =
+      block.input;
+
+    const attempts: Array<{
+      coordinates: Coordinates;
+      origin: string;
+      success: boolean;
+    }> = [];
+
+    try {
+      const cached = this.getElementFromCache(elementId);
+      let element: DetectedElement | null = null;
+
+      if (cached) {
+        element = cached.element;
+      }
+
+      if (!element) {
+        if (fallbackCoordinates) {
+          const fallbackSuccess =
+            await this.attemptClickAt(fallbackCoordinates);
+          attempts.push({
+            coordinates: fallbackCoordinates,
+            origin: 'input_fallback',
+            success: fallbackSuccess,
+          });
+
+          return {
+            type: MessageContentType.ToolResult,
+            tool_use_id: block.id,
+            content: [
+              {
+                type: MessageContentType.Text,
+                text: fallbackSuccess
+                  ? `Element ${elementId} not cached; clicked provided fallback coordinates (${fallbackCoordinates.x}, ${fallbackCoordinates.y}).`
+                  : `Element ${elementId} not cached and fallback coordinates failed to click.`,
+              },
+              {
+                type: MessageContentType.Text,
+                text: `Click attempts: ${JSON.stringify(attempts, null, 2)}`,
+              },
+            ],
+            is_error: !fallbackSuccess,
+          };
+        }
+
+        throw new Error(
+          `Element with ID ${elementId} not found. Run computer_detect_elements first.`,
+        );
+      }
+
+      const clickTarget: ClickTarget =
+        await this.elementDetector.getClickCoordinates(element);
+      const queue: Array<{ coordinates: Coordinates; origin: string }> = [];
+      queue.push({ coordinates: clickTarget.coordinates, origin: 'primary' });
+
+      for (const coords of clickTarget.fallbackCoordinates ?? []) {
+        queue.push({ coordinates: coords, origin: 'detector_fallback' });
+      }
+
+      if (fallbackCoordinates) {
+        queue.push({
+          coordinates: fallbackCoordinates,
+          origin: 'input_fallback',
+        });
+      }
+
+      let successfulCoordinates: Coordinates | null = null;
+
+      for (const attempt of queue) {
+        const success = await this.attemptClickAt(attempt.coordinates);
+        attempts.push({
+          coordinates: attempt.coordinates,
+          origin: attempt.origin,
+          success,
+        });
+
+        if (success) {
+          successfulCoordinates = attempt.coordinates;
+          break;
+        }
+      }
+
+      const summary = {
+        elementId,
+        detectionMethod: element.metadata.detectionMethod,
+        confidence: element.confidence,
+        attempts,
+        selectedCoordinates: successfulCoordinates,
+      };
+
+      const content: MessageContentBlock[] = [
+        {
+          type: MessageContentType.Text,
+          text: successfulCoordinates
+            ? `Clicked element ${elementId} at (${successfulCoordinates.x}, ${successfulCoordinates.y}) using ${summary.detectionMethod} detection.`
+            : `Failed to click element ${elementId} after ${attempts.length} attempt(s).`,
+        },
+        {
+          type: MessageContentType.Text,
+          text: `Click summary: ${JSON.stringify(summary, null, 2)}`,
+        },
+      ];
+
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: block.id,
+        content,
+        is_error: !successfulCoordinates,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: block.id,
+        content: [
+          {
+            type: MessageContentType.Text,
+            text: `Click element failed: ${message}`,
+          },
+          {
+            type: MessageContentType.Text,
+            text: `Click attempts: ${JSON.stringify(attempts, null, 2)}`,
+          },
+        ],
+        is_error: true,
+      };
+    }
+  }
+
+  private async captureScreenshotBuffer(): Promise<Buffer> {
+    const baseUrl = this.getDesktopBaseUrl();
+    const response = await fetch(`${baseUrl}/computer-use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'screenshot',
+        showCursor: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to take screenshot: ${response.statusText}`);
+    }
+
+    const payload = (await response.json()) as { image?: string };
+    if (!payload.image) {
+      throw new Error('Screenshot response did not include image data');
+    }
+
+    return Buffer.from(payload.image, 'base64');
+  }
+
+  private normalizeRegion(region: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): BoundingBox {
+    return {
+      ...region,
+      centerX: region.x + region.width / 2,
+      centerY: region.y + region.height / 2,
+    };
+  }
+
+  private filterElementsByRegion(
+    elements: DetectedElement[],
+    region: BoundingBox,
+  ): DetectedElement[] {
+    return elements.filter((element) =>
+      this.boxesOverlap(element.coordinates, region),
+    );
+  }
+
+  private boxesOverlap(a: BoundingBox, b: BoundingBox): boolean {
+    const horizontalOverlap =
+      Math.max(a.x, b.x) < Math.min(a.x + a.width, b.x + b.width);
+    const verticalOverlap =
+      Math.max(a.y, b.y) < Math.min(a.y + a.height, b.y + b.height);
+    return horizontalOverlap && verticalOverlap;
+  }
+
+  private cacheDetectedElements(elements: DetectedElement[]): void {
+    this.pruneElementCache();
+
+    const timestamp = Date.now();
+    for (const element of elements) {
+      this.elementCache.set(element.id, {
+        element,
+        timestamp,
+        taskId: this.currentTaskId,
+      });
+    }
+  }
+
+  private getElementFromCache(elementId: string): CachedDetectedElement | null {
+    this.pruneElementCache();
+
+    const cached = this.elementCache.get(elementId);
+    if (!cached) {
+      return null;
+    }
+
+    if (cached.taskId && cached.taskId !== this.currentTaskId) {
+      return null;
+    }
+
+    cached.timestamp = Date.now();
+    return cached;
+  }
+
+  private pruneElementCache(): void {
+    const now = Date.now();
+    for (const [id, cached] of this.elementCache.entries()) {
+      if (
+        now - cached.timestamp > this.elementCacheTtlMs ||
+        (cached.taskId && cached.taskId !== this.currentTaskId)
+      ) {
+        this.elementCache.delete(id);
+      }
+    }
+  }
+
+  private async attemptClickAt(coordinates: Coordinates): Promise<boolean> {
+    const baseUrl = this.getDesktopBaseUrl();
+    try {
+      const response = await fetch(`${baseUrl}/computer-use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'click_mouse',
+          coordinates,
+          button: 'left',
+          clickCount: 1,
+        }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      try {
+        const payload = (await response.json()) as { success?: boolean };
+        if (typeof payload.success === 'boolean') {
+          return payload.success;
+        }
+      } catch {
+        // Ignore JSON parsing errors; fall back to assuming success when HTTP 200
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Click request failed at (${coordinates.x}, ${coordinates.y}): ${
+          (error as Error).message
+        }`,
+      );
+      return false;
+    }
+  }
+
+  private getDesktopBaseUrl(): string {
+    const baseUrl = process.env.BYTEBOT_DESKTOP_BASE_URL;
+    if (!baseUrl) {
+      throw new Error('BYTEBOT_DESKTOP_BASE_URL is not configured');
+    }
+    return baseUrl;
+  }
+
   /**
    * Basic completion gate: ensure at least one meaningful action occurred
    * (click/type/paste/press_keys/drag/application/write/read_file), optionally
@@ -499,10 +919,14 @@ export class AgentProcessor {
       const history = await this.messagesService.findEvery(taskId);
       let hasAction = false;
       let hasFreshVerification = false;
-      let latestActionPosition: { messageIndex: number; blockIndex: number } | null = null;
+      let latestActionPosition: {
+        messageIndex: number;
+        blockIndex: number;
+      } | null = null;
 
       const ACTION_NAMES = new Set<string>([
         'computer_click_mouse',
+        'computer_click_element',
         'computer_type_text',
         'computer_paste_text',
         'computer_press_keys',
@@ -528,10 +952,9 @@ export class AgentProcessor {
             // Evidence: any document result or any image result
             const content = (tr.content || []) as any[];
             const hasVerificationContent = content.some((c) =>
-              [
-                MessageContentType.Document,
-                MessageContentType.Image,
-              ].includes(c.type as MessageContentType),
+              [MessageContentType.Document, MessageContentType.Image].includes(
+                c.type as MessageContentType,
+              ),
             );
             if (
               hasVerificationContent &&
@@ -549,7 +972,9 @@ export class AgentProcessor {
       // Minimal requirement: at least one action and some verification artifact
       return hasAction && hasFreshVerification;
     } catch (e) {
-      this.logger.warn(`canMarkCompleted: fallback to allow completion due to error: ${(e as Error).message}`);
+      this.logger.warn(
+        `canMarkCompleted: fallback to allow completion due to error: ${(e as Error).message}`,
+      );
       return true;
     }
   }
@@ -569,5 +994,6 @@ export class AgentProcessor {
     this.isProcessing = false;
     this.currentTaskId = null;
     this.pendingScreenshotObservation = false;
+    this.elementCache.clear();
   }
 }

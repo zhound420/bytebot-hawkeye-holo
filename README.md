@@ -105,7 +105,14 @@ BYTEBOT_SMART_FOCUS_MODEL=gpt-4o-mini
 BYTEBOT_COORDINATE_METRICS=true
 EOF
 
+# Build images locally (default)
 docker compose -f docker/docker-compose.proxy.yml up -d --build
+
+# Or use pre-built registry images after authenticating:
+# export BYTEBOT_DESKTOP_IMAGE=ghcr.io/bytebot-ai/bytebot-desktop:edge
+# export BYTEBOT_AGENT_IMAGE=ghcr.io/bytebot-ai/bytebot-agent:edge
+# export BYTEBOT_UI_IMAGE=ghcr.io/bytebot-ai/bytebot-ui:edge
+# docker compose -f docker/docker-compose.proxy.yml up -d
 ```
 
 Before you start the stack, edit [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml) so each alias maps to the OpenRouter endpoints or LMStudio bases you control. After saving changes, restart the `bytebot-llm-proxy` container (`docker compose restart bytebot-llm-proxy`) to reload the updated routing.

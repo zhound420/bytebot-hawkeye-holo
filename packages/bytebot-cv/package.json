@@ -1,0 +1,21 @@
+{
+  "name": "@bytebot/cv",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "dependencies": {
+    "@types/node": "^20.0.0",
+    "opencv4nodejs": "^5.6.0",
+    "tesseract.js": "^5.0.4",
+    "sharp": "^0.33.0",
+    "fuzzysearch": "^1.0.3",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/lodash": "^4.14.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  }
+}

@@ -2,10 +2,9 @@ FROM public.ecr.aws/docker/library/node:20 AS base
 
 WORKDIR /app
 
+COPY package.json ./
 COPY ./packages ./packages
 COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
-
-WORKDIR /app/packages/bytebot-agent
 
 RUN apt-get update && apt-get install -y \
     libopencv-dev \
@@ -16,11 +15,20 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install
+RUN npm install --workspace=packages/shared \
+    --workspace=packages/bytebot-cv \
+    --workspace=packages/bytebot-agent
+
+WORKDIR /app/packages/bytebot-agent
 
 RUN npm run build
 
-RUN npm prune --omit=dev
+WORKDIR /app
+RUN npm prune --omit=dev --workspace=packages/shared \
+    --workspace=packages/bytebot-cv \
+    --workspace=packages/bytebot-agent
+
+WORKDIR /app/packages/bytebot-agent
 
 CMD ["sh", "-c", "npm run prisma:prod && node dist/main.js"]
 

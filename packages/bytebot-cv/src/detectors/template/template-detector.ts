@@ -3,9 +3,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 
+type CvMat = ReturnType<typeof cv.imdecode>;
+
 type TemplateEntry = {
   name: string;
-  mat: cv.Mat;
+  mat: CvMat;
   type: ElementType;
 };
 
@@ -92,8 +94,8 @@ export class TemplateDetector {
     }
   }
 
-  private extractRegion(image: cv.Mat, region?: BoundingBox): {
-    mat: cv.Mat;
+  private extractRegion(image: CvMat, region?: BoundingBox): {
+    mat: CvMat;
     offsetX: number;
     offsetY: number;
   } {

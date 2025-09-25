@@ -1,6 +1,9 @@
 import * as cv from 'opencv4nodejs';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 
+type CvRect = InstanceType<typeof cv.Rect>;
+type CvMat = ReturnType<typeof cv.imdecode>;
+
 export class EdgeDetector {
   async detect(screenshotBuffer: Buffer, region?: BoundingBox): Promise<DetectedElement[]> {
     if (!screenshotBuffer?.length) {
@@ -49,7 +52,7 @@ export class EdgeDetector {
     return elements;
   }
 
-  private isLikelyElement(rect: cv.Rect): boolean {
+  private isLikelyElement(rect: CvRect): boolean {
     return (
       rect.width > 20 &&
       rect.height > 15 &&
@@ -58,7 +61,7 @@ export class EdgeDetector {
     );
   }
 
-  private inferElementTypeFromShape(rect: cv.Rect): ElementType {
+  private inferElementTypeFromShape(rect: CvRect): ElementType {
     const aspectRatio = rect.width / Math.max(rect.height, 1);
 
     if (aspectRatio > 1.5 && aspectRatio < 6 && rect.height >= 20 && rect.height <= 60) {
@@ -72,8 +75,8 @@ export class EdgeDetector {
     return 'unknown';
   }
 
-  private extractRegion(image: cv.Mat, region?: BoundingBox): {
-    mat: cv.Mat;
+  private extractRegion(image: CvMat, region?: BoundingBox): {
+    mat: CvMat;
     offsetX: number;
     offsetY: number;
   } {

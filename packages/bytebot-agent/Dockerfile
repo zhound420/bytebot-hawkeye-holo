@@ -1,6 +1,4 @@
-# syntax=docker/dockerfile:1
-
-FROM node:20-alpine AS base
+FROM public.ecr.aws/docker/library/node:20-alpine AS base
 
 WORKDIR /app
 

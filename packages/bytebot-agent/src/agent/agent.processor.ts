@@ -40,6 +40,7 @@ import {
 import {
   ComputerClickElementInput,
   ComputerDetectElementsInput,
+  computerDetectElementsSchema,
 } from '../tools/computer-vision-tools';
 import { InputCaptureService } from './input-capture.service';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -570,7 +571,27 @@ export class AgentProcessor {
   private async handleComputerDetectElements(
     block: ComputerDetectElementsToolUseBlock,
   ): Promise<ToolResultContentBlock> {
-    const detection = await this.runComputerDetectElements(block.input);
+    const parsedInput = computerDetectElementsSchema.safeParse(block.input);
+
+    if (!parsedInput.success) {
+      const issues = parsedInput.error.issues
+        .map((issue) => issue.message)
+        .join('; ');
+
+      return {
+        type: MessageContentType.ToolResult,
+        tool_use_id: block.id,
+        content: [
+          {
+            type: MessageContentType.Text,
+            text: `Invalid computer_detect_elements input: ${issues}`,
+          },
+        ],
+        is_error: true,
+      };
+    }
+
+    const detection = await this.runComputerDetectElements(parsedInput.data);
 
     if ('error' in detection) {
       return {

@@ -176,6 +176,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY packages/shared/ /bytebot/packages/shared/
+COPY packages/bytebot-cv/ /bytebot/packages/bytebot-cv/
 COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
@@ -187,8 +188,11 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-RUN /usr/bin/npm install --build-from-source
+RUN npm pkg set dependencies."@bytebot/cv"=../bytebot-cv \
+    && /usr/bin/npm install --build-from-source
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
+
+RUN npm pkg set dependencies."@bytebot/cv"=workspace:*
 
 RUN /usr/bin/npm run build
 

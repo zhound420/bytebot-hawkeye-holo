@@ -3,7 +3,8 @@
 # -----------------------------------------------------------------------------
 
 # Base image
-FROM public.ecr.aws/docker/library/ubuntu:22.04
+FROM public.ecr.aws/ubuntu/ubuntu:22.04
+
 
 # -----------------------------------------------------------------------------
 # 1. Environment setup

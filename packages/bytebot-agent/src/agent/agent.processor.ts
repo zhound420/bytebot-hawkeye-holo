@@ -272,8 +272,13 @@ export class AgentProcessor {
         return;
       }
 
+      const now = new Date();
+      const currentDate = now.toLocaleDateString();
+      const currentTime = now.toLocaleTimeString();
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       agentResponse = await service.generateMessage(
-        buildAgentSystemPrompt(),
+        buildAgentSystemPrompt(currentDate, currentTime, timeZone),
         messages,
         model.name,
         true,

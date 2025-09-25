@@ -33,6 +33,7 @@ RUN npm prune --omit=dev --workspace=packages/shared \
 RUN npm pkg set dependencies."@bytebot/cv"=workspace:* --workspace=packages/bytebot-agent \
     && npm pkg set dependencies."@bytebot/cv"=workspace:* --workspace=packages/bytebotd
 
+
 WORKDIR /app/packages/bytebot-agent
 
 CMD ["sh", "-c", "npm run prisma:prod && node dist/main.js"]

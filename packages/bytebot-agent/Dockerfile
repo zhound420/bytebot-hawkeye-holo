@@ -35,6 +35,6 @@ RUN npm pkg set dependencies."@bytebot/cv"=workspace:* --workspace=packages/byte
 
 WORKDIR /app/packages/bytebot-agent
 
-CMD ["sh", "-c", "npm run prisma:prod && node dist/main.js"]
+CMD ["sh", "-c", "npm run prisma:prod && node dist/src/main.js"]
 
 

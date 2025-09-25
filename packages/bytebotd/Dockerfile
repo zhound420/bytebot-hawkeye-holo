@@ -179,6 +179,14 @@ COPY packages/shared/ /bytebot/packages/shared/
 COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
+RUN apt-get update && apt-get install -y \
+    libopencv-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    python3 \
+    python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 RUN /usr/bin/npm install --build-from-source
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
 

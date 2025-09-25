@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "postinstall": "node scripts/strip-opencv-tracking.js ."
   }
 }

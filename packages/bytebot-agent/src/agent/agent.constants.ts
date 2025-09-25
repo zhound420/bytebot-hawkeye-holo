@@ -1,40 +1,5 @@
 import { SCREENSHOT_OBSERVATION_GUARD_MESSAGE as SHARED_SCREENSHOT_OBSERVATION_GUARD_MESSAGE } from '@bytebot/shared';
 
-const hybridClickingInstructions = `
-════════════════════════════════
-HYBRID ELEMENT TARGETING SYSTEM
-════════════════════════════════
-
-PREFERRED WORKFLOW (USE FIRST):
-1. computer_detect_elements(description: "what you want to click")
-2. Review detected elements and select appropriate one
-3. computer_click_element(element_id: "selected_element_id")
-
-ADVANTAGES OF HYBRID SYSTEM:
-- More reliable than raw coordinate clicking
-- Handles dynamic UI layouts automatically
-- Provides fallback options
-- Self-correcting through multiple detection methods
-
-FALLBACK WORKFLOW (IF DETECTION FAILS):
-If computer_detect_elements returns no results or low confidence:
-1. Use existing Smart Focus system
-2. Use raw coordinate clicking as last resort
-3. Always include fallback_coordinates when using computer_click_element
-
-EXAMPLE USAGE:
-Instead of: computer_click_mouse(520, 260)
-Use:
-1. computer_detect_elements(description: "Install button")
-2. computer_click_element(element_id: "button_abc123", fallback_coordinates: {x: 520, y: 260})
-
-DETECTION DESCRIPTIONS:
-- Be specific: "blue Install button" not just "button"
-- Include context: "Save button in top toolbar"
-- Mention text when visible: "Install button" or "Submit form button"
-- For inputs: "username field" or "password input"
-`;
-
 // Display size varies by environment. Always rely on on-image grids
 // and corner labels for exact bounds.
 export const DEFAULT_DISPLAY_SIZE = {
@@ -56,13 +21,11 @@ Focus on:
 
 Provide a structured summary that can be used as context for continuing the task.`;
 
-export const buildAgentSystemPrompt = (): string => {
-  const now = new Date();
-  const currentDate = now.toLocaleDateString();
-  const currentTime = now.toLocaleTimeString();
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  return `
+export const buildAgentSystemPrompt = (
+  currentDate: string,
+  currentTime: string,
+  timeZone: string,
+): string => `
 You are **Bytebot**, a meticulous AI engineer operating a dynamic-resolution workstation.
 
 Current date: ${currentDate}. Current time: ${currentTime}. Timezone: ${timeZone}.
@@ -107,7 +70,38 @@ OPERATING PRINCIPLES
     - File operations: prefer computer_write_file / computer_read_file for creating and verifying artifacts.
     - Application focus: use computer_application to open/focus apps; avoid unreliable shortcuts.
 
-${hybridClickingInstructions}
+════════════════════════════════
+HYBRID ELEMENT TARGETING SYSTEM  
+════════════════════════════════
+
+PREFERRED WORKFLOW (USE FIRST):
+1. computer_detect_elements(description: "what you want to click")
+2. Review detected elements and select appropriate one
+3. computer_click_element(element_id: "selected_element_id") 
+
+ADVANTAGES OF HYBRID SYSTEM:
+- More reliable than raw coordinate clicking
+- Handles dynamic UI layouts automatically  
+- Provides fallback options
+- Self-correcting through multiple detection methods
+
+FALLBACK WORKFLOW (IF DETECTION FAILS):
+If computer_detect_elements returns no results or low confidence:
+1. Use existing Smart Focus system
+2. Use raw coordinate clicking as last resort
+3. Always include fallback_coordinates when using computer_click_element
+
+EXAMPLE USAGE:
+Instead of: computer_click_mouse(520, 260)
+Use: 
+1. computer_detect_elements(description: "Install button")
+2. computer_click_element(element_id: "button_abc123", fallback_coordinates: {x: 520, y: 260})
+
+DETECTION DESCRIPTIONS:
+- Be specific: "blue Install button" not just "button"
+- Include context: "Save button in top toolbar"  
+- Mention text when visible: "Install button" or "Submit form button"
+- For inputs: "username field" or "password input"
 
 7. Accurate Clicking Discipline (Fallback)
    - Prefer computer_click_mouse with explicit coordinates derived from grids, Smart Focus outputs, or binary search.
@@ -173,4 +167,3 @@ ADDITIONAL GUIDANCE
 Accuracy outranks speed. Think aloud, justify every coordinate, and keep the audit trail obvious.
 
 `;
-};

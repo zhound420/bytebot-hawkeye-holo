@@ -37,6 +37,10 @@ import {
   BoundingBox,
   ClickTarget,
 } from '@bytebot/cv';
+import {
+  ComputerClickElementInput,
+  ComputerDetectElementsInput,
+} from '../tools/computer-vision-tools';
 import { InputCaptureService } from './input-capture.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { OpenAIService } from '../openai/openai.service';
@@ -61,6 +65,42 @@ type CachedDetectedElement = {
   taskId: string | null;
 };
 
+type DetectElementsResponse =
+  | {
+      elements: DetectedElement[];
+      count: number;
+      totalDetected: number;
+      includeAll: boolean;
+      description?: string;
+    }
+  | {
+      elements: DetectedElement[];
+      count: number;
+      error: string;
+      totalDetected?: number;
+      includeAll?: boolean;
+      description?: string;
+    };
+
+type ClickElementResponse =
+  | {
+      success: true;
+      element_id: string;
+      coordinates_used: Coordinates;
+      detection_method?: string;
+      confidence?: number;
+      element_text?: string | null;
+    }
+  | {
+      success: false;
+      element_id: string;
+      error: string;
+      coordinates_used?: Coordinates;
+      detection_method?: string;
+      confidence?: number;
+      element_text?: string | null;
+    };
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -69,7 +109,7 @@ export class AgentProcessor {
   private abortController: AbortController | null = null;
   private services: Record<string, BytebotAgentService> = {};
   private pendingScreenshotObservation = false;
-  private readonly elementDetector = new ElementDetectorService();
+  private readonly elementDetector: ElementDetectorService;
   private readonly elementCache = new Map<string, CachedDetectedElement>();
   private readonly elementCacheTtlMs = 5 * 60 * 1000;
 
@@ -90,6 +130,7 @@ export class AgentProcessor {
       proxy: this.proxyService,
     };
     this.logger.log('AgentProcessor initialized');
+    this.elementDetector = new ElementDetectorService();
   }
 
   /**
@@ -524,247 +565,259 @@ export class AgentProcessor {
   private async handleComputerDetectElements(
     block: ComputerDetectElementsToolUseBlock,
   ): Promise<ToolResultContentBlock> {
-    try {
-      const screenshotBuffer = await this.captureScreenshotBuffer();
-      const description = block.input.description.trim();
-      const includeAll = block.input.includeAll ?? false;
-      const searchRegion = block.input.region
-        ? this.normalizeRegion(block.input.region)
-        : undefined;
+    const detection = await this.runComputerDetectElements(block.input);
 
-      const detectionConfig = {
-        enableOCR: true,
-        enableTemplateMatching: true,
-        enableEdgeDetection: true,
-        confidenceThreshold: 0.5,
-        ...(searchRegion ? { searchRegion } : {}),
-      };
-
-      let detectedElements = await this.elementDetector.detectElements(
-        screenshotBuffer,
-        detectionConfig,
-      );
-
-      if (searchRegion) {
-        detectedElements = this.filterElementsByRegion(
-          detectedElements,
-          searchRegion,
-        );
-      }
-
-      let selectedElements: DetectedElement[];
-      if (includeAll) {
-        selectedElements = detectedElements;
-      } else {
-        const matches: DetectedElement[] = [];
-        for (const element of detectedElements) {
-          const match = await this.elementDetector.findElementByDescription(
-            [element],
-            description,
-          );
-          if (match) {
-            matches.push(match);
-          }
-        }
-
-        if (matches.length > 0) {
-          selectedElements = matches.slice(0, 10);
-        } else {
-          selectedElements = detectedElements.slice(
-            0,
-            Math.min(5, detectedElements.length),
-          );
-        }
-      }
-
-      this.cacheDetectedElements(selectedElements);
-
-      const summary = {
-        description,
-        includeAll,
-        totalDetected: detectedElements.length,
-        returned: selectedElements.length,
-        elements: selectedElements.map((element) => ({
-          id: element.id,
-          type: element.type,
-          text: element.text ?? null,
-          confidence: Number(element.confidence.toFixed(3)),
-          coordinates: element.coordinates,
-          detectionMethod: element.metadata.detectionMethod,
-        })),
-      };
-
-      const content: MessageContentBlock[] = [];
-      if (selectedElements.length === 0) {
-        content.push({
-          type: MessageContentType.Text,
-          text:
-            detectedElements.length === 0
-              ? `No UI elements detected for description "${description}".`
-              : `No elements matched description "${description}". ${detectedElements.length} element(s) detected overall.`,
-        });
-      } else {
-        content.push({
-          type: MessageContentType.Text,
-          text: `Detected ${selectedElements.length} element(s) for "${description}" out of ${detectedElements.length} total. Use these element_id values for computer_click_element.`,
-        });
-      }
-
-      content.push({
-        type: MessageContentType.Text,
-        text: `Detection payload: ${JSON.stringify(summary, null, 2)}`,
-      });
-
-      return {
-        type: MessageContentType.ToolResult,
-        tool_use_id: block.id,
-        content,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    if ('error' in detection) {
       return {
         type: MessageContentType.ToolResult,
         tool_use_id: block.id,
         content: [
           {
             type: MessageContentType.Text,
-            text: `Element detection failed: ${message}`,
+            text: detection.error,
           },
         ],
         is_error: true,
       };
     }
+
+    const description = detection.description?.trim() ?? '';
+    const content: MessageContentBlock[] = [];
+
+    if (detection.count === 0) {
+      content.push({
+        type: MessageContentType.Text,
+        text:
+          detection.totalDetected === 0
+            ? `No UI elements detected for description "${description}".`
+            : `No elements matched description "${description}". ${detection.totalDetected} element(s) detected overall.`,
+      });
+    } else {
+      content.push({
+        type: MessageContentType.Text,
+        text: detection.includeAll
+          ? `Detected ${detection.count} element(s) across the screen.`
+          : `Detected ${detection.count} matching element(s) for "${description}" out of ${detection.totalDetected} detected. Use these element_id values for computer_click_element.`,
+      });
+    }
+
+    const payload = {
+      description,
+      includeAll: detection.includeAll,
+      count: detection.count,
+      total_detected: detection.totalDetected,
+      elements: detection.elements.map((element) => ({
+        id: element.id,
+        type: element.type,
+        text: element.text ?? null,
+        confidence: Number(element.confidence.toFixed(3)),
+        coordinates: element.coordinates,
+        detectionMethod: element.metadata.detectionMethod,
+      })),
+    };
+
+    content.push({
+      type: MessageContentType.Text,
+      text: `Detection payload: ${JSON.stringify(payload, null, 2)}`,
+    });
+
+    return {
+      type: MessageContentType.ToolResult,
+      tool_use_id: block.id,
+      content,
+    };
   }
 
   private async handleComputerClickElement(
     block: ComputerClickElementToolUseBlock,
   ): Promise<ToolResultContentBlock> {
-    const { element_id: elementId, fallback_coordinates: fallbackCoordinates } =
-      block.input;
+    const clickResult = await this.runComputerClickElement(block.input);
 
-    const attempts: Array<{
-      coordinates: Coordinates;
-      origin: string;
-      success: boolean;
-    }> = [];
+    const content: MessageContentBlock[] = [];
 
+    if (clickResult.success) {
+      const coordinates = clickResult.coordinates_used;
+      const method = clickResult.detection_method ?? 'computer vision';
+      content.push({
+        type: MessageContentType.Text,
+        text: `Clicked element ${clickResult.element_id} at (${coordinates.x}, ${coordinates.y}) using ${method}.`,
+      });
+    } else {
+      content.push({
+        type: MessageContentType.Text,
+        text: `Click element failed: ${clickResult.error}`,
+      });
+    }
+
+    content.push({
+      type: MessageContentType.Text,
+      text: `Click payload: ${JSON.stringify(clickResult, null, 2)}`,
+    });
+
+    return {
+      type: MessageContentType.ToolResult,
+      tool_use_id: block.id,
+      content,
+      is_error: !clickResult.success,
+    };
+  }
+
+  private async runComputerDetectElements(
+    params: ComputerDetectElementsInput,
+  ): Promise<DetectElementsResponse> {
     try {
-      const cached = this.getElementFromCache(elementId);
-      let element: DetectedElement | null = null;
+      const screenshotBuffer = await this.captureScreenshotBuffer();
 
-      if (cached) {
-        element = cached.element;
+      const searchRegion = params.region
+        ? this.normalizeRegion(params.region)
+        : undefined;
+
+      const detectionConfig = {
+        enableOCR: true,
+        enableTemplateMatching: false,
+        enableEdgeDetection: true,
+        confidenceThreshold: 0.5,
+        ...(searchRegion ? { searchRegion } : {}),
+      };
+
+      const elements = await this.elementDetector.detectElements(
+        screenshotBuffer,
+        detectionConfig,
+      );
+
+      this.cacheDetectedElements(elements);
+
+      if (params.includeAll) {
+        return {
+          elements,
+          count: elements.length,
+          totalDetected: elements.length,
+          includeAll: true,
+          description: params.description,
+        };
       }
 
+      const matchingElement =
+        await this.elementDetector.findElementByDescription(
+          elements,
+          params.description,
+        );
+      const matchingElements = matchingElement ? [matchingElement] : [];
+
+      return {
+        elements: matchingElements,
+        count: matchingElements.length,
+        totalDetected: elements.length,
+        includeAll: false,
+        description: params.description,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Element detection failed: ${message}`);
+      return {
+        error: `Element detection failed: ${message}`,
+        elements: [],
+        count: 0,
+        description: params.description,
+      };
+    }
+  }
+
+  private async runComputerClickElement(
+    params: ComputerClickElementInput,
+  ): Promise<ClickElementResponse> {
+    try {
+      const element = this.getElementFromCache(params.element_id);
+
       if (!element) {
-        if (fallbackCoordinates) {
-          const fallbackSuccess =
-            await this.attemptClickAt(fallbackCoordinates);
-          attempts.push({
-            coordinates: fallbackCoordinates,
-            origin: 'input_fallback',
-            success: fallbackSuccess,
+        if (params.fallback_coordinates) {
+          const fallbackResult = await this.handleComputerClickMouse({
+            x: params.fallback_coordinates.x,
+            y: params.fallback_coordinates.y,
+            button: 'left',
+            clickCount: 1,
           });
 
+          if (fallbackResult.success) {
+            return {
+              success: true,
+              element_id: params.element_id,
+              coordinates_used: params.fallback_coordinates,
+              detection_method: 'fallback_coordinates',
+            };
+          }
+
           return {
-            type: MessageContentType.ToolResult,
-            tool_use_id: block.id,
-            content: [
-              {
-                type: MessageContentType.Text,
-                text: fallbackSuccess
-                  ? `Element ${elementId} not cached; clicked provided fallback coordinates (${fallbackCoordinates.x}, ${fallbackCoordinates.y}).`
-                  : `Element ${elementId} not cached and fallback coordinates failed to click.`,
-              },
-              {
-                type: MessageContentType.Text,
-                text: `Click attempts: ${JSON.stringify(attempts, null, 2)}`,
-              },
-            ],
-            is_error: !fallbackSuccess,
+            success: false,
+            element_id: params.element_id,
+            error: `Element with ID ${params.element_id} not found; fallback coordinates failed`,
+            coordinates_used: params.fallback_coordinates,
+            detection_method: 'fallback_coordinates',
           };
         }
 
         throw new Error(
-          `Element with ID ${elementId} not found. Run computer_detect_elements first.`,
+          `Element with ID ${params.element_id} not found. Run computer_detect_elements first.`,
         );
       }
 
       const clickTarget: ClickTarget =
         await this.elementDetector.getClickCoordinates(element);
-      const queue: Array<{ coordinates: Coordinates; origin: string }> = [];
-      queue.push({ coordinates: clickTarget.coordinates, origin: 'primary' });
 
-      for (const coords of clickTarget.fallbackCoordinates ?? []) {
-        queue.push({ coordinates: coords, origin: 'detector_fallback' });
+      const result = await this.handleComputerClickMouse({
+        x: clickTarget.coordinates.x,
+        y: clickTarget.coordinates.y,
+        button: 'left',
+        clickCount: 1,
+        description: `CV-detected ${element.type}: "${element.text || element.description}"`,
+      });
+
+      if (result.success) {
+        return {
+          success: true,
+          element_id: params.element_id,
+          coordinates_used: clickTarget.coordinates,
+          detection_method: element.metadata.detectionMethod,
+          confidence: element.confidence,
+          element_text: element.text ?? null,
+        };
       }
 
-      if (fallbackCoordinates) {
-        queue.push({
-          coordinates: fallbackCoordinates,
-          origin: 'input_fallback',
-        });
-      }
-
-      let successfulCoordinates: Coordinates | null = null;
-
-      for (const attempt of queue) {
-        const success = await this.attemptClickAt(attempt.coordinates);
-        attempts.push({
-          coordinates: attempt.coordinates,
-          origin: attempt.origin,
-          success,
+      if (params.fallback_coordinates) {
+        const fallbackResult = await this.handleComputerClickMouse({
+          x: params.fallback_coordinates.x,
+          y: params.fallback_coordinates.y,
+          button: 'left',
+          clickCount: 1,
         });
 
-        if (success) {
-          successfulCoordinates = attempt.coordinates;
-          break;
+        if (fallbackResult.success) {
+          return {
+            success: true,
+            element_id: params.element_id,
+            coordinates_used: params.fallback_coordinates,
+            detection_method: `${element.metadata.detectionMethod}_fallback`,
+            confidence: element.confidence,
+            element_text: element.text ?? null,
+          };
         }
       }
 
-      const summary = {
-        elementId,
-        detectionMethod: element.metadata.detectionMethod,
-        confidence: element.confidence,
-        attempts,
-        selectedCoordinates: successfulCoordinates,
-      };
-
-      const content: MessageContentBlock[] = [
-        {
-          type: MessageContentType.Text,
-          text: successfulCoordinates
-            ? `Clicked element ${elementId} at (${successfulCoordinates.x}, ${successfulCoordinates.y}) using ${summary.detectionMethod} detection.`
-            : `Failed to click element ${elementId} after ${attempts.length} attempt(s).`,
-        },
-        {
-          type: MessageContentType.Text,
-          text: `Click summary: ${JSON.stringify(summary, null, 2)}`,
-        },
-      ];
-
       return {
-        type: MessageContentType.ToolResult,
-        tool_use_id: block.id,
-        content,
-        is_error: !successfulCoordinates,
+        success: false,
+        element_id: params.element_id,
+        error: `Failed to click element ${params.element_id}`,
+        detection_method: element.metadata.detectionMethod,
+        confidence: element.confidence,
+        element_text: element.text ?? null,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Element click failed: ${message}`);
       return {
-        type: MessageContentType.ToolResult,
-        tool_use_id: block.id,
-        content: [
-          {
-            type: MessageContentType.Text,
-            text: `Click element failed: ${message}`,
-          },
-          {
-            type: MessageContentType.Text,
-            text: `Click attempts: ${JSON.stringify(attempts, null, 2)}`,
-          },
-        ],
-        is_error: true,
+        success: false,
+        element_id: params.element_id,
+        error: message,
       };
     }
   }
@@ -805,23 +858,6 @@ export class AgentProcessor {
     };
   }
 
-  private filterElementsByRegion(
-    elements: DetectedElement[],
-    region: BoundingBox,
-  ): DetectedElement[] {
-    return elements.filter((element) =>
-      this.boxesOverlap(element.coordinates, region),
-    );
-  }
-
-  private boxesOverlap(a: BoundingBox, b: BoundingBox): boolean {
-    const horizontalOverlap =
-      Math.max(a.x, b.x) < Math.min(a.x + a.width, b.x + b.width);
-    const verticalOverlap =
-      Math.max(a.y, b.y) < Math.min(a.y + a.height, b.y + b.height);
-    return horizontalOverlap && verticalOverlap;
-  }
-
   private cacheDetectedElements(elements: DetectedElement[]): void {
     this.pruneElementCache();
 
@@ -835,7 +871,7 @@ export class AgentProcessor {
     }
   }
 
-  private getElementFromCache(elementId: string): CachedDetectedElement | null {
+  private getElementFromCache(elementId: string): DetectedElement | null {
     this.pruneElementCache();
 
     const cached = this.elementCache.get(elementId);
@@ -848,7 +884,7 @@ export class AgentProcessor {
     }
 
     cached.timestamp = Date.now();
-    return cached;
+    return cached.element;
   }
 
   private pruneElementCache(): void {
@@ -863,7 +899,28 @@ export class AgentProcessor {
     }
   }
 
-  private async attemptClickAt(coordinates: Coordinates): Promise<boolean> {
+  private async handleComputerClickMouse(params: {
+    x: number;
+    y: number;
+    button: 'left' | 'right' | 'middle';
+    clickCount: number;
+    description?: string;
+  }): Promise<{ success: boolean }> {
+    const success = await this.attemptClickAt(
+      { x: params.x, y: params.y },
+      { button: params.button, clickCount: params.clickCount },
+    );
+
+    return { success };
+  }
+
+  private async attemptClickAt(
+    coordinates: Coordinates,
+    options?: {
+      button?: 'left' | 'right' | 'middle';
+      clickCount?: number;
+    },
+  ): Promise<boolean> {
     const baseUrl = this.getDesktopBaseUrl();
     try {
       const response = await fetch(`${baseUrl}/computer-use`, {
@@ -872,8 +929,8 @@ export class AgentProcessor {
         body: JSON.stringify({
           action: 'click_mouse',
           coordinates,
-          button: 'left',
-          clickCount: 1,
+          button: options?.button ?? 'left',
+          clickCount: options?.clickCount ?? 1,
         }),
       });
 

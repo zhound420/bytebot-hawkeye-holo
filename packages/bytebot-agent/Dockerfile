@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install --workspace=packages/shared \
+RUN npm pkg set dependencies."@bytebot/cv"=../bytebot-cv --workspace=packages/bytebot-agent \
+    && npm pkg set dependencies."@bytebot/cv"=../bytebot-cv --workspace=packages/bytebotd \
+    && npm install --workspace=packages/shared \
     --workspace=packages/bytebot-cv \
     --workspace=packages/bytebot-agent
 
@@ -27,6 +29,10 @@ WORKDIR /app
 RUN npm prune --omit=dev --workspace=packages/shared \
     --workspace=packages/bytebot-cv \
     --workspace=packages/bytebot-agent
+
+RUN npm pkg set dependencies."@bytebot/cv"=workspace:* --workspace=packages/bytebot-agent \
+    && npm pkg set dependencies."@bytebot/cv"=workspace:* --workspace=packages/bytebotd
+
 
 WORKDIR /app/packages/bytebot-agent
 

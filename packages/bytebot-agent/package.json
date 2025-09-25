@@ -16,7 +16,7 @@
     "start:dev": "npm run build --prefix ../shared && nest start --watch",
     "start:debug": "npm run build --prefix ../shared && nest start --debug --watch",
     "prestart:prod": "npm run prisma:prod && npm run build:dist",
-    "start:prod": "node dist/bytebot-agent/src/main.js",
+    "start:prod": "node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

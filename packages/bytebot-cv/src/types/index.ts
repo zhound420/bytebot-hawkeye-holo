@@ -22,6 +22,7 @@ export interface ElementMetadata {
   similarity?: number;
   ocrConfidence?: number;
   templateMatch?: number;
+  ocrAttempt?: string;
 }
 
 export type ElementType =

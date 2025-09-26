@@ -1,28 +1,14 @@
 import { createWorker, Worker } from 'tesseract.js';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 
-type RecognizeRectangleOption = {
+interface RecognizeRectangleOption {
   rectangle: {
     left: number;
     top: number;
     width: number;
     height: number;
   };
-};
-
-type WordLike = {
-  text: string;
-  confidence: number;
-  bbox: { x0: number; y0: number; x1: number; y1: number };
-};
-
-type OCRAttemptConfig = {
-  name: string;
-  preprocess: (input: any) => { image: any; scale?: number };
-  tessParams: Record<string, string>;
-  minConfidence: number;
-  minWordCount?: number;
-};
+}
 
 let cv: any = null;
 try {
@@ -36,11 +22,621 @@ try {
   );
 }
 
-const CV = cv as any;
+const hasCv = !!cv;
+
+const toErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
+const warnedMessages = new Set<string>();
+let filter2DSupported: boolean | null = null;
+let morphologyExSupported: boolean | null = null;
+
+const warn = (message: string, error?: unknown): void => {
+  if (error !== undefined) {
+    // eslint-disable-next-line no-console
+    console.warn(`[OCRDetector] ${message}: ${toErrorMessage(error)}`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.warn(`[OCRDetector] ${message}`);
+  }
+};
+
+const warnOnce = (message: string, error?: unknown): void => {
+  if (warnedMessages.has(message)) {
+    return;
+  }
+  warnedMessages.add(message);
+  warn(message, error);
+};
+
+const createSize = (width: number, height: number): any => {
+  if (!hasCv || !cv?.Size) {
+    return null;
+  }
+  try {
+    return new cv.Size(width, height);
+  } catch (error) {
+    warn('Size creation failed', error);
+    return null;
+  }
+};
+
+const safeCvtColor = (mat: any, code: number | undefined, label: string): any => {
+  if (!mat || typeof mat.cvtColor !== 'function' || typeof code !== 'number') {
+    return mat;
+  }
+  try {
+    return mat.cvtColor(code);
+  } catch (error) {
+    warn(label, error);
+    return mat;
+  }
+};
+
+const safeGaussianBlur = (
+  mat: any,
+  width: number,
+  height: number,
+  sigma: number,
+  label: string,
+): any => {
+  if (!mat || typeof mat.gaussianBlur !== 'function') {
+    return mat;
+  }
+  const size = createSize(width, height);
+  if (!size) {
+    return mat;
+  }
+  try {
+    return mat.gaussianBlur(size, sigma);
+  } catch (error) {
+    warnOnce(label, error);
+    return mat;
+  }
+};
+
+const safeMedianBlur = (mat: any, ksize: number, label: string): any => {
+  if (!mat || typeof mat.medianBlur !== 'function') {
+    return mat;
+  }
+  try {
+    return mat.medianBlur(ksize);
+  } catch (error) {
+    warnOnce(label, error);
+    return mat;
+  }
+};
+
+const safeBilateralFilter = (
+  mat: any,
+  diameter: number,
+  sigmaColor: number,
+  sigmaSpace: number,
+  label: string,
+): any => {
+  if (!mat || typeof mat.bilateralFilter !== 'function') {
+    return mat;
+  }
+  try {
+    return mat.bilateralFilter(diameter, sigmaColor, sigmaSpace);
+  } catch (error) {
+    warnOnce(label, error);
+    return mat;
+  }
+};
+
+const safeCanny = (mat: any, threshold1: number, threshold2: number, label: string): any => {
+  if (!mat || typeof mat.canny !== 'function') {
+    return mat;
+  }
+  try {
+    return mat.canny(threshold1, threshold2);
+  } catch (error) {
+    warnOnce(label, error);
+    return mat;
+  }
+};
+
+const safeSplit = (mat: any, label: string): any[] => {
+  if (!mat || typeof mat.split !== 'function') {
+    return [mat];
+  }
+  try {
+    return mat.split();
+  } catch (error) {
+    warnOnce(label, error);
+    return [mat];
+  }
+};
+
+const safeMerge = (channels: any[], fallback: any, label: string): any => {
+  if (!hasCv || typeof cv.merge !== 'function') {
+    return fallback ?? channels[0];
+  }
+  try {
+    return cv.merge(channels);
+  } catch (error) {
+    warnOnce(label, error);
+    return fallback ?? channels[0];
+  }
+};
+
+const safeFilter2D = (mat: any, kernel: any, label: string): any => {
+  if (!hasCv || !mat || !kernel) {
+    return mat;
+  }
+  if (filter2DSupported === false) {
+    return mat;
+  }
+  const ddepth = -1;
+  if (typeof cv.filter2D === 'function') {
+    try {
+      const result = cv.filter2D(mat, ddepth, kernel);
+      filter2DSupported = true;
+      return result;
+    } catch (error) {
+      warnOnce(label, error);
+      filter2DSupported = false;
+      return mat;
+    }
+  }
+  if (typeof mat.filter2D === 'function') {
+    try {
+      const result = mat.filter2D(kernel);
+      filter2DSupported = true;
+      return result;
+    } catch (error) {
+      warnOnce(label, error);
+      filter2DSupported = false;
+      return mat;
+    }
+  }
+  return mat;
+};
+
+interface WordLike {
+  text: string;
+  confidence: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+interface OCRAttemptConfig {
+  name: string;
+  preprocess: (mat: any) => { image: any; scale?: number };
+  tessParams: Record<string, string>;
+  minConfidence: number;
+  minWordCount?: number;
+}
+
+const cloneMat = (mat: any) => {
+  if (!mat) {
+    return mat;
+  }
+  if (typeof mat.copy === 'function') {
+    return mat.copy();
+  }
+  if (typeof mat.clone === 'function') {
+    return mat.clone();
+  }
+  if (hasCv && cv?.Mat) {
+    try {
+      return new cv.Mat(mat);
+    } catch (error) {
+      warnOnce('cloneMat fallback failed', error);
+      return mat;
+    }
+  }
+  return mat;
+};
+
+const scaleMat = (mat: any, scale: number) => {
+  if (!hasCv || !mat) {
+    return mat;
+  }
+  if (scale === 1) {
+    return cloneMat(mat);
+  }
+  if (typeof mat.resize !== 'function') {
+    return cloneMat(mat);
+  }
+  const width = Math.max(1, Math.round(mat.cols * scale));
+  const height = Math.max(1, Math.round(mat.rows * scale));
+  const size = createSize(width, height);
+  if (!size) {
+    return cloneMat(mat);
+  }
+  const interpolation = typeof cv.INTER_CUBIC === 'number' ? cv.INTER_CUBIC : 0;
+  try {
+    return mat.resize(size, 0, 0, interpolation);
+    } catch (error) {
+      warnOnce('resize failed', error);
+      return cloneMat(mat);
+    }
+};
+
+const adaptiveThreshold = (
+  mat: any,
+  maxValue: number,
+  adaptiveMethod: number,
+  thresholdType: number,
+  blockSize: number,
+  C: number,
+) => {
+  if (!hasCv || !mat) {
+    return mat;
+  }
+  if (typeof cv.adaptiveThreshold === 'function') {
+    try {
+      return cv.adaptiveThreshold(mat, maxValue, adaptiveMethod, thresholdType, blockSize, C);
+    } catch (error) {
+      warnOnce('global adaptiveThreshold failed', error);
+    }
+  }
+  if (typeof mat.adaptiveThreshold === 'function') {
+    try {
+      return mat.adaptiveThreshold(maxValue, adaptiveMethod, thresholdType, blockSize, C);
+    } catch (error) {
+      warnOnce('mat adaptiveThreshold failed', error);
+    }
+  }
+  return mat;
+};
+
+const morph = (mat: any, op: number, kernel: any) => {
+  if (!hasCv || !mat || !kernel) {
+    return mat;
+  }
+  if (morphologyExSupported === false) {
+    return mat;
+  }
+  if (typeof cv.morphologyEx === 'function') {
+    try {
+      const result = cv.morphologyEx(mat, op, kernel);
+      morphologyExSupported = true;
+      return result;
+    } catch (error) {
+      warnOnce('global morphologyEx failed', error);
+      morphologyExSupported = false;
+    }
+  }
+  return mat;
+};
+
+const bitwiseOr = (a: any, b: any) => {
+  if (!hasCv) {
+    return a ?? b;
+  }
+  if (typeof cv.bitwiseOr === 'function') {
+    try {
+      return cv.bitwiseOr(a, b);
+    } catch (error) {
+      warnOnce('global bitwiseOr failed', error);
+    }
+  }
+  if (a?.bitwiseOr) {
+    try {
+      return a.bitwiseOr(b);
+    } catch (error) {
+      warnOnce('mat bitwiseOr failed', error);
+    }
+  }
+  return a;
+};
+
+let cachedSharpenKernel: any | null = null;
+
+const getSharpenKernel = () => {
+  if (!hasCv || !cv?.Mat) {
+    return null;
+  }
+  if (cachedSharpenKernel) {
+    return cachedSharpenKernel;
+  }
+  try {
+    cachedSharpenKernel = new cv.Mat(
+      [
+        [0, -1, 0],
+        [-1, 5, -1],
+        [0, -1, 0],
+      ],
+      typeof cv.CV_32F === 'number' ? cv.CV_32F : 5,
+    );
+  } catch (error) {
+    warnOnce('Sharpen kernel creation failed', error);
+    cachedSharpenKernel = null;
+  }
+  return cachedSharpenKernel;
+};
+
+const sharpen = (mat: any) => {
+  if (!hasCv || !mat) {
+    return mat;
+  }
+  const kernel = getSharpenKernel();
+  if (!kernel) {
+    return mat;
+  }
+  return safeFilter2D(mat, kernel, 'filter2D sharpen failed');
+};
+
+const enhanceUiColors = (mat: any) => {
+  if (!hasCv || !mat) {
+    return mat;
+  }
+  const blurred = safeGaussianBlur(mat, 3, 3, 0, 'enhanceUiColors gaussianBlur failed');
+  const sharpenedMat = sharpen(blurred);
+  if (typeof cv.addWeighted === 'function') {
+    try {
+      return cv.addWeighted(sharpenedMat, 1.2, mat, -0.2, 0);
+    } catch (error) {
+      warnOnce('addWeighted failed', error);
+    }
+  }
+  if (sharpenedMat?.addWeighted) {
+    try {
+      return sharpenedMat.addWeighted(1.2, mat, -0.2, 0);
+    } catch (error) {
+      warnOnce('mat addWeighted failed', error);
+    }
+  }
+  return sharpenedMat;
+};
+
+const createClahe = (clipLimit: number, tileWidth: number, tileHeight: number) => {
+  if (!hasCv) {
+    return null;
+  }
+  const tileSize = createSize(tileWidth, tileHeight);
+  if (!tileSize) {
+    return null;
+  }
+  if (typeof cv.createCLAHE === 'function') {
+    try {
+      return cv.createCLAHE(clipLimit, tileSize);
+    } catch (error) {
+      warnOnce('createCLAHE failed', error);
+    }
+  }
+  if (cv?.CLAHE) {
+    try {
+      return new cv.CLAHE(clipLimit, tileSize);
+    } catch (error) {
+      warnOnce('CLAHE constructor failed', error);
+    }
+  }
+  return null;
+};
+
+const applyClahe = (clahe: any, mat: any) => {
+  if (!clahe || !mat) {
+    return mat;
+  }
+  if (typeof clahe.apply === 'function') {
+    try {
+      return clahe.apply(mat);
+    } catch (error) {
+      warnOnce('CLAHE apply failed', error);
+    }
+  }
+  return mat;
+};
+
+const createMorphRectKernel = (width: number, height: number) => {
+  if (!hasCv) {
+    return null;
+  }
+  if (typeof cv.getStructuringElement === 'function' && cv?.Size) {
+    try {
+      const size = createSize(width, height);
+      if (size) {
+        return cv.getStructuringElement(cv.MORPH_RECT ?? 0, size);
+      }
+    } catch (error) {
+      warnOnce('getStructuringElement failed', error);
+    }
+  }
+  if (cv?.Mat?.ones) {
+    try {
+      const mat = cv.Mat.ones(height, width, typeof cv.CV_8U === 'number' ? cv.CV_8U : 0);
+      return mat;
+    } catch (error) {
+      warnOnce('Mat.ones fallback failed', error);
+    }
+  }
+  return null;
+};
+
+const DEFAULT_CHAR_WHITELIST =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/\\"\'`~!@#$%^&*()_+={}[]|:;,.?<>';
+
+const attemptDefinitions = (whitelist: string): OCRAttemptConfig[] => {
+  if (!hasCv) {
+    return [];
+  }
+
+  const MORPH_RECT = cv.MORPH_RECT ?? 0;
+  const MORPH_CLOSE = cv.MORPH_CLOSE ?? 3;
+  const ADAPTIVE_GAUSSIAN = cv.ADAPTIVE_THRESH_GAUSSIAN_C ?? 1;
+  const ADAPTIVE_MEAN = cv.ADAPTIVE_THRESH_MEAN_C ?? 0;
+  const THRESH_BINARY = cv.THRESH_BINARY ?? 0;
+  const THRESH_BINARY_INV = cv.THRESH_BINARY_INV ?? 1;
+  const COLOR_BGR2GRAY = cv.COLOR_BGR2GRAY;
+  const COLOR_BGR2LAB = cv.COLOR_BGR2LAB;
+  const COLOR_LAB2BGR = cv.COLOR_Lab2BGR ?? cv.COLOR_LAB2BGR;
+
+  return [
+    {
+      name: 'clahe_psm8_scale_1.5',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.5);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'clahe_psm8_scale_1.5 cvtColor BGR2GRAY failed',
+        );
+        const clahe = createClahe(2, 8, 8);
+        const equalized = applyClahe(clahe, gray);
+        const sharpenedMat = sharpen(equalized);
+        return { image: sharpenedMat, scale: 1.5 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '8',
+        tessedit_char_whitelist: whitelist,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      },
+      minConfidence: 65,
+      minWordCount: 2,
+    },
+    {
+      name: 'denoise_psm6_scale_1.2',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.2);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'denoise_psm6_scale_1.2 cvtColor BGR2GRAY failed',
+        );
+        const denoised = safeGaussianBlur(
+          gray,
+          3,
+          3,
+          1.1,
+          'denoise_psm6_scale_1.2 gaussianBlur failed',
+        );
+        const thresh = adaptiveThreshold(
+          denoised,
+          255,
+          ADAPTIVE_GAUSSIAN,
+          THRESH_BINARY,
+          15,
+          2,
+        );
+        return { image: thresh, scale: 1.2 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '6',
+        tessedit_char_whitelist: whitelist,
+        user_defined_dpi: '280',
+      },
+      minConfidence: 60,
+      minWordCount: 2,
+    },
+    {
+      name: 'edge_psm7_scale_1.8',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.8);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'edge_psm7_scale_1.8 cvtColor BGR2GRAY failed',
+        );
+        const bilateral = safeBilateralFilter(
+          gray,
+          7,
+          75,
+          75,
+          'edge_psm7_scale_1.8 bilateralFilter failed',
+        );
+        const edges = safeCanny(bilateral, 60, 120, 'edge_psm7_scale_1.8 canny failed');
+        const morphKernel = createMorphRectKernel(2, 2);
+        const enhanced = morph(edges, MORPH_CLOSE, morphKernel);
+        return { image: enhanced, scale: 1.8 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '7',
+        tessedit_char_whitelist: whitelist,
+        tessedit_char_blacklist: '@{}',
+        user_defined_dpi: '320',
+      },
+      minConfidence: 55,
+    },
+    {
+      name: 'ui_color_psm13',
+      preprocess: (input) => {
+        const enhanced = enhanceUiColors(input);
+        const scale = 1.4;
+        const resized = scaleMat(enhanced, scale);
+        const lab = safeCvtColor(
+          resized,
+          COLOR_BGR2LAB,
+          'ui_color_psm13 cvtColor BGR2LAB failed',
+        );
+        const channels = safeSplit(lab, 'ui_color_psm13 split failed');
+        const clahe = createClahe(2, 8, 8);
+        if (clahe && channels[0]) {
+          channels[0] = applyClahe(clahe, channels[0]);
+        }
+        const merged = safeMerge(channels, resized, 'ui_color_psm13 merge failed');
+        const backToBgr = safeCvtColor(
+          merged,
+          COLOR_LAB2BGR,
+          'ui_color_psm13 cvtColor Lab2BGR failed',
+        );
+        const gray = safeCvtColor(
+          backToBgr,
+          COLOR_BGR2GRAY,
+          'ui_color_psm13 cvtColor BGR2GRAY failed',
+        );
+        return { image: gray, scale };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '13',
+        tessedit_char_whitelist: whitelist,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '260',
+      },
+      minConfidence: 50,
+    },
+    {
+      name: 'ui_buttons_psm8',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.3);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'ui_buttons_psm8 cvtColor BGR2GRAY failed',
+        );
+        const median = safeMedianBlur(gray, 3, 'ui_buttons_psm8 medianBlur failed');
+        const thresh = adaptiveThreshold(
+          median,
+          255,
+          ADAPTIVE_MEAN,
+          THRESH_BINARY_INV,
+          21,
+          4,
+        );
+        const kernel = createMorphRectKernel(3, 3);
+        const closed = morph(thresh, MORPH_CLOSE, kernel);
+        const combined = bitwiseOr(cloneMat(closed), median);
+        return { image: combined, scale: 1.3 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '8',
+        tessedit_char_whitelist: whitelist,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      },
+      minConfidence: 55,
+      minWordCount: 1,
+    },
+  ];
+};
 
 export class OCRDetector {
   private worker: Worker | null = null;
-  private readonly cvAvailable = !!cv;
+  private readonly cvAvailable = hasCv;
   private readonly debugEnabled =
     typeof process !== 'undefined' && process?.env?.BYTEBOT_OCR_DEBUG === 'true';
 
@@ -111,13 +707,10 @@ export class OCRDetector {
     return text.replace(/\s+/g, ' ').trim();
   }
 
-  private async basicDetect(
-    screenshotBuffer: Buffer,
-    region?: BoundingBox,
-  ): Promise<DetectedElement[]> {
+  private async basicDetect(screenshotBuffer: Buffer, region?: BoundingBox): Promise<DetectedElement[]> {
     const worker = await this.getWorker();
     const options = region ? this.toRecognizeOptions(region) : undefined;
-    const { data } = await worker.recognize(screenshotBuffer, options);
+    const { data } = await worker.recognize(screenshotBuffer, options as any);
 
     if (!data?.words?.length) {
       return [];
@@ -171,7 +764,10 @@ export class OCRDetector {
   }
 
   private advancedDecode(buffer: Buffer): any {
-    return CV.imdecode(buffer);
+    if (!this.cvAvailable || !buffer) {
+      return null;
+    }
+    return cv.imdecode(buffer);
   }
 
   private cropToRegion(mat: any, region?: BoundingBox): { image: any; offsetX: number; offsetY: number } {
@@ -184,241 +780,22 @@ export class OCRDetector {
     const width = Math.min(mat.cols - x, Math.max(1, Math.floor(region.width)));
     const height = Math.min(mat.rows - y, Math.max(1, Math.floor(region.height)));
 
-    const roi = mat.getRegion(new CV.Rect(x, y, width, height));
+    const rect = new cv.Rect(x, y, width, height);
+    const roi = mat.getRegion(rect);
     return { image: roi, offsetX: x, offsetY: y };
   }
 
   private buildAttempts(): OCRAttemptConfig[] {
-    const whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/\\"\'`~!@#$%^&*()_+={}[]|:;,.?<>';
-
-    return [
-      {
-        name: 'clahe_psm8_scale_1.5',
-        preprocess: (input) => {
-          const scaled = this.scaleImage(input, 1.5);
-          const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
-          const clahe = this.createClahe(2, new CV.Size(8, 8));
-          const equalized = clahe ? clahe.apply(gray) : gray;
-          const sharpened = this.sharpen(equalized);
-          return { image: sharpened, scale: 1.5 };
-        },
-        tessParams: {
-          tessedit_pageseg_mode: '8',
-          tessedit_char_whitelist: whitelist,
-          preserve_interword_spaces: '1',
-          user_defined_dpi: '300',
-        },
-        minConfidence: 65,
-        minWordCount: 2,
-      },
-      {
-        name: 'denoise_psm6_scale_1.2',
-        preprocess: (input) => {
-          const scaled = this.scaleImage(input, 1.2);
-          const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
-          const denoised = gray.gaussianBlur(new CV.Size(3, 3), 1.1);
-          const thresh = CV.adaptiveThreshold(
-            denoised,
-            255,
-            CV.ADAPTIVE_THRESH_GAUSSIAN_C,
-            CV.THRESH_BINARY,
-            15,
-            2,
-          );
-          return { image: thresh, scale: 1.2 };
-        },
-        tessParams: {
-          tessedit_pageseg_mode: '6',
-          tessedit_char_whitelist: whitelist,
-          user_defined_dpi: '280',
-        },
-        minConfidence: 60,
-        minWordCount: 2,
-      },
-      {
-        name: 'edge_psm7_scale_1.8',
-        preprocess: (input) => {
-          const scaled = this.scaleImage(input, 1.8);
-          const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
-          const bilateral = gray.bilateralFilter(7, 75, 75);
-          const edges = bilateral.canny(60, 120);
-          const morphKernel = CV.getStructuringElement(CV.MORPH_RECT, new CV.Size(2, 2));
-          const enhanced = this.safeMorphologyEx(edges, CV.MORPH_CLOSE, morphKernel);
-          return { image: enhanced, scale: 1.8 };
-        },
-        tessParams: {
-          tessedit_pageseg_mode: '7',
-          tessedit_char_whitelist: whitelist,
-          tessedit_char_blacklist: '@{}',
-          user_defined_dpi: '320',
-        },
-        minConfidence: 55,
-      },
-      {
-        name: 'ui_color_psm13',
-        preprocess: (input) => {
-          const enhanced = this.enhanceUiColors(input);
-          const scale = 1.4;
-          const resized = this.scaleImage(enhanced, scale);
-          const lab = resized.cvtColor(CV.COLOR_BGR2LAB);
-          const channels = lab.split();
-          const clahe = this.createClahe(2, new CV.Size(8, 8));
-          if (clahe) {
-            channels[0] = clahe.apply(channels[0]);
-          }
-          const merged = CV.merge(channels);
-          const backToBgr = merged.cvtColor(CV.COLOR_Lab2BGR);
-          const gray = backToBgr.cvtColor(CV.COLOR_BGR2GRAY);
-          return { image: gray, scale };
-        },
-        tessParams: {
-          tessedit_pageseg_mode: '13',
-          tessedit_char_whitelist: whitelist,
-          preserve_interword_spaces: '1',
-          user_defined_dpi: '260',
-        },
-        minConfidence: 50,
-      },
-      {
-        name: 'ui_buttons_psm8',
-        preprocess: (input) => {
-          const scaled = this.scaleImage(input, 1.3);
-          const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
-          const median = gray.medianBlur(3);
-          const thresh = CV.adaptiveThreshold(
-            median,
-            255,
-            CV.ADAPTIVE_THRESH_MEAN_C,
-            CV.THRESH_BINARY_INV,
-            21,
-            4,
-          );
-          const kernel = CV.getStructuringElement(CV.MORPH_RECT, new CV.Size(3, 3));
-          const closed = this.safeMorphologyEx(thresh, CV.MORPH_CLOSE, kernel);
-          const combined = this.safeBitwiseOr(closed, median);
-          return { image: combined, scale: 1.3 };
-        },
-        tessParams: {
-          tessedit_pageseg_mode: '8',
-          tessedit_char_whitelist: whitelist,
-          preserve_interword_spaces: '1',
-          user_defined_dpi: '300',
-        },
-        minConfidence: 55,
-        minWordCount: 1,
-      },
-    ];
+    return attemptDefinitions(DEFAULT_CHAR_WHITELIST);
   }
 
-  private scaleImage(mat: any, scale: number): any {
-    if (scale === 1) {
-      return this.cloneMat(mat);
+  private scoreAttempt(words: WordLike[]): number {
+    if (words.length === 0) {
+      return 0;
     }
-    const size = new CV.Size(Math.max(1, Math.round(mat.cols * scale)), Math.max(1, Math.round(mat.rows * scale)));
-    return mat.resize(size, 0, 0, CV.INTER_CUBIC);
-  }
-
-  private sharpen(mat: any): any {
-    const kernel = new CV.Mat(
-      [
-        [0, -1, 0],
-        [-1, 5, -1],
-        [0, -1, 0],
-      ],
-      CV.CV_32F,
-    );
-    return mat.filter2D(kernel);
-  }
-
-  private enhanceUiColors(mat: any): any {
-    const blurred = mat.gaussianBlur(new CV.Size(3, 3), 0);
-    const sharpened = this.sharpen(blurred);
-    return this.safeAddWeighted(sharpened, 1.2, mat, -0.2, 0);
-  }
-
-  private cloneMat(mat: any): any {
-    if (!mat) {
-      return mat;
-    }
-
-    if (typeof mat.copy === 'function') {
-      return mat.copy();
-    }
-
-    if (typeof mat.clone === 'function') {
-      return mat.clone();
-    }
-
-    if (!this.cvAvailable || !CV?.Mat) {
-      return mat;
-    }
-
-    try {
-      return new CV.Mat(mat);
-    } catch (error) {
-      this.debug(`cloneMat fallback failed: ${(error as Error)?.message ?? error}`);
-      return mat;
-    }
-  }
-
-  private createClahe(clipLimit: number, tileGridSize: any): any {
-    if (!this.cvAvailable) {
-      return null;
-    }
-    if (typeof CV.createCLAHE === 'function') {
-      return CV.createCLAHE(clipLimit, tileGridSize);
-    }
-    if (CV.CLAHE) {
-      try {
-        return new CV.CLAHE(clipLimit, tileGridSize);
-      } catch (error) {
-        this.debug(`createClahe fallback failed: ${(error as Error)?.message ?? error}`);
-      }
-    }
-    this.debug('CLAHE not available in current OpenCV build.');
-    return null;
-  }
-
-  private safeMorphologyEx(mat: any, op: number, kernel: any): any {
-    if (!this.cvAvailable || !mat) {
-      return mat;
-    }
-    if (typeof CV.morphologyEx === 'function') {
-      return CV.morphologyEx(mat, op, kernel);
-    }
-    if (typeof mat.morphologyEx === 'function') {
-      return mat.morphologyEx(op, kernel);
-    }
-    this.debug('morphologyEx not available; returning original matrix.');
-    return mat;
-  }
-
-  private safeBitwiseOr(matA: any, matB: any): any {
-    if (!this.cvAvailable) {
-      return matA ?? matB;
-    }
-    if (typeof CV.bitwiseOr === 'function') {
-      return CV.bitwiseOr(matA, matB);
-    }
-    if (matA?.bitwiseOr) {
-      return matA.bitwiseOr(matB);
-    }
-    this.debug('bitwiseOr not available; returning first matrix.');
-    return matA;
-  }
-
-  private safeAddWeighted(matA: any, alpha: number, matB: any, beta: number, gamma: number): any {
-    if (!this.cvAvailable) {
-      return matA ?? matB;
-    }
-    if (typeof CV.addWeighted === 'function') {
-      return CV.addWeighted(matA, alpha, matB, beta, gamma);
-    }
-    if (matA?.addWeighted) {
-      return matA.addWeighted(alpha, matB, beta, gamma);
-    }
-    this.debug('addWeighted not available; returning first matrix.');
-    return matA;
+    const avgConfidence = words.reduce((sum, word) => sum + (word.confidence ?? 0), 0) / words.length;
+    const uniqueTexts = new Set(words.map((word) => this.cleanRecognizedText(word.text || '').toLowerCase())).size;
+    return avgConfidence * 0.7 + uniqueTexts * 5;
   }
 
   private wordsToElements(
@@ -473,23 +850,35 @@ export class OCRDetector {
     return elements;
   }
 
-  private scoreAttempt(words: WordLike[]): number {
-    if (words.length === 0) {
-      return 0;
+  private deduplicateWords(words: WordLike[]): WordLike[] {
+    const seen = new Map<string, WordLike>();
+
+    for (const word of words) {
+      const key = `${Math.round(word.bbox.x0 / 5)}-${Math.round(word.bbox.y0 / 5)}-${this.cleanRecognizedText(word.text || '').toLowerCase()}`;
+      const existing = seen.get(key);
+      if (!existing || (word.confidence ?? 0) > (existing.confidence ?? 0)) {
+        seen.set(key, word);
+      }
     }
-    const avgConfidence = words.reduce((sum, w) => sum + (w.confidence ?? 0), 0) / words.length;
-    const uniqueTexts = new Set(words.map((w) => this.cleanRecognizedText(w.text || '').toLowerCase())).size;
-    return avgConfidence * 0.7 + uniqueTexts * 5;
+
+    return [...seen.values()];
   }
 
   private async advancedDetect(
     screenshotBuffer: Buffer,
     region?: BoundingBox,
   ): Promise<DetectedElement[]> {
+    if (!this.cvAvailable) {
+      return this.basicDetect(screenshotBuffer, region);
+    }
+
     const worker = await this.getWorker();
     const baseImage = this.advancedDecode(screenshotBuffer);
-    const { image: cropped, offsetX, offsetY } = this.cropToRegion(baseImage, region);
+    if (!baseImage) {
+      return this.basicDetect(screenshotBuffer, region);
+    }
 
+    const { image: cropped, offsetX, offsetY } = this.cropToRegion(baseImage, region);
     const attempts = this.buildAttempts();
     const attemptResults: {
       config: OCRAttemptConfig;
@@ -502,10 +891,12 @@ export class OCRDetector {
     for (const attempt of attempts) {
       try {
         const startedAt = Date.now();
-        const { image: processed, scale = 1 } = attempt.preprocess(this.cloneMat(cropped));
-        const encoded = CV.imencode('.png', processed);
+        const { image: processed, scale = 1 } = attempt.preprocess(cloneMat(cropped));
+        const encoded = cv.imencode('.png', processed);
 
-        const workerAny = worker as any;
+        const workerAny = worker as unknown as {
+          setParameters?: (params: Record<string, string>) => Promise<void>;
+        };
         if (typeof workerAny.setParameters === 'function') {
           await workerAny.setParameters(attempt.tessParams);
         }
@@ -525,7 +916,6 @@ export class OCRDetector {
           }));
 
         const score = this.scoreAttempt(words);
-
         const durationMs = Date.now() - startedAt;
 
         if (words.length > 0 || (attempt.minWordCount && words.length >= attempt.minWordCount)) {
@@ -536,8 +926,10 @@ export class OCRDetector {
           );
         }
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.warn(`OCR attempt ${attempt.name} failed: ${(error as Error).message}`);
+        warn(`OCR attempt ${attempt.name} failed`, error);
+        if (error instanceof Error && this.debugEnabled && error.stack) {
+          this.debug(`Stack trace for ${attempt.name}: ${error.stack}`);
+        }
       }
     }
 
@@ -560,18 +952,6 @@ export class OCRDetector {
 
     const deduped = this.deduplicateWords(best.words);
     return this.wordsToElements(deduped, offsetX, offsetY, best.scale ?? 1, best.config.name);
-  }
-
-  private deduplicateWords(words: WordLike[]): WordLike[] {
-    const seen = new Map<string, WordLike>();
-    for (const word of words) {
-      const key = `${Math.round(word.bbox.x0 / 5)}-${Math.round(word.bbox.y0 / 5)}-${this.cleanRecognizedText(word.text || '').toLowerCase()}`;
-      const existing = seen.get(key);
-      if (!existing || (word.confidence ?? 0) > (existing.confidence ?? 0)) {
-        seen.set(key, word);
-      }
-    }
-    return [...seen.values()];
   }
 
   private inferElementType(text: string, width: number, height: number): ElementType {

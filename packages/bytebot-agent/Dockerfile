@@ -17,6 +17,11 @@ ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
 
 RUN apt-get update && apt-get install -y \
     libopencv-dev \
+    libopencv-contrib-dev \
+    libopencv-core-dev \
+    libopencv-imgproc-dev \
+    libopencv-highgui-dev \
+    libopencv-imgcodecs-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
     python3 \
@@ -49,3 +54,4 @@ RUN npm prune --omit=dev --prefix packages/shared \
 WORKDIR /app/packages/bytebot-agent
 
 CMD ["sh", "-c", "npm run prisma:prod && node scripts/start-prod.js"]
+ENV BYTEBOT_OCR_DEBUG=false

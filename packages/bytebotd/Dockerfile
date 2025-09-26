@@ -189,6 +189,11 @@ COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yam
 WORKDIR /bytebot/packages/bytebotd
 RUN apt-get update && apt-get install -y \
     libopencv-dev \
+    libopencv-contrib-dev \
+    libopencv-core-dev \
+    libopencv-imgproc-dev \
+    libopencv-highgui-dev \
+    libopencv-imgcodecs-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
     python3 \

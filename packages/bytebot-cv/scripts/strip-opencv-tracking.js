@@ -2,9 +2,28 @@ const fs = require('fs');
 const path = require('path');
 
 const baseDir = process.argv[2] || process.cwd();
-const bindingPath = path.join(baseDir, 'node_modules/opencv4nodejs/binding.gyp');
-const modulesPath = path.join(baseDir, 'node_modules/opencv4nodejs/cc/opencv_modules.h');
-const mainPath = path.join(baseDir, 'node_modules/opencv4nodejs/cc/opencv4nodejs.cc');
+
+function resolveModuleRoot() {
+  try {
+    const packagePath = require.resolve('opencv4nodejs/package.json', { paths: [baseDir] });
+    return path.dirname(packagePath);
+  } catch (error) {
+    const fallback = path.join(baseDir, 'node_modules/opencv4nodejs');
+    if (fs.existsSync(fallback)) {
+      return fallback;
+    }
+    console.warn(`opencv4nodejs not found from base directory: ${baseDir}; skipping tracking strip.`);
+    return null;
+  }
+}
+
+const moduleRoot = resolveModuleRoot();
+if (!moduleRoot) {
+  process.exit(0);
+}
+const bindingPath = path.join(moduleRoot, 'binding.gyp');
+const modulesPath = path.join(moduleRoot, 'cc/opencv_modules.h');
+const mainPath = path.join(moduleRoot, 'cc/opencv4nodejs.cc');
 
 function patchModulesHeader() {
   if (!fs.existsSync(modulesPath)) {
@@ -30,8 +49,8 @@ function patchMainBinding() {
 
 function patchBindingGyp() {
   if (!fs.existsSync(bindingPath)) {
-    console.error(`binding.gyp not found at ${bindingPath}`);
-    process.exit(1);
+    console.warn(`binding.gyp not found at ${bindingPath}; skipping tracking strip.`);
+    return;
   }
   const filtered = fs
     .readFileSync(bindingPath, 'utf8')

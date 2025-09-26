@@ -1,17 +1,21 @@
 import { DetectedElement, DetectionConfig, BoundingBox, ClickTarget } from '../types';
 import { OCRDetector } from '../detectors/ocr/ocr-detector';
-import { TemplateDetector } from '../detectors/template/template-detector';
-import { EdgeDetector } from '../detectors/edge/edge-detector';
+
+type TemplateDetectorModule = typeof import('../detectors/template/template-detector');
+type EdgeDetectorModule = typeof import('../detectors/edge/edge-detector');
 
 export class ElementDetectorService {
   private ocrDetector: OCRDetector;
-  private templateDetector: TemplateDetector;
-  private edgeDetector: EdgeDetector;
+  private templateDetector: InstanceType<
+    TemplateDetectorModule['TemplateDetector']
+  > | null = null;
+  private edgeDetector: InstanceType<EdgeDetectorModule['EdgeDetector']> | null =
+    null;
+  private templateDetectorLoaded = false;
+  private edgeDetectorLoaded = false;
 
   constructor() {
     this.ocrDetector = new OCRDetector();
-    this.templateDetector = new TemplateDetector();
-    this.edgeDetector = new EdgeDetector();
   }
 
   async detectElements(
@@ -26,11 +30,21 @@ export class ElementDetectorService {
     }
 
     if (config.enableTemplateMatching) {
-      detectionPromises.push(this.templateDetector.detect(screenshotBuffer, config.searchRegion));
+      const templateDetector = await this.getTemplateDetector();
+      if (templateDetector) {
+        detectionPromises.push(
+          templateDetector.detect(screenshotBuffer, config.searchRegion)
+        );
+      }
     }
 
     if (config.enableEdgeDetection) {
-      detectionPromises.push(this.edgeDetector.detect(screenshotBuffer, config.searchRegion));
+      const edgeDetector = await this.getEdgeDetector();
+      if (edgeDetector) {
+        detectionPromises.push(
+          edgeDetector.detect(screenshotBuffer, config.searchRegion)
+        );
+      }
     }
 
     const detectionResults = await Promise.all(detectionPromises);
@@ -40,6 +54,42 @@ export class ElementDetectorService {
     const mergedElements = this.mergeOverlappingElements(allElements);
     
     return mergedElements.filter(el => el.confidence >= config.confidenceThreshold);
+  }
+
+  private async getTemplateDetector() {
+    if (this.templateDetectorLoaded) {
+      return this.templateDetector;
+    }
+    this.templateDetectorLoaded = true;
+    try {
+      const module: TemplateDetectorModule = await import(
+        '../detectors/template/template-detector'
+      );
+      this.templateDetector = new module.TemplateDetector();
+    } catch (error) {
+      console.warn(
+        `Template detector unavailable: ${(error as Error).message}`
+      );
+      this.templateDetector = null;
+    }
+    return this.templateDetector;
+  }
+
+  private async getEdgeDetector() {
+    if (this.edgeDetectorLoaded) {
+      return this.edgeDetector;
+    }
+    this.edgeDetectorLoaded = true;
+    try {
+      const module: EdgeDetectorModule = await import(
+        '../detectors/edge/edge-detector'
+      );
+      this.edgeDetector = new module.EdgeDetector();
+    } catch (error) {
+      console.warn(`Edge detector unavailable: ${(error as Error).message}`);
+      this.edgeDetector = null;
+    }
+    return this.edgeDetector;
   }
 
   async findElementByDescription(

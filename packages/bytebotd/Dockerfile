@@ -201,6 +201,12 @@ RUN node -e "const fs=require('fs'); const path=require('path'); const file=path
     && /usr/bin/npm install --prefix ../shared \
     && /usr/bin/npm install --prefix ../bytebot-cv \
     && /usr/bin/npm install --prefix . --build-from-source
+
+WORKDIR /bytebot/packages/bytebot-cv
+RUN /usr/bin/npm rebuild opencv4nodejs --build-from-source --loglevel verbose \
+    && /usr/bin/npm run build
+
+WORKDIR /bytebot/packages/bytebotd
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
 
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='workspace:*'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');"

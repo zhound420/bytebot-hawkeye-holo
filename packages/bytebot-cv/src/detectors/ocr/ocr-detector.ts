@@ -75,8 +75,35 @@ export class OCRDetector {
   private async getWorker(): Promise<Worker> {
     if (!this.worker) {
       this.worker = await createWorker();
-      await this.worker.loadLanguage('eng');
-      await this.worker.initialize('eng');
+
+      const originalWarn = console.warn;
+      console.warn = (message?: unknown, ...rest: unknown[]) => {
+        if (
+          typeof message === 'string' &&
+          (message.includes('`loadLanguage` is depreciated') ||
+            message.includes('`initialize` is depreciated'))
+        ) {
+          return;
+        }
+        originalWarn.call(console, message as any, ...rest);
+      };
+
+      try {
+        const workerAny = this.worker as unknown as {
+          loadLanguage?: (lang: string) => Promise<void>;
+          initialize?: (lang: string) => Promise<void>;
+        };
+
+        if (typeof workerAny.loadLanguage === 'function') {
+          await workerAny.loadLanguage('eng');
+        }
+
+        if (typeof workerAny.initialize === 'function') {
+          await workerAny.initialize('eng');
+        }
+      } finally {
+        console.warn = originalWarn;
+      }
     }
 
     return this.worker;

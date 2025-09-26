@@ -635,6 +635,7 @@ type ClickInput = {
   clickCount?: number;
   description?: string;
   context?: ClickContext;
+  element_id?: string;
 };
 
 type ClickMouseResponse = {
@@ -645,13 +646,14 @@ type ClickMouseResponse = {
 async function performClick(
   input: ClickInput,
 ): Promise<{ coordinates?: Coordinates; context?: ClickContext } | null> {
-  const { coordinates, description } = input;
+  const { element_id, ...clickPayload } = input;
+  const { coordinates, description } = clickPayload;
   const normalizedClickCount =
     typeof input.clickCount === 'number' && input.clickCount > 0
       ? Math.floor(input.clickCount)
       : 1;
   const baseContext =
-    input.context ??
+    clickPayload.context ??
     (description
       ? {
           targetDescription: description,
@@ -661,11 +663,17 @@ async function performClick(
 
   if (coordinates) {
     await clickMouse({
-      ...input,
+      ...clickPayload,
       clickCount: normalizedClickCount,
       context: baseContext,
     });
     return { coordinates, context: baseContext };
+  }
+
+  if (!element_id) {
+    throw new Error(
+      'Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported.',
+    );
   }
 
   const trimmedDescription = description?.trim();
@@ -680,7 +688,7 @@ async function performClick(
       '[SmartFocus] No coordinates or description provided; proceeding with direct click at current cursor position.',
     );
     await clickMouse({
-      ...input,
+      ...clickPayload,
       clickCount: normalizedClickCount,
       context: baseContext,
     });
@@ -694,7 +702,7 @@ async function performClick(
       '[SmartFocus] Helper unavailable (proxy URL or configuration missing); falling back to basic click.',
     );
     await clickMouse({
-      ...input,
+      ...clickPayload,
       clickCount: normalizedClickCount,
       context: baseContext,
     });
@@ -704,7 +712,7 @@ async function performClick(
   const smartResult = await helper.performSmartClick(trimmedDescription!);
   if (smartResult) {
     await clickMouse({
-      ...input,
+      ...clickPayload,
       coordinates: smartResult.coordinates,
       context: smartResult.context,
       clickCount: normalizedClickCount,
@@ -715,7 +723,7 @@ async function performClick(
   const binaryResult = await helper.binarySearchClick(trimmedDescription!);
   if (binaryResult) {
     await clickMouse({
-      ...input,
+      ...clickPayload,
       coordinates: binaryResult.coordinates,
       context: binaryResult.context,
       clickCount: normalizedClickCount,
@@ -724,7 +732,7 @@ async function performClick(
   }
 
   await clickMouse({
-    ...input,
+    ...clickPayload,
     clickCount: normalizedClickCount,
     context: baseContext,
   });

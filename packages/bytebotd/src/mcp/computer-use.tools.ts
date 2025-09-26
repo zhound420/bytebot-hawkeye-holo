@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Tool } from '@rekog/mcp-nest';
 import { z } from 'zod';
-import { ElementDetectorService, DetectedElement } from '@bytebot/cv';
+import {
+  ElementDetectorService,
+  DetectedElement,
+  BoundingBox,
+} from '@bytebot/cv';
 import { ComputerUseService } from '../computer-use/computer-use.service';
 import { compressPngBase64Under1MB } from './compressor';
 
@@ -51,13 +55,54 @@ export class ComputerUseTools {
     };
   }
 
+  private normalizeRegion(region: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): BoundingBox {
+    return {
+      ...region,
+      centerX: region.x + region.width / 2,
+      centerY: region.y + region.height / 2,
+    };
+  }
+
   @Tool({
     name: 'computer_detect_elements',
     description:
       'Detects interactive UI elements on the current screen using OCR and CV heuristics.',
-    parameters: z.object({}),
+    parameters: z.object({
+      description: z
+        .string()
+        .min(1)
+        .describe(
+          'Description of the UI element to find (e.g., "Install button", "username field", "Save link")',
+        ),
+      region: z
+        .object({
+          x: z.number(),
+          y: z.number(),
+          width: z.number(),
+          height: z.number(),
+        })
+        .optional()
+        .describe('Optional region to search within'),
+      includeAll: z
+        .boolean()
+        .optional()
+        .describe('Return all detected elements, not just those matching description'),
+    }),
   })
-  async detectElements() {
+  async detectElements({
+    description,
+    region,
+    includeAll = false,
+  }: {
+    description: string;
+    region?: { x: number; y: number; width: number; height: number };
+    includeAll?: boolean;
+  }) {
     try {
       this.pruneDetectedElements();
 
@@ -69,22 +114,65 @@ export class ComputerUseTools {
       })) as { image: string };
 
       const buffer = Buffer.from(screenshot.image, 'base64');
-      const elements = await this.elementDetector.detectElements(buffer);
+
+      const searchRegion = region ? this.normalizeRegion(region) : undefined;
+
+      const detectionConfig = {
+        enableOCR: true,
+        enableTemplateMatching: false,
+        enableEdgeDetection: true,
+        confidenceThreshold: 0.5,
+        ...(searchRegion ? { searchRegion } : {}),
+      };
+
+      const elements = await this.elementDetector.detectElements(
+        buffer,
+        detectionConfig,
+      );
       this.cacheDetectedElements(elements);
 
-      const serializable = elements.map((element) =>
+      const trimmedDescription = description.trim();
+
+      let resolvedElements: DetectedElement[] = elements;
+      if (!includeAll) {
+        const match = await this.elementDetector.findElementByDescription(
+          elements,
+          trimmedDescription,
+        );
+        resolvedElements = match ? [match] : [];
+      }
+
+      const serializable = resolvedElements.map((element) =>
         ComputerUseTools.formatDetectedElement(element),
       );
+
+      const summaryText = includeAll
+        ? `Detected ${serializable.length} element(s) across the screen.`
+        : serializable.length > 0
+          ? `Detected ${serializable.length} matching element(s) for "${trimmedDescription}" out of ${elements.length} detected. Use these element_id values for computer_click_element.`
+          : elements.length === 0
+            ? `No UI elements detected for description "${trimmedDescription}".`
+            : `No elements matched description "${trimmedDescription}". ${elements.length} element(s) detected overall.`;
+
+      const payload = {
+        description: trimmedDescription,
+        includeAll,
+        count: serializable.length,
+        total_detected: elements.length,
+        elements: serializable,
+        timestamp: new Date().toISOString(),
+        ...(searchRegion ? { region: searchRegion } : {}),
+      };
 
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              elements: serializable,
-              count: serializable.length,
-              timestamp: new Date().toISOString(),
-            }),
+            text: summaryText,
+          },
+          {
+            type: 'text',
+            text: JSON.stringify(payload),
           },
         ],
       };

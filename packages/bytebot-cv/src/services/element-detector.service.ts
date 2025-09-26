@@ -539,12 +539,20 @@ export class ElementDetectorService {
     if (!hasCv) {
       return mat;
     }
+
+    const grayscale = this.ensureGrayscale(mat);
+
     try {
-      const clahe = new cv.CLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-      return clahe.apply(mat);
+      if (typeof cv.createCLAHE !== 'function' || typeof cv.Size !== 'function') {
+        warnOnce('createCLAHE unavailable in current OpenCV build; skipping CLAHE');
+        return grayscale;
+      }
+
+      const clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
+      return clahe.apply(grayscale);
     } catch (error) {
       warnOnce('applyCLAHE failed', error);
-      return mat;
+      return grayscale;
     }
   }
 
@@ -585,25 +593,18 @@ export class ElementDetectorService {
     if (!hasCv) {
       return mat;
     }
+
+    const grayscale = this.ensureGrayscale(mat);
+
     try {
-      const kernel = new cv.Mat(
-        [
-          [0, -1, 0],
-          [-1, 5, -1],
-          [0, -1, 0],
-        ],
-        cv.CV_32F ?? 5,
-      );
-      if (typeof cv.filter2D === 'function') {
-        return cv.filter2D(mat, -1, kernel);
+      const kernel = this.createSharpenKernel();
+      if (!kernel) {
+        return grayscale;
       }
-      if (typeof (mat as any).filter2D === 'function') {
-        return (mat as any).filter2D(kernel);
-      }
-      return mat;
+      return this.safeFilter2D(grayscale, kernel);
     } catch (error) {
       warnOnce('filter2D sharpen failed', error);
-      return mat;
+      return grayscale;
     }
   }
 
@@ -616,6 +617,104 @@ export class ElementDetectorService {
     } catch (error) {
       warnOnce('Failed to encode processed image for OCR', error);
       return null;
+    }
+  }
+
+  private ensureGrayscale(mat: MatLike): MatLike {
+    if (!hasCv) {
+      return mat;
+    }
+    try {
+      const clone = this.safeClone(mat) ?? mat;
+      const cloneAny = clone as any;
+      const channelCount =
+        typeof cloneAny.channels === 'function'
+          ? cloneAny.channels()
+          : cloneAny.channels ?? 0;
+
+      if (channelCount && channelCount > 1) {
+        return this.toGray(clone);
+      }
+
+      if (typeof cloneAny.clone === 'function') {
+        return cloneAny.clone();
+      }
+
+      return clone;
+    } catch (error) {
+      warnOnce('ensureGrayscale failed', error);
+      return mat;
+    }
+  }
+
+  private createSharpenKernel(): MatLike | null {
+    if (!hasCv || typeof cv.Mat !== 'function') {
+      warnOnce('OpenCV Mat unavailable; cannot create sharpen kernel');
+      return null;
+    }
+    try {
+      return new cv.Mat(
+        [
+          [-1, -1, -1],
+          [-1, 9, -1],
+          [-1, -1, -1],
+        ],
+        cv.CV_32F ?? 5,
+      );
+    } catch (error) {
+      warnOnce('createSharpenKernel failed', error);
+      return null;
+    }
+  }
+
+  private safeFilter2D(mat: MatLike, kernel: MatLike): MatLike {
+    if (!hasCv) {
+      return mat;
+    }
+
+    try {
+      const kernelAny = kernel as any;
+      const rows =
+        typeof kernelAny.rows === 'function'
+          ? kernelAny.rows()
+          : kernelAny.rows ?? 0;
+      const cols =
+        typeof kernelAny.cols === 'function'
+          ? kernelAny.cols()
+          : kernelAny.cols ?? 0;
+
+      if (rows === 0 || cols === 0) {
+        throw new Error('Invalid kernel dimensions');
+      }
+
+      let result: MatLike | null = null;
+
+      if (typeof cv.filter2D === 'function') {
+        result = cv.filter2D(mat, -1, kernel);
+      }
+
+      if (!result && typeof (mat as any).filter2D === 'function') {
+        result = (mat as any).filter2D(-1, kernel);
+      }
+
+      if (!result) {
+        warnOnce('filter2D unavailable; skipping sharpen');
+        return mat;
+      }
+
+      return result;
+    } catch (error) {
+      warnOnce('safeFilter2D failed', error);
+      return mat;
+    } finally {
+      const kernelAny = kernel as any;
+      if (kernelAny && typeof kernelAny.delete === 'function') {
+        try {
+          kernelAny.delete();
+        } catch (deleteError) {
+          warnOnce('kernel delete failed', deleteError);
+        }
+      }
     }
   }
 

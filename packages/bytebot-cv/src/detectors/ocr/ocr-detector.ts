@@ -307,7 +307,7 @@ export class OCRDetector {
 
   private scaleImage(mat: any, scale: number): any {
     if (scale === 1) {
-      return mat.clone();
+      return this.cloneMat(mat);
     }
     const size = new CV.Size(Math.max(1, Math.round(mat.cols * scale)), Math.max(1, Math.round(mat.rows * scale)));
     return mat.resize(size, 0, 0, CV.INTER_CUBIC);
@@ -329,6 +329,31 @@ export class OCRDetector {
     const blurred = mat.gaussianBlur(new CV.Size(3, 3), 0);
     const sharpened = this.sharpen(blurred);
     return CV.addWeighted(sharpened, 1.2, mat, -0.2, 0);
+  }
+
+  private cloneMat(mat: any): any {
+    if (!mat) {
+      return mat;
+    }
+
+    if (typeof mat.copy === 'function') {
+      return mat.copy();
+    }
+
+    if (typeof mat.clone === 'function') {
+      return mat.clone();
+    }
+
+    if (!this.cvAvailable || !CV?.Mat) {
+      return mat;
+    }
+
+    try {
+      return new CV.Mat(mat);
+    } catch (error) {
+      this.debug(`cloneMat fallback failed: ${(error as Error)?.message ?? error}`);
+      return mat;
+    }
   }
 
   private wordsToElements(
@@ -412,7 +437,7 @@ export class OCRDetector {
     for (const attempt of attempts) {
       try {
         const startedAt = Date.now();
-        const { image: processed, scale = 1 } = attempt.preprocess(cropped.clone());
+        const { image: processed, scale = 1 } = attempt.preprocess(this.cloneMat(cropped));
         const encoded = CV.imencode('.png', processed);
 
         const workerAny = worker as any;

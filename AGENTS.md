@@ -1,33 +1,24 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Bytebot uses a multi-package monorepo. Core workspaces sit in `packages/`:
-- `shared` holds DTOs, validation schemas, and utilities shared across services.
-- `bytebot-agent` provides the NestJS API and Prisma client.
-- `bytebot-agent-cc` maintains the Claude-optimized agent flavor.
-- `bytebotd` runs the desktop daemon and socket gateway.
-- `bytebot-ui` is the Next.js front end.
-- `bytebot-cv` delivers reusable CV helpers.
-- `bytebot-llm-proxy` contains proxy configs and Docker assets.
-Keep tests beside source as `*.spec.ts`. Top-level assets live in `docs/`, `helm/`, `docker/`, and `static/`.
+Bytebot Hawkeye lives in a multi-package monorepo under `packages/`, with shared DTOs and utilities in `shared`, the NestJS backend in `bytebot-agent`, Claude-facing flows in `bytebot-agent-cc`, the desktop daemon in `bytebotd`, the Next.js UI in `bytebot-ui`, CV helpers in `bytebot-cv`, and proxy assets in `bytebot-llm-proxy`. Keep specs beside source files as `*.spec.ts`. Global documentation sits in `docs/`, deployment manifests in `helm/` and `docker/`, and static assets (including overlay screenshots) in `static/`.
 
 ## Build, Test, and Development Commands
-- `npm run build --prefix packages/shared` builds shared types before dependent packages.
-- `cd packages/bytebot-agent && npm install && npm run start:dev` launches the API in watch mode.
-- `cd packages/bytebot-agent-cc && npm run start:dev` spins up the alternate agent.
-- `cd packages/bytebotd && npm run start:dev` starts the desktop daemon.
-- `cd packages/bytebot-ui && npm run dev` runs the Next.js UI with hot reload.
-- `cd packages/bytebot-cv && npm run dev` watches the CV library; use `npm run build` for releases.
-- `docker compose -f docker/docker-compose.yml up -d` brings up the full stack locally.
+- `npm run build --prefix packages/shared` — regenerate shared types before touching downstream packages.
+- `cd packages/bytebot-agent && npm install && npm run start:dev` — launch the NestJS API with hot reload; pair schema edits with `npm run prisma:dev`.
+- `cd packages/bytebotd && npm run start:dev` — boot the desktop daemon and socket bridge for local agent trials.
+- `cd packages/bytebot-ui && npm run dev` — iterate on the Next.js dashboard, including Hawkeye accuracy overlays.
+- `docker compose -f docker/docker-compose.yml up -d` — provision the full stack for integration tests.
+- Use `npm test`, `npm run test:watch`, or `npm run test:cov` inside the relevant workspace for targeted suites.
 
 ## Coding Style & Naming Conventions
-Code is TypeScript-first with 2-space indentation, single quotes, and trailing commas. Classes use PascalCase, functions and variables use camelCase, and Prisma models stay snake_case. Run `npm run format` (Prettier + ESLint) before committing. Centralize shared contracts in `packages/shared`.
+Write TypeScript with 2-space indentation, single quotes, and trailing commas. Keep classes in PascalCase, functions and variables camelCase, and Prisma models snake_case. Run `npm run format` to enforce Prettier/ESLint alignment, and centralize shared contracts in `packages/shared` to avoid drift across agents.
 
 ## Testing Guidelines
-Jest is standard; name specs `*.spec.ts` alongside source. Use `npm test`, `npm run test:watch`, or `npm run test:cov` in each package. For API end-to-end flows, run `npm run test:e2e` within `packages/bytebot-agent`. Mock LLM or desktop integrations to keep runs deterministic and fast.
+Jest backs every package. Name specs `*.spec.ts` adjacent to the source under test, and favor deterministic mocks for LLM and desktop subsystems. Run `npm run test:e2e` inside `packages/bytebot-agent` for API flows, and cover Hawkeye CV logic with focused suites in `packages/bytebot-cv`.
 
 ## Commit & Pull Request Guidelines
-Write imperative commit messages (e.g., `Add Prisma seed script`). PRs should describe intent, call out schema or env changes, link issues, and attach UI screenshots when relevant. State manual and automated test coverage. Keep changes scoped and consistent across affected packages.
+Use imperative commit subjects (e.g., `Improve coordinate telemetry`). PRs should describe intent, flag schema or env updates, link issues, and include screenshots or recordings for UI changes. Document manual and automated test coverage so reviewers can trace verification steps.
 
 ## Security & Configuration Tips
-Load secrets through per-package `.env` files or `docker/.env`; never commit credentials. After updating Prisma schema, execute `npm run prisma:dev` inside `packages/bytebot-agent` to apply migrations and regenerate the client. Prefer existing npm scripts and Docker services over custom tooling.
+Load secrets from package-specific `.env` files or `docker/.env`, and never commit credentials. Toggle Hawkeye systems via env vars such as `BYTEBOT_SMART_FOCUS` and `BYTEBOT_COORDINATE_METRICS`. After Prisma schema changes, run `npm run prisma:dev` in `packages/bytebot-agent` to apply migrations and regenerate the client.

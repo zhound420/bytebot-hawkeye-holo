@@ -1,12 +1,174 @@
 import { Injectable } from '@nestjs/common';
 import { Tool } from '@rekog/mcp-nest';
 import { z } from 'zod';
+import { ElementDetectorService, DetectedElement } from '@bytebot/cv';
 import { ComputerUseService } from '../computer-use/computer-use.service';
 import { compressPngBase64Under1MB } from './compressor';
 
 @Injectable()
 export class ComputerUseTools {
+  private readonly elementDetector = new ElementDetectorService();
+  private readonly detectedElements = new Map<
+    string,
+    { element: DetectedElement; timestamp: number }
+  >();
+  private readonly elementCacheTtlMs = 5 * 60 * 1000;
+
   constructor(private readonly computerUse: ComputerUseService) {}
+
+  private pruneDetectedElements(): void {
+    const now = Date.now();
+    for (const [id, cached] of this.detectedElements.entries()) {
+      if (now - cached.timestamp > this.elementCacheTtlMs) {
+        this.detectedElements.delete(id);
+      }
+    }
+  }
+
+  private cacheDetectedElements(elements: DetectedElement[]): void {
+    const timestamp = Date.now();
+    for (const element of elements) {
+      this.detectedElements.set(element.id, { element, timestamp });
+    }
+  }
+
+  private static formatDetectedElement(element: DetectedElement) {
+    return {
+      id: element.id,
+      type: element.type,
+      confidence: element.confidence,
+      text: element.text ?? null,
+      description: element.description,
+      coordinates: {
+        x: element.coordinates.x,
+        y: element.coordinates.y,
+        width: element.coordinates.width,
+        height: element.coordinates.height,
+        centerX: element.coordinates.centerX,
+        centerY: element.coordinates.centerY,
+      },
+      metadata: element.metadata,
+    };
+  }
+
+  @Tool({
+    name: 'computer_detect_elements',
+    description:
+      'Detects interactive UI elements on the current screen using OCR and CV heuristics.',
+    parameters: z.object({}),
+  })
+  async detectElements() {
+    try {
+      this.pruneDetectedElements();
+
+      const screenshot = (await this.computerUse.action({
+        action: 'screenshot',
+        gridOverlay: false,
+        highlightRegions: false,
+        showCursor: false,
+      })) as { image: string };
+
+      const buffer = Buffer.from(screenshot.image, 'base64');
+      const elements = await this.elementDetector.detectElements(buffer);
+      this.cacheDetectedElements(elements);
+
+      const serializable = elements.map((element) =>
+        ComputerUseTools.formatDetectedElement(element),
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              elements: serializable,
+              count: serializable.length,
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error detecting elements: ${(err as Error).message}`,
+          },
+        ],
+      };
+    }
+  }
+
+  @Tool({
+    name: 'computer_click_element',
+    description:
+      'Clicks a previously detected UI element by identifier using cached coordinates.',
+    parameters: z.object({
+      element_id: z
+        .string()
+        .min(1)
+        .describe('Identifier of the detected element to click.'),
+    }),
+  })
+  async clickElement({ element_id }: { element_id: string }) {
+    try {
+      this.pruneDetectedElements();
+      const cached = this.detectedElements.get(element_id);
+
+      if (!cached) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: element ${element_id} not found. Run computer_detect_elements first.`,
+            },
+          ],
+        };
+      }
+
+      const clickTarget = await this.elementDetector.getClickCoordinates(
+        cached.element,
+      );
+
+      await this.computerUse.action({
+        action: 'click_mouse',
+        coordinates: clickTarget.coordinates,
+        button: 'left',
+        clickCount: 1,
+        description: cached.element.description,
+        context: {
+          targetDescription: cached.element.description,
+          source: 'smart_focus',
+        },
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              element_id,
+              coordinates_used: clickTarget.coordinates,
+              confidence: cached.element.confidence,
+              detection_method: clickTarget.method,
+              element_text: cached.element.text ?? null,
+            }),
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error clicking element ${element_id}: ${(err as Error).message}`,
+          },
+        ],
+      };
+    }
+  }
 
   @Tool({
     name: 'computer_move_mouse',

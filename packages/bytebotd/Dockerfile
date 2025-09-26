@@ -13,6 +13,13 @@ FROM public.ecr.aws/ubuntu/ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
+ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
+    OPENCV_LIB_DIR=/usr/lib/opencv \
+    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
+    OPENCV_BIN_DIR=/usr/bin \
+    OPENCV4NODEJS_SKIP_TRACKING=1 \
+    LD_LIBRARY_PATH=/usr/lib/opencv \
+    PKG_CONFIG_PATH=/usr/lib/opencv/pkgconfig
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
@@ -188,11 +195,15 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-RUN npm pkg set dependencies."@bytebot/cv"=../bytebot-cv \
-    && /usr/bin/npm install --build-from-source
+RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
+    ln -sf /usr/lib/${multiarch} /usr/lib/opencv
+RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
+    && /usr/bin/npm install --prefix ../shared \
+    && /usr/bin/npm install --prefix ../bytebot-cv \
+    && /usr/bin/npm install --prefix . --build-from-source
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
 
-RUN npm pkg set dependencies."@bytebot/cv"=workspace:*
+RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='workspace:*'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');"
 
 RUN /usr/bin/npm run build
 

@@ -110,7 +110,6 @@ export class AgentProcessor {
   private abortController: AbortController | null = null;
   private services: Record<string, BytebotAgentService> = {};
   private pendingScreenshotObservation = false;
-  private readonly elementDetector: ElementDetectorService;
   private readonly elementCache = new Map<string, CachedDetectedElement>();
   private readonly elementCacheTtlMs = 5 * 60 * 1000;
 
@@ -123,6 +122,7 @@ export class AgentProcessor {
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly elementDetector: ElementDetectorService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -131,7 +131,6 @@ export class AgentProcessor {
       proxy: this.proxyService,
     };
     this.logger.log('AgentProcessor initialized');
-    this.elementDetector = new ElementDetectorService();
   }
 
   /**

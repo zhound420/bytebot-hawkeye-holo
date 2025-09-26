@@ -1,3 +1,5 @@
+import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
+import { performance } from 'node:perf_hooks';
 import { createWorker, Worker } from 'tesseract.js';
 import {
   BoundingBox,
@@ -6,6 +8,13 @@ import {
   DetectionConfig,
   ElementType,
 } from '../types';
+import {
+  DetectionResult as UniversalDetectionResult,
+  UniversalDetectionMethod,
+  UniversalElementType,
+  UniversalUIElement,
+} from '../interfaces/universal-element.interface';
+import { UniversalDetectorService } from './universal-detector.service';
 
 type TemplateDetectorModule = typeof import('../detectors/template/template-detector');
 type EdgeDetectorModule = typeof import('../detectors/edge/edge-detector');
@@ -67,10 +76,16 @@ const warnOnce = (message: string, error?: unknown) => {
 
 const MIN_WIDTH = 10;
 const MIN_HEIGHT = 10;
+const DEFAULT_SCREEN_WIDTH = 1920;
+const DEFAULT_SCREEN_HEIGHT = 1080;
+const MIN_INTERACTIVE_WIDTH = 18;
+const MIN_INTERACTIVE_HEIGHT = 14;
 const DEFAULT_CHAR_WHITELIST =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/\\"\'`~!@#$%^&*()_+={}[]|:;,.?<>';
 
+@Injectable()
 export class ElementDetectorService {
+  private readonly logger = new Logger(ElementDetectorService.name);
   private readonly ocrConfidenceEarlyExit = 0.7;
   private worker: Worker | null = null;
   private workerPromise: Promise<Worker> | null = null;
@@ -78,6 +93,12 @@ export class ElementDetectorService {
   private edgeDetector: InstanceType<EdgeDetectorModule['EdgeDetector']> | null = null;
   private templateDetectorLoaded = false;
   private edgeDetectorLoaded = false;
+
+  constructor(
+    @Optional()
+    @Inject(forwardRef(() => UniversalDetectorService))
+    private readonly universalDetector?: UniversalDetectorService,
+  ) {}
 
   async detectElements(
     screenshotBuffer: Buffer,
@@ -108,6 +129,61 @@ export class ElementDetectorService {
     const mergedElements = this.mergeOverlappingElements(allElements);
 
     return mergedElements.filter((el) => el.confidence >= config.confidenceThreshold);
+  }
+
+  async detectUniversalElements(
+    screenshotBuffer: Buffer,
+    config: DetectionConfig = this.getDefaultConfig(),
+  ): Promise<UniversalDetectionResult> {
+    const start = this.getNow();
+
+    const detectedElements = await this.detectElements(screenshotBuffer, config);
+    const universalElements: UniversalUIElement[] = [];
+
+    for (const element of detectedElements) {
+      const universal = await this.toUniversalElement(element, config.searchRegion);
+      if (universal) {
+        universalElements.push(universal);
+      }
+    }
+
+    const method = this.resolveUniversalDetectionMethod(detectedElements);
+    const processingTime = Math.max(0, Math.round(this.getNow() - start));
+
+    return {
+      elements: universalElements,
+      processingTime,
+      method,
+    };
+  }
+
+  async performOCR(
+    screenshotBuffer: Buffer,
+    region?: BoundingBox,
+  ): Promise<DetectedElement[]> {
+    return this.runOcrPipeline(screenshotBuffer, region);
+  }
+
+  async detectElementsUniversal(screenshotBuffer: Buffer): Promise<UniversalUIElement[]> {
+    const project = (elements: UniversalUIElement[]): UniversalUIElement[] =>
+      elements.map((element) => ({
+        ...element,
+        text: element.text ?? '',
+      }));
+
+    if (!this.universalDetector) {
+      this.logger.warn('UniversalDetectorService unavailable; falling back to OCR-based detection.');
+      const fallback = await this.detectUniversalElements(screenshotBuffer);
+      return project(fallback.elements);
+    }
+
+    try {
+      const result = await this.universalDetector.detectElements(screenshotBuffer);
+      return project(result.elements);
+    } catch (error) {
+      this.logger.error('Universal detection failed', (error as Error)?.stack);
+      return [];
+    }
   }
 
   async findElementByDescription(
@@ -616,6 +692,344 @@ export class ElementDetectorService {
 
   private generateElementId(prefix: string): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  }
+
+  private async toUniversalElement(
+    element: DetectedElement,
+    searchRegion?: BoundingBox,
+  ): Promise<UniversalUIElement | null> {
+    const type = this.mapToUniversalType(element, searchRegion);
+    if (!type) {
+      return null;
+    }
+
+    const clickTarget = await this.getClickCoordinates(element);
+    const semanticRole = this.inferSemanticRole(element.text, type);
+    const description = this.buildUniversalDescription(
+      element,
+      type,
+      clickTarget.coordinates,
+      searchRegion,
+      semanticRole,
+    );
+
+    return {
+      id: element.id,
+      type,
+      bounds: {
+        x: element.coordinates.x,
+        y: element.coordinates.y,
+        width: element.coordinates.width,
+        height: element.coordinates.height,
+      },
+      clickPoint: clickTarget.coordinates,
+      confidence: Number(element.confidence.toFixed(3)),
+      text: element.text?.trim() || undefined,
+      semanticRole,
+      description,
+    };
+  }
+
+  private mapToUniversalType(
+    element: DetectedElement,
+    searchRegion?: BoundingBox,
+  ): UniversalElementType | null {
+    const { width, height } = element.coordinates;
+
+    if (width < MIN_INTERACTIVE_WIDTH || height < MIN_INTERACTIVE_HEIGHT) {
+      return null;
+    }
+
+    switch (element.type) {
+      case 'button':
+        return 'button';
+      case 'input':
+        return 'text_input';
+      case 'dropdown':
+      case 'link':
+      case 'icon':
+      case 'checkbox':
+        return 'clickable';
+      default:
+        break;
+    }
+
+    if (this.looksLikeMenuItem(element, searchRegion)) {
+      return 'menu_item';
+    }
+
+    if (this.looksInteractiveText(element)) {
+      return 'clickable';
+    }
+
+    if (element.type === 'unknown' && element.metadata.detectionMethod === 'edge') {
+      return 'clickable';
+    }
+
+    return null;
+  }
+
+  private looksLikeMenuItem(element: DetectedElement, searchRegion?: BoundingBox): boolean {
+    if (!element.text) {
+      return false;
+    }
+
+    const label = element.text.trim();
+    if (!label || label.length > 18) {
+      return false;
+    }
+
+    const lower = label.toLowerCase();
+    const menuKeywords = ['file', 'edit', 'view', 'help', 'window', 'go', 'tools', 'settings'];
+    if (!menuKeywords.includes(lower)) {
+      return false;
+    }
+
+    const regionTop = searchRegion?.y ?? 0;
+    const regionHeight = searchRegion?.height ?? DEFAULT_SCREEN_HEIGHT;
+    const relativeTop = element.coordinates.y - regionTop;
+
+    if (relativeTop > Math.min(regionHeight * 0.25, 160)) {
+      return false;
+    }
+
+    return element.coordinates.height >= 18 && element.coordinates.height <= 40;
+  }
+
+  private looksInteractiveText(element: DetectedElement): boolean {
+    if (!element.text) {
+      return false;
+    }
+
+    const label = element.text.trim();
+    if (!label) {
+      return false;
+    }
+
+    const lower = label.toLowerCase();
+    const interactiveKeywords = [
+      'ok',
+      'close',
+      'cancel',
+      'next',
+      'previous',
+      'back',
+      'finish',
+      'done',
+      'allow',
+      'deny',
+      'retry',
+      'update',
+      'install',
+      'open',
+      'continue',
+      'submit',
+      'send',
+      'apply',
+      'yes',
+      'no',
+    ];
+
+    if (
+      interactiveKeywords.some(
+        (keyword) =>
+          lower === keyword ||
+          lower.startsWith(`${keyword} `) ||
+          lower.endsWith(` ${keyword}`),
+      )
+    ) {
+      return true;
+    }
+
+    if (label.length > 22) {
+      return false;
+    }
+
+    const words = label.split(/\s+/);
+    if (words.length > 3) {
+      return false;
+    }
+
+    const { width, height } = element.coordinates;
+    const aspectRatio = width / Math.max(height, 1);
+
+    if (height < 18 || height > 68) {
+      return false;
+    }
+
+    if (aspectRatio < 1.2 || aspectRatio > 6.5) {
+      return false;
+    }
+
+    if (/^[A-Z]/.test(label)) {
+      return true;
+    }
+
+    const alphaCharacters = label.replace(/[^A-Za-z]/g, '');
+    if (!alphaCharacters) {
+      return false;
+    }
+
+    const uppercaseRatio = label.replace(/[^A-Z]/g, '').length / alphaCharacters.length;
+    return uppercaseRatio > 0.5;
+  }
+
+  private inferSemanticRole(
+    text: string | undefined,
+    type: UniversalElementType,
+  ): string | undefined {
+    if (!text) {
+      return undefined;
+    }
+
+    const value = text.trim().toLowerCase();
+    if (!value) {
+      return undefined;
+    }
+
+    const roleMatchers: Array<{ role: string; patterns: RegExp[] }> = [
+      { role: 'submit', patterns: [/submit/, /apply/, /send/, /confirm/, /ok\b/, /\bgo\b/, /start/] },
+      { role: 'cancel', patterns: [/cancel/, /close/, /dismiss/, /abort/] },
+      { role: 'search', patterns: [/search/, /find/, /lookup/] },
+      { role: 'login', patterns: [/log ?in/, /sign ?in/] },
+      { role: 'signup', patterns: [/sign ?up/, /register/, /create account/] },
+      { role: 'next', patterns: [/next/, /continue/, /forward/] },
+      { role: 'back', patterns: [/back/, /previous/, /return/] },
+      { role: 'delete', patterns: [/delete/, /remove/, /trash/] },
+      { role: 'save', patterns: [/save/, /store/] },
+      { role: 'edit', patterns: [/edit/, /modify/] },
+    ];
+
+    for (const matcher of roleMatchers) {
+      if (matcher.patterns.some((pattern) => pattern.test(value))) {
+        return matcher.role;
+      }
+    }
+
+    if (type === 'text_input') {
+      if (value.includes('search')) {
+        return 'search';
+      }
+      if (value.includes('password')) {
+        return 'password';
+      }
+      if (value.includes('email')) {
+        return 'email';
+      }
+    }
+
+    return undefined;
+  }
+
+  private buildUniversalDescription(
+    element: DetectedElement,
+    type: UniversalElementType,
+    clickPoint: { x: number; y: number },
+    searchRegion?: BoundingBox,
+    semanticRole?: string,
+  ): string {
+    const typeLabel = this.formatTypeWithRole(type, semanticRole);
+    const trimmedText = element.text?.trim();
+    const textFragment = trimmedText ? `"${trimmedText}"` : 'with no visible text';
+    const locationFragment = this.describeLocation(element.coordinates, searchRegion);
+
+    return `${typeLabel} ${textFragment} ${locationFragment} at (${clickPoint.x}, ${clickPoint.y})`;
+  }
+
+  private formatTypeWithRole(type: UniversalElementType, semanticRole?: string): string {
+    const base = this.describeType(type);
+    if (!semanticRole) {
+      return this.capitalizeFirst(base);
+    }
+    return `${this.capitalizeFirst(semanticRole)} ${base}`;
+  }
+
+  private describeType(type: UniversalElementType): string {
+    switch (type) {
+      case 'button':
+        return 'button';
+      case 'text_input':
+        return 'text input';
+      case 'menu_item':
+        return 'menu item';
+      case 'clickable':
+      default:
+        return 'clickable control';
+    }
+  }
+
+  private describeLocation(bounds: BoundingBox, searchRegion?: BoundingBox): string {
+    const originX = searchRegion?.x ?? 0;
+    const originY = searchRegion?.y ?? 0;
+    const regionWidth = Math.max(searchRegion?.width ?? DEFAULT_SCREEN_WIDTH, 1);
+    const regionHeight = Math.max(searchRegion?.height ?? DEFAULT_SCREEN_HEIGHT, 1);
+
+    const relativeX = bounds.centerX - originX;
+    const relativeY = bounds.centerY - originY;
+
+    const horizontalBand =
+      relativeX < regionWidth / 3
+        ? 'left'
+        : relativeX > (regionWidth * 2) / 3
+        ? 'right'
+        : 'center';
+    const verticalBand =
+      relativeY < regionHeight / 3
+        ? 'top'
+        : relativeY > (regionHeight * 2) / 3
+        ? 'bottom'
+        : 'middle';
+
+    if (horizontalBand === 'center' && verticalBand === 'middle') {
+      return 'near center';
+    }
+
+    if (horizontalBand === 'center') {
+      return `toward ${verticalBand}`;
+    }
+
+    if (verticalBand === 'middle') {
+      return `along ${horizontalBand}`;
+    }
+
+    return `near ${verticalBand}-${horizontalBand}`;
+  }
+
+  private resolveUniversalDetectionMethod(
+    elements: DetectedElement[],
+  ): UniversalDetectionMethod {
+    if (elements.length === 0) {
+      return 'visual';
+    }
+
+    const methods = new Set(elements.map((element) => element.metadata.detectionMethod));
+    const hasText = methods.has('ocr');
+    const hasVisual = methods.has('edge') || methods.has('template');
+    const hasHybrid = methods.has('hybrid');
+
+    if ((hasText && hasVisual) || hasHybrid) {
+      return 'hybrid';
+    }
+
+    if (hasText) {
+      return 'text';
+    }
+
+    return 'visual';
+  }
+
+  private capitalizeFirst(value: string): string {
+    if (!value) {
+      return value;
+    }
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  private getNow(): number {
+    if (typeof performance?.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
   }
 
   private calculateDescriptionMatch(element: DetectedElement, description: string): number {

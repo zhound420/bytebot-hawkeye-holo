@@ -76,6 +76,10 @@ RUN apt-get update && apt-get install -y \
     && update-alternatives --set x-www-browser /usr/bin/firefox-esr \
     && fc-cache -f -v
 
+# Ensure fontconfig caches are writable at runtime (needed for sandboxed desktop user)
+RUN mkdir -p /var/cache/fontconfig /root/.cache/fontconfig /root/.fontconfig \
+    && chmod -R 777 /var/cache/fontconfig /root/.cache/fontconfig /root/.fontconfig
+
 
 # Install 1Password based on architecture
 RUN ARCH=$(dpkg --print-architecture) && \

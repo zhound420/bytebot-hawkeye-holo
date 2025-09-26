@@ -761,7 +761,10 @@ export class ComputerUseService {
 
   private async typeKeys(action: TypeKeysAction): Promise<void> {
     const { keys, delay } = action;
-    await this.nutService.sendKeys(keys, delay);
+    await this.nutService.sendKeys(keys);
+    if (delay && delay > 0) {
+      await this.delay(delay);
+    }
     await this.recordActionEvent('type_keys');
   }
 

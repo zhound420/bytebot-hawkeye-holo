@@ -646,11 +646,17 @@ type ClickMouseResponse = {
 async function performClick(
   input: ClickInput,
 ): Promise<{ coordinates?: Coordinates; context?: ClickContext } | null> {
-  const { element_id, ...clickPayload } = input;
+  if (!input.element_id) {
+    throw new Error(
+      'Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported.',
+    );
+  }
+
+  const { element_id: _elementId, ...clickPayload } = input;
   const { coordinates, description } = clickPayload;
   const normalizedClickCount =
-    typeof input.clickCount === 'number' && input.clickCount > 0
-      ? Math.floor(input.clickCount)
+    typeof clickPayload.clickCount === 'number' && clickPayload.clickCount > 0
+      ? Math.floor(clickPayload.clickCount)
       : 1;
   const baseContext =
     clickPayload.context ??
@@ -668,12 +674,6 @@ async function performClick(
       context: baseContext,
     });
     return { coordinates, context: baseContext };
-  }
-
-  if (!element_id) {
-    throw new Error(
-      'Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported.',
-    );
   }
 
   const trimmedDescription = description?.trim();

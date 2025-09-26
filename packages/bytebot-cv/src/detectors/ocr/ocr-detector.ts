@@ -197,14 +197,13 @@ export class OCRDetector {
         preprocess: (input) => {
           const scaled = this.scaleImage(input, 1.5);
           const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
-          const clahe = new CV.CLAHE(2, new CV.Size(8, 8));
-          const equalized = clahe.apply(gray);
+          const clahe = this.createClahe(2, new CV.Size(8, 8));
+          const equalized = clahe ? clahe.apply(gray) : gray;
           const sharpened = this.sharpen(equalized);
           return { image: sharpened, scale: 1.5 };
         },
         tessParams: {
           tessedit_pageseg_mode: '8',
-          tessedit_ocr_engine_mode: '1',
           tessedit_char_whitelist: whitelist,
           preserve_interword_spaces: '1',
           user_defined_dpi: '300',
@@ -218,12 +217,18 @@ export class OCRDetector {
           const scaled = this.scaleImage(input, 1.2);
           const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
           const denoised = gray.gaussianBlur(new CV.Size(3, 3), 1.1);
-          const thresh = denoised.adaptiveThreshold(255, CV.ADAPTIVE_THRESH_GAUSSIAN_C, CV.THRESH_BINARY, 15, 2);
+          const thresh = CV.adaptiveThreshold(
+            denoised,
+            255,
+            CV.ADAPTIVE_THRESH_GAUSSIAN_C,
+            CV.THRESH_BINARY,
+            15,
+            2,
+          );
           return { image: thresh, scale: 1.2 };
         },
         tessParams: {
           tessedit_pageseg_mode: '6',
-          tessedit_ocr_engine_mode: '1',
           tessedit_char_whitelist: whitelist,
           user_defined_dpi: '280',
         },
@@ -238,12 +243,11 @@ export class OCRDetector {
           const bilateral = gray.bilateralFilter(7, 75, 75);
           const edges = bilateral.canny(60, 120);
           const morphKernel = CV.getStructuringElement(CV.MORPH_RECT, new CV.Size(2, 2));
-          const enhanced = edges.morphologyEx(CV.MORPH_CLOSE, morphKernel);
+          const enhanced = this.safeMorphologyEx(edges, CV.MORPH_CLOSE, morphKernel);
           return { image: enhanced, scale: 1.8 };
         },
         tessParams: {
           tessedit_pageseg_mode: '7',
-          tessedit_ocr_engine_mode: '1',
           tessedit_char_whitelist: whitelist,
           tessedit_char_blacklist: '@{}',
           user_defined_dpi: '320',
@@ -258,8 +262,10 @@ export class OCRDetector {
           const resized = this.scaleImage(enhanced, scale);
           const lab = resized.cvtColor(CV.COLOR_BGR2LAB);
           const channels = lab.split();
-          const clahe = new CV.CLAHE(2, new CV.Size(8, 8));
-          channels[0] = clahe.apply(channels[0]);
+          const clahe = this.createClahe(2, new CV.Size(8, 8));
+          if (clahe) {
+            channels[0] = clahe.apply(channels[0]);
+          }
           const merged = CV.merge(channels);
           const backToBgr = merged.cvtColor(CV.COLOR_Lab2BGR);
           const gray = backToBgr.cvtColor(CV.COLOR_BGR2GRAY);
@@ -267,7 +273,6 @@ export class OCRDetector {
         },
         tessParams: {
           tessedit_pageseg_mode: '13',
-          tessedit_ocr_engine_mode: '1',
           tessedit_char_whitelist: whitelist,
           preserve_interword_spaces: '1',
           user_defined_dpi: '260',
@@ -280,7 +285,8 @@ export class OCRDetector {
           const scaled = this.scaleImage(input, 1.3);
           const gray = scaled.cvtColor(CV.COLOR_BGR2GRAY);
           const median = gray.medianBlur(3);
-          const thresh = median.adaptiveThreshold(
+          const thresh = CV.adaptiveThreshold(
+            median,
             255,
             CV.ADAPTIVE_THRESH_MEAN_C,
             CV.THRESH_BINARY_INV,
@@ -288,13 +294,12 @@ export class OCRDetector {
             4,
           );
           const kernel = CV.getStructuringElement(CV.MORPH_RECT, new CV.Size(3, 3));
-          const closed = thresh.morphologyEx(CV.MORPH_CLOSE, kernel);
-          const combined = CV.bitwiseOr(closed, median);
+          const closed = this.safeMorphologyEx(thresh, CV.MORPH_CLOSE, kernel);
+          const combined = this.safeBitwiseOr(closed, median);
           return { image: combined, scale: 1.3 };
         },
         tessParams: {
           tessedit_pageseg_mode: '8',
-          tessedit_ocr_engine_mode: '1',
           tessedit_char_whitelist: whitelist,
           preserve_interword_spaces: '1',
           user_defined_dpi: '300',
@@ -328,7 +333,7 @@ export class OCRDetector {
   private enhanceUiColors(mat: any): any {
     const blurred = mat.gaussianBlur(new CV.Size(3, 3), 0);
     const sharpened = this.sharpen(blurred);
-    return CV.addWeighted(sharpened, 1.2, mat, -0.2, 0);
+    return this.safeAddWeighted(sharpened, 1.2, mat, -0.2, 0);
   }
 
   private cloneMat(mat: any): any {
@@ -354,6 +359,66 @@ export class OCRDetector {
       this.debug(`cloneMat fallback failed: ${(error as Error)?.message ?? error}`);
       return mat;
     }
+  }
+
+  private createClahe(clipLimit: number, tileGridSize: any): any {
+    if (!this.cvAvailable) {
+      return null;
+    }
+    if (typeof CV.createCLAHE === 'function') {
+      return CV.createCLAHE(clipLimit, tileGridSize);
+    }
+    if (CV.CLAHE) {
+      try {
+        return new CV.CLAHE(clipLimit, tileGridSize);
+      } catch (error) {
+        this.debug(`createClahe fallback failed: ${(error as Error)?.message ?? error}`);
+      }
+    }
+    this.debug('CLAHE not available in current OpenCV build.');
+    return null;
+  }
+
+  private safeMorphologyEx(mat: any, op: number, kernel: any): any {
+    if (!this.cvAvailable || !mat) {
+      return mat;
+    }
+    if (typeof CV.morphologyEx === 'function') {
+      return CV.morphologyEx(mat, op, kernel);
+    }
+    if (typeof mat.morphologyEx === 'function') {
+      return mat.morphologyEx(op, kernel);
+    }
+    this.debug('morphologyEx not available; returning original matrix.');
+    return mat;
+  }
+
+  private safeBitwiseOr(matA: any, matB: any): any {
+    if (!this.cvAvailable) {
+      return matA ?? matB;
+    }
+    if (typeof CV.bitwiseOr === 'function') {
+      return CV.bitwiseOr(matA, matB);
+    }
+    if (matA?.bitwiseOr) {
+      return matA.bitwiseOr(matB);
+    }
+    this.debug('bitwiseOr not available; returning first matrix.');
+    return matA;
+  }
+
+  private safeAddWeighted(matA: any, alpha: number, matB: any, beta: number, gamma: number): any {
+    if (!this.cvAvailable) {
+      return matA ?? matB;
+    }
+    if (typeof CV.addWeighted === 'function') {
+      return CV.addWeighted(matA, alpha, matB, beta, gamma);
+    }
+    if (matA?.addWeighted) {
+      return matA.addWeighted(alpha, matB, beta, gamma);
+    }
+    this.debug('addWeighted not available; returning first matrix.');
+    return matA;
   }
 
   private wordsToElements(

@@ -543,13 +543,29 @@ export class ElementDetectorService {
     const grayscale = this.ensureGrayscale(mat);
 
     try {
-      if (typeof cv.createCLAHE !== 'function' || typeof cv.Size !== 'function') {
-        warnOnce('createCLAHE unavailable in current OpenCV build; skipping CLAHE');
-        return grayscale;
+      let clahe: any = null;
+
+      if (typeof cv.createCLAHE === 'function' && typeof cv.Size === 'function') {
+        clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
+      } else if (typeof (cv as any).CLAHE === 'function') {
+        try {
+          clahe = new (cv as any).CLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
+        } catch (ctorError) {
+          warnOnce('createCLAHE unavailable and CLAHE constructor failed; using fallback', ctorError);
+        }
       }
 
-      const clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-      return clahe.apply(grayscale);
+      if (clahe && typeof clahe.apply === 'function') {
+        return clahe.apply(grayscale);
+      }
+
+      if (typeof (grayscale as any).equalizeHist === 'function') {
+        warnOnce('CLAHE unavailable; using equalizeHist fallback');
+        return (grayscale as any).equalizeHist();
+      }
+
+      warnOnce('CLAHE unavailable; returning grayscale input');
+      return grayscale;
     } catch (error) {
       warnOnce('applyCLAHE failed', error);
       return grayscale;

@@ -281,6 +281,10 @@ export class NutService {
       down: 'Down',
       left: 'Left',
       right: 'Right',
+      arrowup: 'Up',
+      arrowdown: 'Down',
+      arrowleft: 'Left',
+      arrowright: 'Right',
 
       // Function keys
       f1: 'F1',
@@ -298,6 +302,9 @@ export class NutService {
     };
 
     const normalized = key.toLowerCase();
+    if (normalized === 'enter' && key.toUpperCase() === 'ENTER') {
+      return 'Return';
+    }
     const mapped = keyMappings[normalized];
     if (mapped) {
       return mapped;

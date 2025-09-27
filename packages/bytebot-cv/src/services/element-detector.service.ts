@@ -110,6 +110,7 @@ export class ElementDetectorService {
 
     const capabilities = {
       clahe: typeof cv.createCLAHE === 'function',
+      claheCtor: typeof (cv as any).CLAHE === 'function',
       matClahe: typeof (cv.Mat?.prototype as any)?.clahe === 'function',
       equalizeHistAdaptive:
         typeof (cv.Mat?.prototype as any)?.equalizeHistAdaptive === 'function',
@@ -570,26 +571,58 @@ export class ElementDetectorService {
     const grayscale = this.ensureGrayscale(mat);
 
     try {
-      if (typeof cv.createCLAHE === 'function' && typeof cv.Size === 'function') {
-        const clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-        const result = clahe.apply(grayscale);
-        this.logger.debug?.('CLAHE applied via cv.createCLAHE');
-        if (typeof clahe.delete === 'function') {
-          try {
+      const tileSize = typeof cv.Size === 'function' ? new cv.Size(tileGridSize, tileGridSize) : { width: tileGridSize, height: tileGridSize };
+
+      if (typeof cv.createCLAHE === 'function') {
+        try {
+          const clahe = cv.createCLAHE(clipLimit, tileSize);
+          const result = clahe.apply(grayscale);
+          this.logger.debug?.('CLAHE applied via cv.createCLAHE');
+          if (typeof clahe.delete === 'function') {
             clahe.delete();
-          } catch (deleteError) {
-            warnOnce('CLAHE delete failed', deleteError);
           }
+          return result;
+        } catch (createError) {
+          warnOnce('cv.createCLAHE failed; falling back to alternate CLAHE paths', createError);
         }
-        return result;
+      }
+
+      const claheCtor = (cv as any).CLAHE;
+      if (typeof claheCtor === 'function') {
+        try {
+          const instance = new claheCtor(clipLimit, tileSize);
+          if (instance && typeof instance.apply === 'function') {
+            const result = instance.apply(grayscale);
+            this.logger.debug?.('CLAHE applied via cv.CLAHE constructor');
+            if (typeof instance.delete === 'function') {
+              instance.delete();
+            }
+            return result;
+          }
+        } catch (ctorError) {
+          warnOnce('cv.CLAHE constructor failed', ctorError);
+        }
+        try {
+          const factoryInstance = claheCtor(clipLimit, tileSize);
+          if (factoryInstance && typeof factoryInstance.apply === 'function') {
+            const result = factoryInstance.apply(grayscale);
+            this.logger.debug?.('CLAHE applied via cv.CLAHE factory');
+            if (typeof factoryInstance.delete === 'function') {
+              factoryInstance.delete();
+            }
+            return result;
+          }
+        } catch (factoryError) {
+          warnOnce('cv.CLAHE factory failed', factoryError);
+        }
       }
 
       const grayscaleAny = grayscale as any;
 
       if (typeof grayscaleAny.clahe === 'function') {
         try {
-          const result = grayscaleAny.clahe(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-          this.logger.debug?.('CLAHE applied via mat.clahe');
+          const result = grayscaleAny.clahe(clipLimit, tileSize);
+          this.logger.debug?.('CLAHE applied via Mat.clahe');
           return result;
         } catch (matClaheError) {
           warnOnce('Mat.clahe failed; attempting adaptive fallback', matClaheError);

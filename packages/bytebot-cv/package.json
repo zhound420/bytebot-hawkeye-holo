@@ -9,7 +9,8 @@
     "tesseract.js": "^5.0.4",
     "sharp": "^0.33.0",
     "fuzzysearch": "^1.0.3",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "canvas": "^2.11.2"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { performance } from 'node:perf_hooks';
 import { createCanvas, loadImage } from 'canvas';
-import type { ImageData } from 'canvas';
 import { createWorker, Worker } from 'tesseract.js';
 import {
   BoundingBox,
@@ -33,9 +32,15 @@ type MatLike = {
   bilateralFilter?: (diameter: number, sigmaColor: number, sigmaSpace: number) => MatLike;
   canny?: (threshold1: number, threshold2: number) => MatLike;
   getRegion?: (rect: any) => MatLike;
+  release?: () => void;
+  channels?: number | (() => number);
 };
 
-type CvMat = import('opencv4nodejs').Mat;
+type CanvasImageData = {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+};
 
 type OcrStrategy = {
   name: string;
@@ -584,6 +589,21 @@ export class ElementDetectorService {
   }
 
 
+  private getChannelCount(mat: MatLike): number {
+    const candidate = mat as MatLike & { channels?: number | (() => number) };
+    try {
+      if (typeof candidate.channels === 'function') {
+        return candidate.channels();
+      }
+      if (typeof candidate.channels === 'number') {
+        return candidate.channels;
+      }
+    } catch (error) {
+      warnOnce('Channel count lookup failed', error);
+    }
+    return 0;
+  }
+
   private async preprocessImageForOCR(
     imageBuffer: Buffer,
     method: string,
@@ -594,8 +614,11 @@ export class ElementDetectorService {
 
     try {
       const mat = cv.imdecode(imageBuffer);
+      if (!mat) {
+        return imageBuffer;
+      }
 
-      let processedMat: CvMat;
+      let processedMat: MatLike;
 
       if (method.includes('clahe')) {
         processedMat = await this.applyClahePreprocessing(mat);
@@ -604,13 +627,16 @@ export class ElementDetectorService {
       } else if (method.includes('edge')) {
         processedMat = await this.applyEdgePreprocessing(mat);
       } else {
-        processedMat = mat.clone();
+        processedMat =
+          typeof (mat as MatLike).clone === 'function' ? (mat as MatLike).clone!() : mat;
       }
 
       const result = cv.imencode('.png', processedMat).toString('base64');
 
-      mat.release();
-      processedMat.release();
+      if (processedMat !== mat) {
+        this.releaseMat(processedMat);
+      }
+      this.releaseMat(mat);
 
       return Buffer.from(result, 'base64');
     } catch (error) {
@@ -622,11 +648,17 @@ export class ElementDetectorService {
     }
   }
 
-  private async applyClahePreprocessing(mat: CvMat): Promise<CvMat> {
+  private async applyClahePreprocessing(mat: MatLike): Promise<MatLike> {
     try {
-      const gray = mat.channels === 3 ? mat.cvtColor(cv.COLOR_BGR2GRAY) : mat.clone();
+      const channels = this.getChannelCount(mat);
+      const gray =
+        channels > 1 && typeof (mat as any).cvtColor === 'function'
+          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
+          : typeof (mat as any).clone === 'function'
+            ? (mat as any).clone()
+            : mat;
 
-      let enhanced: CvMat;
+      let enhanced: MatLike;
 
       if (cv.createCLAHE) {
         const clahe = cv.createCLAHE({ clipLimit: 3.0, tileGridSize: new cv.Size(8, 8) });
@@ -636,11 +668,11 @@ export class ElementDetectorService {
         enhanced = clahe.apply(gray);
       } else {
         this.logger.warn('CLAHE not available, using equalizeHist fallback');
-        enhanced = gray.equalizeHist();
+        enhanced = (gray as any).equalizeHist();
       }
 
       if (gray !== mat) {
-        gray.release();
+        this.releaseMat(gray);
       }
       return enhanced;
     } catch (error) {
@@ -648,24 +680,30 @@ export class ElementDetectorService {
         'CLAHE preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return mat.clone();
+      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
     }
   }
 
-  private async applyDenoisePreprocessing(mat: CvMat): Promise<CvMat> {
+  private async applyDenoisePreprocessing(mat: MatLike): Promise<MatLike> {
     try {
-      const gray = mat.channels === 3 ? mat.cvtColor(cv.COLOR_BGR2GRAY) : mat.clone();
+      const channels = this.getChannelCount(mat);
+      const gray =
+        channels > 1 && typeof (mat as any).cvtColor === 'function'
+          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
+          : typeof (mat as any).clone === 'function'
+            ? (mat as any).clone()
+            : mat;
 
-      let denoised: CvMat;
+      let denoised: MatLike;
 
       if (cv.fastNlMeansDenoising) {
-        denoised = gray.fastNlMeansDenoising(10, 7, 21);
+        denoised = (gray as any).fastNlMeansDenoising(10, 7, 21);
       } else {
-        denoised = gray.gaussianBlur(new cv.Size(3, 3), 0);
+        denoised = (gray as any).gaussianBlur(new cv.Size(3, 3), 0);
       }
 
       if (gray !== mat) {
-        gray.release();
+        this.releaseMat(gray);
       }
       return denoised;
     } catch (error) {
@@ -673,23 +711,29 @@ export class ElementDetectorService {
         'Denoise preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return mat.clone();
+      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
     }
   }
 
-  private async applyEdgePreprocessing(mat: CvMat): Promise<CvMat> {
+  private async applyEdgePreprocessing(mat: MatLike): Promise<MatLike> {
     try {
-      const gray = mat.channels === 3 ? mat.cvtColor(cv.COLOR_BGR2GRAY) : mat.clone();
+      const channels = this.getChannelCount(mat);
+      const gray =
+        channels > 1 && typeof (mat as any).cvtColor === 'function'
+          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
+          : typeof (mat as any).clone === 'function'
+            ? (mat as any).clone()
+            : mat;
 
-      const edges = gray.canny(50, 150);
+      const edges = (gray as any).canny(50, 150);
       const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
       const enhanced = edges.morphologyEx(cv.MORPH_CLOSE, kernel);
 
       if (gray !== mat) {
-        gray.release();
+        this.releaseMat(gray);
       }
-      edges.release();
-      kernel.release();
+      this.releaseMat(edges);
+      this.releaseMat(kernel);
 
       return enhanced;
     } catch (error) {
@@ -697,7 +741,7 @@ export class ElementDetectorService {
         'Edge preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return mat.clone();
+      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
     }
   }
 
@@ -713,12 +757,11 @@ export class ElementDetectorService {
       ctx.drawImage(img, 0, 0);
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
 
       if (method.includes('contrast')) {
-        this.enhanceContrast(data);
+        this.enhanceContrast(imageData.data);
       } else if (method.includes('sharpen')) {
-        this.sharpenImage(imageData);
+        this.sharpenImage({ data: imageData.data, width: imageData.width, height: imageData.height });
       }
 
       ctx.putImageData(imageData, 0, 0);
@@ -744,7 +787,7 @@ export class ElementDetectorService {
     }
   }
 
-  private sharpenImage(imageData: ImageData): void {
+  private sharpenImage(imageData: CanvasImageData): void {
     const data = imageData.data;
     const width = imageData.width;
     const height = imageData.height;

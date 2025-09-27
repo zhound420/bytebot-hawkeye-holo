@@ -1,5 +1,6 @@
 import { createWorker, Worker } from 'tesseract.js';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
+import { decodeImageBuffer } from '../../utils/cv-decode';
 
 interface RecognizeRectangleOption {
   rectangle: {
@@ -767,7 +768,15 @@ export class OCRDetector {
     if (!this.cvAvailable || !buffer) {
       return null;
     }
-    return cv.imdecode(buffer);
+    try {
+      return decodeImageBuffer(cv as typeof import('opencv4nodejs'), buffer, {
+        source: 'OCRDetector.advancedDecode',
+        warnOnce,
+      });
+    } catch (error) {
+      warnOnce('advanced decode failed; falling back to basic OCR path', error);
+      return null;
+    }
   }
 
   private cropToRegion(mat: any, region?: BoundingBox): { image: any; offsetX: number; offsetY: number } {

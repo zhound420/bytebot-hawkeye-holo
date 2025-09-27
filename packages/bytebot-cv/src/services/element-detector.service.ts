@@ -16,6 +16,7 @@ import {
   UniversalUIElement,
 } from '../interfaces/universal-element.interface';
 import { UniversalDetectorService } from './universal-detector.service';
+import { decodeImageBuffer } from '../utils/cv-decode';
 
 type TemplateDetectorModule = typeof import('../detectors/template/template-detector');
 type EdgeDetectorModule = typeof import('../detectors/edge/edge-detector');
@@ -1062,9 +1063,16 @@ export class ElementDetectorService {
 
     if (Buffer.isBuffer(image)) {
       try {
-        const decoded = cv.imdecode(image);
+        const decoded = decodeImageBuffer(
+          cv as typeof import('opencv4nodejs'),
+          image,
+          {
+            source,
+            warnOnce: warnOnce,
+          },
+        );
         if (!decoded) {
-          throw new Error('imdecode returned null');
+          throw new Error('decodeImageBuffer returned null');
         }
         return { mat: decoded as MatLike, needsRelease: true };
       } catch (error) {

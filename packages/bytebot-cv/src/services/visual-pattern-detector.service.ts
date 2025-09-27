@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UniversalUIElement } from '../interfaces/universal-element.interface';
+import { decodeImageBuffer } from '../utils/cv-decode';
 
 // Lazy-load OpenCV so environments without the native bindings degrade gracefully.
 type CvModule = typeof import('opencv4nodejs');
@@ -25,6 +26,7 @@ const hasCv = !!cv;
 @Injectable()
 export class VisualPatternDetectorService {
   private readonly logger = new Logger(VisualPatternDetectorService.name);
+  private imdecodeWarningLogged = false;
 
   async detectButtons(screenshot: Buffer): Promise<UniversalUIElement[]> {
     if (!this.ensureCv()) {
@@ -33,7 +35,10 @@ export class VisualPatternDetectorService {
 
     try {
       const cvModule = cv!;
-      const mat = cvModule.imdecode(screenshot);
+      const mat = decodeImageBuffer(cvModule, screenshot, {
+        source: 'VisualPatternDetector.detectButtons',
+        warnOnce: message => this.warnImdecode(message),
+      });
       const gray = this.ensureGrayscale(mat, cvModule);
       const edges = gray.canny(50, 150);
       const contours = edges.findContours(cvModule.RETR_EXTERNAL, cvModule.CHAIN_APPROX_SIMPLE);
@@ -83,7 +88,10 @@ export class VisualPatternDetectorService {
 
     try {
       const cvModule = cv!;
-      const mat = cvModule.imdecode(screenshot);
+      const mat = decodeImageBuffer(cvModule, screenshot, {
+        source: 'VisualPatternDetector.detectTextInputs',
+        warnOnce: message => this.warnImdecode(message),
+      });
       const gray = this.ensureGrayscale(mat, cvModule);
       const blurred = gray.gaussianBlur(new cvModule.Size(3, 3), 0);
       const thresh = blurred.threshold(200, 255, (cvModule as any).THRESH_BINARY ?? 0);
@@ -133,6 +141,14 @@ export class VisualPatternDetectorService {
       return false;
     }
     return true;
+  }
+
+  private warnImdecode(message: string): void {
+    if (this.imdecodeWarningLogged) {
+      return;
+    }
+    this.imdecodeWarningLogged = true;
+    this.logger.warn(message);
   }
 
   private ensureGrayscale(mat: MatLike, cvModule: CvModule) {

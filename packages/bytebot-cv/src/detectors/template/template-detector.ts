@@ -2,8 +2,9 @@ import * as cv from 'opencv4nodejs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
+import { decodeImageBuffer } from '../../utils/cv-decode';
 
-type CvMat = ReturnType<typeof cv.imdecode>;
+type CvMat = InstanceType<typeof cv.Mat>;
 
 type TemplateEntry = {
   name: string;
@@ -23,7 +24,9 @@ export class TemplateDetector {
       return [];
     }
 
-    const screenshot = cv.imdecode(screenshotBuffer);
+    const screenshot = decodeImageBuffer(cv, screenshotBuffer, {
+      source: 'TemplateDetector.detect',
+    });
     const { mat: searchMat, offsetX, offsetY } = this.extractRegion(screenshot, region);
     const elements: DetectedElement[] = [];
 

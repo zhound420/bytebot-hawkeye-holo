@@ -1,8 +1,9 @@
 import * as cv from 'opencv4nodejs';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
+import { decodeImageBuffer } from '../../utils/cv-decode';
 
 type CvRect = InstanceType<typeof cv.Rect>;
-type CvMat = ReturnType<typeof cv.imdecode>;
+type CvMat = InstanceType<typeof cv.Mat>;
 
 export class EdgeDetector {
   async detect(screenshotBuffer: Buffer, region?: BoundingBox): Promise<DetectedElement[]> {
@@ -10,7 +11,9 @@ export class EdgeDetector {
       return [];
     }
 
-    const screenshot = cv.imdecode(screenshotBuffer);
+    const screenshot = decodeImageBuffer(cv, screenshotBuffer, {
+      source: 'EdgeDetector.detect',
+    });
     const { mat: searchMat, offsetX, offsetY } = this.extractRegion(screenshot, region);
     const gray = searchMat.cvtColor(cv.COLOR_BGR2GRAY);
     const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);

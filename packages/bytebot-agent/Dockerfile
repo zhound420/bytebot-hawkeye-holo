@@ -42,7 +42,7 @@ RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
 
 RUN node -e "const fs=require('fs'); const path=require('path'); const update=(workspace,value)=>{const file=path.join('packages',workspace,'package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']=value; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');}; update('bytebot-agent','../bytebot-cv'); update('bytebotd','../bytebot-cv');" \
     && npm install --prefix packages/shared \
-    && npm install --prefix packages/bytebot-cv opencv-build \
+    && npm install --ignore-scripts --prefix packages/bytebot-cv opencv-build \
     && node -e "process.chdir('packages/bytebot-cv'); const { install } = require('opencv-build/build/install'); install().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });" \
     && OPENCV_LIB_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
        OPENCV_INCLUDE_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \

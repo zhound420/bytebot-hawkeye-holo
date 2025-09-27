@@ -19,7 +19,7 @@ ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
     OPENCV4NODEJS_SKIP_TRACKING=1 \
     OPENCV_LIB_DIR=/usr/lib/aarch64-linux-gnu \
     OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
-    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}
+    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/local/lib
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation

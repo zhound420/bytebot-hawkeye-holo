@@ -727,12 +727,21 @@ export class ElementDetectorService {
 
       const edges = (gray as any).canny(50, 150);
       const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-      const enhanced = edges.morphologyEx(cv.MORPH_CLOSE, kernel);
+
+      let enhanced: MatLike;
+      if (typeof (edges as any).morphologyEx === 'function') {
+        enhanced = (edges as any).morphologyEx(cv.MORPH_CLOSE, kernel);
+      } else if (typeof cv.morphologyEx === 'function') {
+        enhanced = cv.morphologyEx(edges, cv.MORPH_CLOSE, kernel);
+      } else {
+        warnOnce('MorphologyEx unsupported; returning Canny edges');
+        enhanced = edges;
+      }
 
       if (gray !== mat) {
         this.releaseMat(gray);
       }
-      this.releaseMat(edges);
+      this.releaseMat(edges !== enhanced ? edges : null);
       this.releaseMat(kernel);
 
       return enhanced;

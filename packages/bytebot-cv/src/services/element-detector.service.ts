@@ -98,7 +98,34 @@ export class ElementDetectorService {
     @Optional()
     @Inject(forwardRef(() => UniversalDetectorService))
     private readonly universalDetector?: UniversalDetectorService,
-  ) {}
+  ) {
+    this.checkOpenCVCapabilities();
+  }
+
+  private checkOpenCVCapabilities(): void {
+    if (!hasCv) {
+      this.logger.warn('OpenCV not available; vision features will degrade');
+      return;
+    }
+
+    const capabilities = {
+      clahe: typeof cv.createCLAHE === 'function',
+      matClahe: typeof (cv.Mat?.prototype as any)?.clahe === 'function',
+      equalizeHistAdaptive:
+        typeof (cv.Mat?.prototype as any)?.equalizeHistAdaptive === 'function',
+      fastNlMeans:
+        typeof (cv.Mat?.prototype as any)?.fastNlMeansDenoising === 'function' ||
+        typeof cv.fastNlMeansDenoising === 'function',
+      filter2D: typeof cv.filter2D === 'function' ||
+        typeof (cv.Mat?.prototype as any)?.filter2D === 'function',
+    } as const;
+
+    this.logger.log(`OpenCV capabilities: ${JSON.stringify(capabilities)}`);
+
+    if (!capabilities.clahe && !capabilities.matClahe) {
+      this.logger.warn('CLAHE not available - OCR quality may be reduced');
+    }
+  }
 
   async detectElements(
     screenshotBuffer: Buffer,
@@ -543,28 +570,48 @@ export class ElementDetectorService {
     const grayscale = this.ensureGrayscale(mat);
 
     try {
-      let clahe: any = null;
-
       if (typeof cv.createCLAHE === 'function' && typeof cv.Size === 'function') {
-        clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-      } else if (typeof (cv as any).CLAHE === 'function') {
+        const clahe = cv.createCLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
+        const result = clahe.apply(grayscale);
+        this.logger.debug?.('CLAHE applied via cv.createCLAHE');
+        if (typeof clahe.delete === 'function') {
+          try {
+            clahe.delete();
+          } catch (deleteError) {
+            warnOnce('CLAHE delete failed', deleteError);
+          }
+        }
+        return result;
+      }
+
+      const grayscaleAny = grayscale as any;
+
+      if (typeof grayscaleAny.clahe === 'function') {
         try {
-          clahe = new (cv as any).CLAHE(clipLimit, new cv.Size(tileGridSize, tileGridSize));
-        } catch (ctorError) {
-          warnOnce('createCLAHE unavailable and CLAHE constructor failed; using fallback', ctorError);
+          const result = grayscaleAny.clahe(clipLimit, new cv.Size(tileGridSize, tileGridSize));
+          this.logger.debug?.('CLAHE applied via mat.clahe');
+          return result;
+        } catch (matClaheError) {
+          warnOnce('Mat.clahe failed; attempting adaptive fallback', matClaheError);
         }
       }
 
-      if (clahe && typeof clahe.apply === 'function') {
-        return clahe.apply(grayscale);
+      if (typeof grayscaleAny.equalizeHistAdaptive === 'function') {
+        try {
+          const result = grayscaleAny.equalizeHistAdaptive();
+          this.logger.debug?.('Adaptive histogram equalization applied');
+          return result;
+        } catch (adaptiveError) {
+          warnOnce('Adaptive histogram equalization failed', adaptiveError);
+        }
       }
 
-      if (typeof (grayscale as any).equalizeHist === 'function') {
+      if (typeof grayscaleAny.equalizeHist === 'function') {
         warnOnce('CLAHE unavailable; using equalizeHist fallback');
-        return (grayscale as any).equalizeHist();
+        return grayscaleAny.equalizeHist();
       }
 
-      warnOnce('CLAHE unavailable; returning grayscale input');
+      warnOnce('CLAHE unavailable and no fallback methods; returning grayscale');
       return grayscale;
     } catch (error) {
       warnOnce('applyCLAHE failed', error);

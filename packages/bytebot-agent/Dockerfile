@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
+    libgif-dev \
+    libcairo2-dev \
     libavcodec-dev \
     libavformat-dev \
     libswscale-dev \
@@ -48,6 +50,7 @@ RUN node -e "const fs=require('fs'); const path=require('path'); const update=(w
        OPENCV_INCLUDE_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
        OPENCV_BIN_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \
        npm install --prefix packages/bytebot-cv \
+    && npm rebuild --build-from-source --prefix packages/bytebot-cv canvas \
     && npm install --prefix packages/bytebot-agent
 
 WORKDIR /app/packages/bytebot-cv

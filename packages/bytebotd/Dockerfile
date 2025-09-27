@@ -40,6 +40,8 @@ RUN apt-get update && apt-get install -y \
     xpdf gedit xpaint \
     # Libraries
     libxtst-dev \
+    libgif-dev \
+    libcairo2-dev \
     # Remove unneeded dependencies
     && apt-get remove -y light-locker xfce4-screensaver xfce4-power-manager || true \
     # Clean up to reduce image size
@@ -218,11 +220,12 @@ RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
     && /usr/bin/npm install --prefix ../shared \
     && /usr/bin/npm install --ignore-scripts --prefix ../bytebot-cv opencv-build \
-    && node -e "process.chdir('/bytebot/packages/bytebot-cv'); const { install } = require('./node_modules/opencv-build/build/install'); install().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });" \
+    && node -e "const { install } = require('/bytebot/packages/bytebot-cv/node_modules/opencv-build/build/install'); install().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });" \
     && OPENCV_LIB_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
        OPENCV_INCLUDE_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
        OPENCV_BIN_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \
        /usr/bin/npm install --prefix ../bytebot-cv \
+    && /usr/bin/npm rebuild --build-from-source --prefix ../bytebot-cv canvas \
     && /usr/bin/npm install --prefix . --build-from-source
 
 WORKDIR /bytebot/packages/bytebot-cv

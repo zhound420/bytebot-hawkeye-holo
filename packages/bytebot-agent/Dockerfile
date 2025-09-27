@@ -7,15 +7,13 @@ COPY ./packages ./packages
 COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
 
 ENV NODE_PATH=/app/node_modules:/app/packages/bytebot-agent/node_modules:/app/packages/bytebot-cv/node_modules
-ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
-    OPENCV_LIB_DIR=/usr/lib/opencv \
-    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
-    OPENCV_BIN_DIR=/usr/bin \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    LD_LIBRARY_PATH=/usr/lib/opencv \
-    PKG_CONFIG_PATH=/usr/lib/opencv/pkgconfig
+ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
+    OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
+    OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
+    OPENCV4NODEJS_SKIP_TRACKING=1
 
 RUN apt-get update && apt-get install -y \
+    libopencv-dev \
     libopencv-dev \
     libopencv-contrib-dev \
     libopencv-core-dev \
@@ -23,8 +21,6 @@ RUN apt-get update && apt-get install -y \
     libopencv-photo-dev \
     libopencv-highgui-dev \
     libopencv-imgcodecs-dev \
-    libopencv-xphoto-dev \
-    libopencv-ximgproc-dev \
     libcairo2-dev \
     libpango1.0-dev \
     libjpeg-dev \
@@ -38,8 +34,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# legacy symlink no longer required when using autobuild; keep for compatibility
 RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
-    ln -sf /usr/lib/${multiarch} /usr/lib/opencv
+    ln -sf /usr/lib/${multiarch} /usr/lib/opencv || true
 
 RUN node -e "const fs=require('fs'); const path=require('path'); const update=(workspace,value)=>{const file=path.join('packages',workspace,'package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']=value; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');}; update('bytebot-agent','../bytebot-cv'); update('bytebotd','../bytebot-cv');" \
     && npm install --prefix packages/shared \

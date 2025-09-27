@@ -13,13 +13,10 @@ FROM public.ecr.aws/ubuntu/ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
-ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
-    OPENCV_LIB_DIR=/usr/lib/opencv \
-    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
-    OPENCV_BIN_DIR=/usr/bin \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    LD_LIBRARY_PATH=/usr/lib/opencv \
-    PKG_CONFIG_PATH=/usr/lib/opencv/pkgconfig
+ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
+    OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
+    OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
+    OPENCV4NODEJS_SKIP_TRACKING=1
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
@@ -201,8 +198,6 @@ RUN apt-get update && apt-get install -y \
     libopencv-photo-dev \
     libopencv-highgui-dev \
     libopencv-imgcodecs-dev \
-    libopencv-xphoto-dev \
-    libopencv-ximgproc-dev \
     libcairo2-dev \
     libpango1.0-dev \
     libjpeg-dev \

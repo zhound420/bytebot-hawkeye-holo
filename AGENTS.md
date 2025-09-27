@@ -1,19 +1,32 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Monorepo code lives under `packages/`. Shared DTOs and helpers belong in `packages/shared`; regenerate them before touching dependent packages. Backend services are in `packages/bytebot-agent`, Claude control flows in `packages/bytebot-agent-cc`, CV tooling in `packages/bytebot-cv`, UI dashboards in `packages/bytebot-ui`, the desktop daemon in `packages/bytebotd`, and proxy assets in `packages/bytebot-llm-proxy`. Docs sit in `docs/`, deployment manifests in `helm/` and `docker/`, and static overlays in `static/`. Keep specs close to implementations using `*.spec.ts` filenames.
+- The monorepo lives under `packages/`; treat each folder as an isolated npm workspace.
+- Shared DTOs and helpers sit in `packages/shared`; regenerate published artifacts before editing dependent services.
+- Backend automation runs in `packages/bytebot-agent`, conversation flows in `packages/bytebot-agent-cc`, CV logic in `packages/bytebot-cv`, web dashboards in `packages/bytebot-ui`, the desktop daemon in `packages/bytebotd`, and LLM proxy assets in `packages/bytebot-llm-proxy`.
+- Specs belong beside their implementations using the `*.spec.ts` suffix. Docs live in `docs/`, deploy assets in `helm/` and `docker/`, static overlays in `static/`.
 
 ## Build, Test, and Development Commands
-Run `npm run build --prefix packages/shared` whenever shared contracts change. Start the NestJS API via `cd packages/bytebot-agent && npm install && npm run start:dev`; pair schema edits with `npm run prisma:dev`. Spin up the Next.js UI using `cd packages/bytebot-ui && npm run dev`, and launch the desktop daemon with `cd packages/bytebotd && npm run start:dev`. For an end-to-end sandbox, execute `docker compose -f docker/docker-compose.yml up -d`.
+- `npm install` from the repo root once per machine; afterwards run package-specific scripts via `npm run <script> --prefix <package>`.
+- Rebuild shared contracts with `npm run build --prefix packages/shared` whenever DTOs change.
+- Start the NestJS API with `cd packages/bytebot-agent && npm run start:dev`; pair schema edits with `npm run prisma:dev`.
+- Launch the Next.js UI through `cd packages/bytebot-ui && npm run dev`.
+- Bring up the full sandbox using `docker compose -f docker/docker-compose.yml up -d`.
 
 ## Coding Style & Naming Conventions
-Write TypeScript with 2-space indentation, single quotes, trailing commas, and camelCase variables. Use PascalCase for classes and snake_case for Prisma models. Run `npm run format` to apply the shared Prettier and ESLint configuration before committing.
+- Use TypeScript with 2-space indentation, single quotes, trailing commas, and camelCase variables.
+- Classes stay in PascalCase; Prisma models remain snake_case.
+- Run `npm run format` before commits to apply the shared Prettier + ESLint rules.
 
 ## Testing Guidelines
-All packages rely on Jest. Name unit tests `*.spec.ts` and co-locate them with the code they cover. Execute suites with `npm test`, `npm run test:watch`, or `npm run test:cov` from each package. Validate API flows through `npm run test:e2e` in `packages/bytebot-agent` and keep deterministic mocks alongside their specs.
+- Tests use Jest and live with the code as `*.spec.ts`. Create deterministic mocks alongside specs.
+- Run suites per package with `npm test`, `npm run test:watch`, or `npm run test:cov`.
+- For API flows, rely on `npm run test:e2e` inside `packages/bytebot-agent`.
 
 ## Commit & Pull Request Guidelines
-Write imperative commit subjects (e.g., `Improve coordinate telemetry`) and stage only intentional changes. PR descriptions should summarize intent, flag schema or env updates, link issues, and include UI captures when relevant. Document automated and manual test coverage and call out new environment variables or migration steps.
+- Write imperative commit subjects (e.g., `Improve coordinate telemetry`); stage only intentional changes.
+- PRs should summarize intent, call out schema or env updates, link issues, describe manual/automated testing, and add UI captures when relevant.
 
 ## Security & Configuration Tips
-Load secrets from package-specific `.env` files or `docker/.env`; never commit credentials. Toggle Hawkeye features with environment variables such as `BYTEBOT_SMART_FOCUS` and `BYTEBOT_COORDINATE_METRICS`.
+- Load secrets from package-specific `.env` files or `docker/.env`; never commit credentials.
+- Toggle Hawkeye features with env vars such as `BYTEBOT_SMART_FOCUS` and `BYTEBOT_COORDINATE_METRICS`.

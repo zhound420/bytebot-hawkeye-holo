@@ -725,16 +725,49 @@ export class ElementDetectorService {
             ? (mat as any).clone()
             : mat;
 
-      const edges = (gray as any).canny(50, 150);
-      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+      const edgesCandidate =
+        typeof (gray as any).canny === 'function'
+          ? (gray as any).canny(50, 150)
+          : null;
 
-      let enhanced: MatLike;
+      if (!this.isMatLike(edgesCandidate)) {
+        warnOnce('Canny returned non-mat output; skipping morphology stage');
+        if (gray !== mat) {
+          this.releaseMat(gray);
+        }
+        return this.safeClone(gray) ?? gray;
+      }
+
+      const edges = edgesCandidate;
+
+      const morphRect = hasCv && typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
+
+      const kernel =
+        hasCv && typeof cv.getStructuringElement === 'function' && typeof cv.Size === 'function'
+          ? cv.getStructuringElement(morphRect, new cv.Size(3, 3))
+          : null;
+
+      if (!this.isMatLike(kernel)) {
+        warnOnce('Structuring element creation failed; returning raw edges');
+        if (gray !== mat) {
+          this.releaseMat(gray);
+        }
+        return edges;
+      }
+
+      let enhanced: MatLike = edges;
+      const morphClose = hasCv && typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
       if (typeof (edges as any).morphologyEx === 'function') {
-        enhanced = (edges as any).morphologyEx(cv.MORPH_CLOSE, kernel);
-      } else if (typeof cv.morphologyEx === 'function') {
-        enhanced = cv.morphologyEx(edges, cv.MORPH_CLOSE, kernel);
+        enhanced = (edges as any).morphologyEx(morphClose, kernel);
+      } else if (hasCv && typeof cv.morphologyEx === 'function') {
+        try {
+          enhanced = cv.morphologyEx(edges, morphClose, kernel);
+        } catch (error) {
+          warnOnce('Global morphologyEx failed; returning raw edges', error);
+          enhanced = edges;
+        }
       } else {
-        warnOnce('MorphologyEx unsupported; returning Canny edges');
+        warnOnce('MorphologyEx unsupported; returning raw edges');
         enhanced = edges;
       }
 

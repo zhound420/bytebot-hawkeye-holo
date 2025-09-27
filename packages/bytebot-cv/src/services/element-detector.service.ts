@@ -196,22 +196,23 @@ export class ElementDetectorService {
       diagnostics.modulesError = (error as Error)?.message ?? String(error);
     }
 
-    const claheResult = this.resolveClaheFactory();
-    if (claheResult.success) {
-      this.claheFactory = claheResult.factory;
-      this.claheFactoryName = claheResult.method ?? null;
+    const claheCapability = this.detectClaheCapability();
+    if (claheCapability.success) {
+      this.claheFactory = claheCapability.factory;
+      this.claheFactoryName = claheCapability.methodName ?? null;
       this.opencvCapabilities.clahe = true;
-      this.opencvCapabilities.claheMethod = claheResult.method;
+      this.opencvCapabilities.claheMethod = claheCapability.methodName;
       this.logger.log(
-        `[ElementDetectorService] CLAHE available via ${claheResult.method} (OpenCV ${versionInfo})`,
+        `[ElementDetectorService] CLAHE available via method ${claheCapability.methodIndex ?? 'unknown'} (${claheCapability.methodName ?? 'unnamed'}) on OpenCV ${versionInfo}`,
       );
     } else {
       this.claheFactory = null;
       this.claheFactoryName = null;
+      this.opencvCapabilities.clahe = false;
       this.opencvCapabilities.claheMethod = undefined;
-      diagnostics.claheError = claheResult.error ?? 'Unknown';
+      diagnostics.claheError = JSON.stringify(claheCapability.errors ?? []);
       this.logger.warn(
-        `[ElementDetectorService] CLAHE unavailable after ${claheResult.attempts} attempts - OCR quality may be reduced`,
+        `[ElementDetectorService] CLAHE unavailable after ${claheCapability.attempts} attempts - OCR quality may be reduced`,
       );
     }
 
@@ -224,67 +225,53 @@ export class ElementDetectorService {
     this.opencvCapabilities.claheDiagnostics = diagnostics;
   }
 
-  private resolveClaheFactory(): {
+  private detectClaheCapability(): {
     success: boolean;
     factory: (() => any) | null;
-    method?: string;
-    error?: string;
+    methodIndex: number | null;
+    methodName?: string;
+    errors: Array<Record<string, string>>;
     attempts: number;
   } {
     if (!hasCv) {
       return {
         success: false,
         factory: null,
-        error: 'OpenCV unavailable',
+        methodIndex: null,
+        methodName: undefined,
+        errors: [{ reason: 'OpenCV unavailable' }],
         attempts: 0,
       };
     }
 
-    const clipLimit = 3.0;
-    const createTile = () => this.createTileSize(8);
+    const clipLimit = 4.0;
+    const createTile = () => new cv.Size(8, 8);
     const desiredType =
       typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
 
-    let sampleMat: MatLike | null = null;
-    try {
-      sampleMat = new cv.Mat(32, 32, desiredType, 128);
-    } catch (error) {
-      warnOnce('Failed to allocate sample Mat for CLAHE detection', error);
-    }
-
-    const attempts: Array<{
-      name: string;
-      available: boolean;
-      factory: () => any;
-    }> = [
+    const methods: Array<{ name: string; factory: () => any }> = [
       {
-        name: 'cv.createCLAHE(options)',
-        available: typeof cv.createCLAHE === 'function',
-        factory: () => cv.createCLAHE({ clipLimit, tileGridSize: createTile() }),
-      },
-      {
-        name: 'cv.createCLAHE(args)',
-        available: typeof cv.createCLAHE === 'function',
+        name: 'cv.createCLAHE(clip, Size)',
         factory: () => cv.createCLAHE(clipLimit, createTile()),
       },
       {
+        name: 'cv.createCLAHE(options)',
+        factory: () => cv.createCLAHE({ clipLimit, tileGridSize: createTile() }),
+      },
+      {
         name: 'cv.createCLAHE()',
-        available: typeof cv.createCLAHE === 'function',
         factory: () => cv.createCLAHE(),
       },
       {
-        name: 'new cv.CLAHE(args)',
-        available: typeof (cv as any).CLAHE === 'function',
+        name: 'new cv.CLAHE(clip, Size)',
         factory: () => new (cv as any).CLAHE(clipLimit, createTile()),
       },
       {
         name: 'new cv.CLAHE(options)',
-        available: typeof (cv as any).CLAHE === 'function',
         factory: () => new (cv as any).CLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'new cv.CLAHE() + setters',
-        available: typeof (cv as any).CLAHE === 'function',
         factory: () => {
           const inst = new (cv as any).CLAHE();
           inst.setClipLimit?.(clipLimit);
@@ -293,88 +280,152 @@ export class ElementDetectorService {
         },
       },
       {
-        name: 'cv.imgproc.createCLAHE',
-        available: typeof (cv as any).imgproc?.createCLAHE === 'function',
-        factory: () => (cv as any).imgproc.createCLAHE(clipLimit, createTile()),
+        name: 'cv.imgproc.createCLAHE(clip, Size)',
+        factory: () => (cv as any).imgproc?.createCLAHE?.(clipLimit, createTile()),
+      },
+      {
+        name: 'cv.imgproc.createCLAHE(options)',
+        factory: () => (cv as any).imgproc?.createCLAHE?.({ clipLimit, tileGridSize: createTile() }),
+      },
+      {
+        name: 'cv.createCLAHE(clipLimit only)',
+        factory: () => cv.createCLAHE(clipLimit),
+      },
+      {
+        name: 'cv.xphoto.createCLAHE(clip, Size)',
+        factory: () => (cv as any).xphoto?.createCLAHE?.(clipLimit, createTile()),
+      },
+      {
+        name: 'cv.xphoto.createCLAHE(options)',
+        factory: () => (cv as any).xphoto?.createCLAHE?.({ clipLimit, tileGridSize: createTile() }),
+      },
+      {
+        name: 'cv.xphoto.createCLAHE()',
+        factory: () => (cv as any).xphoto?.createCLAHE?.(),
+      },
+      {
+        name: 'cv.ximgproc.createCLAHE(clip, Size)',
+        factory: () => (cv as any).ximgproc?.createCLAHE?.(clipLimit, createTile()),
+      },
+      {
+        name: 'cv.ximgproc.createCLAHE(options)',
+        factory: () => (cv as any).ximgproc?.createCLAHE?.({ clipLimit, tileGridSize: createTile() }),
       },
     ];
 
-    const diagnostics: Record<string, string> = {};
-    let attemptsExecuted = 0;
+    const errors: Array<Record<string, string>> = [];
+    let attempts = 0;
 
-    for (const attempt of attempts) {
-      if (!attempt.available) {
-        continue;
-      }
+    const createSampleMat = () => new cv.Mat(32, 32, desiredType, 128);
 
-      attemptsExecuted += 1;
+    for (let index = 0; index < methods.length; index += 1) {
+      const method = methods[index];
       let instance: any = null;
-      let testInput: MatLike | null = null;
-      let testOutput: MatLike | null = null;
+      let sampleInput: MatLike | null = null;
+      let sampleOutput: MatLike | null = null;
 
       try {
-        instance = attempt.factory();
+        attempts += 1;
+        instance = method.factory();
         if (!instance || typeof instance.apply !== 'function') {
-          throw new Error('CLAHE instance does not expose apply');
+          throw new Error('CLAHE instance missing apply method');
         }
 
-        if (sampleMat && typeof (sampleMat as any).clone === 'function') {
-          testInput = (sampleMat as any).clone();
-        } else {
-          testInput = sampleMat ?? new cv.Mat(32, 32, desiredType, 128);
+        sampleInput = createSampleMat();
+        sampleOutput = instance.apply(sampleInput);
+        if (!this.isMatLike(sampleOutput)) {
+          throw new Error('CLAHE apply returned non-mat output');
         }
 
-        testOutput = instance.apply(testInput);
-        if (!this.isMatLike(testOutput)) {
-          throw new Error('CLAHE apply returned non-mat result');
-        }
-
-        this.releaseMat(testInput !== sampleMat ? testInput : null);
-        if (testOutput && testOutput !== sampleMat) {
-          this.releaseMat(testOutput);
-        }
+        // Release temporary Mats
+        this.releaseMat(sampleOutput !== sampleInput ? sampleOutput : null);
+        this.releaseMat(sampleInput);
         instance.delete?.();
 
-        const factory = () => {
-          const created = attempt.factory();
-          if (!created || typeof created.apply !== 'function') {
-            throw new Error(`CLAHE factory (${attempt.name}) returned invalid instance at runtime`);
-          }
-          return created;
-        };
-
-        if (sampleMat) {
-          this.releaseMat(sampleMat);
-          sampleMat = null;
-        }
+        // eslint-disable-next-line no-console
+        console.log(`[ElementDetectorService] CLAHE method ${index} successful (${method.name})`);
 
         return {
           success: true,
-          factory,
-          method: attempt.name,
-          attempts: attemptsExecuted,
+          factory: method.factory,
+          methodIndex: index,
+          methodName: method.name,
+          errors,
+          attempts,
         };
       } catch (error) {
-        diagnostics[attempt.name] = (error as Error)?.message ?? String(error);
-        this.releaseMat(testOutput);
-        this.releaseMat(testInput);
+        const err = error as Error & { constructor?: { name?: string } };
+        const info = {
+          index: index.toString(),
+          method: method.name,
+          name: err?.name ?? 'Error',
+          message: err?.message ?? String(err),
+          constructor: err?.constructor?.name ?? 'unknown',
+          stack: typeof err?.stack === 'string' ? err.stack.split('\n')[0] : 'no stack',
+        };
+        errors.push(info);
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[ElementDetectorService] CLAHE method failed:', info);
+        } catch {
+          /* noop */
+        }
+      } finally {
+        this.releaseMat(sampleOutput);
+        this.releaseMat(sampleInput);
         try {
           instance?.delete?.();
         } catch (deleteError) {
-          diagnostics[`${attempt.name}:delete`] = (deleteError as Error)?.message ?? String(deleteError);
+          const delErr = deleteError as Error & { constructor?: { name?: string } };
+          const deleteInfo = {
+            index: `${index}:delete`,
+            method: method.name,
+            name: delErr?.name ?? 'Error',
+            message: delErr?.message ?? String(delErr),
+            constructor: delErr?.constructor?.name ?? 'unknown',
+            stack: typeof delErr?.stack === 'string' ? delErr.stack.split('\n')[0] : 'no stack',
+          };
+          errors.push(deleteInfo);
+          try {
+            // eslint-disable-next-line no-console
+            console.log('[ElementDetectorService] CLAHE method cleanup failed:', deleteInfo);
+          } catch {
+            /* noop */
+          }
         }
-        continue;
       }
     }
 
-    this.releaseMat(sampleMat);
+    try {
+      const sizeTest = new cv.Size(8, 8);
+      // eslint-disable-next-line no-console
+      console.log('[ElementDetectorService] cv.Size constructor works:', sizeTest);
+    } catch (error) {
+      const err = error as Error & { constructor?: { name?: string } };
+      const sizeInfo = {
+        index: 'cv.Size',
+        method: 'new cv.Size(8, 8)',
+        name: err?.name ?? 'Error',
+        message: err?.message ?? String(err),
+        constructor: err?.constructor?.name ?? 'unknown',
+        stack: typeof err?.stack === 'string' ? err.stack.split('\n')[0] : 'no stack',
+      };
+      errors.push(sizeInfo);
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[ElementDetectorService] cv.Size constructor failed:', sizeInfo);
+      } catch {
+        /* noop */
+      }
+    }
 
     return {
       success: false,
       factory: null,
-      method: undefined,
-      error: JSON.stringify(diagnostics),
-      attempts: attemptsExecuted,
+      methodIndex: null,
+      methodName: undefined,
+      errors,
+      attempts,
     };
   }
 
@@ -1122,7 +1173,19 @@ export class ElementDetectorService {
       }
 
       if (!skipHistogramOps) {
-        const claheFactory = this.claheFactory;
+        let claheFactory = this.claheFactory;
+        if (!claheFactory) {
+          this.logger.warn('CLAHE factory unavailable during preprocessing; retrying capability detection');
+          const capability = this.detectClaheCapability();
+          if (capability.success) {
+            claheFactory = this.claheFactory;
+          } else {
+            this.logger.warn(
+              `CLAHE detection retry failed: ${JSON.stringify(capability.errors ?? [])}`,
+            );
+          }
+        }
+
         if (claheFactory) {
           try {
             claheInstance = claheFactory();
@@ -1138,6 +1201,12 @@ export class ElementDetectorService {
         }
 
         if (!output) {
+          const diagnosticsSnapshot = this.opencvCapabilities.claheDiagnostics
+            ? JSON.stringify(this.opencvCapabilities.claheDiagnostics)
+            : 'unknown';
+          warnOnce(
+            `CLAHE unavailable; using histogram fallback (diagnostics=${diagnosticsSnapshot})`,
+          );
           output = this.applyHistogramFallbacks(workingMat, 'applyClahePreprocessing:fallback');
         }
       }

@@ -198,8 +198,11 @@ RUN apt-get update && apt-get install -y \
     libopencv-contrib-dev \
     libopencv-core-dev \
     libopencv-imgproc-dev \
+    libopencv-photo-dev \
     libopencv-highgui-dev \
     libopencv-imgcodecs-dev \
+    libopencv-xphoto-dev \
+    libopencv-ximgproc-dev \
     libcairo2-dev \
     libpango1.0-dev \
     libjpeg-dev \

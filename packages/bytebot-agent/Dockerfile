@@ -10,7 +10,8 @@ ENV NODE_PATH=/app/node_modules:/app/packages/bytebot-agent/node_modules:/app/pa
 ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
     OPENCV4NODEJS_AUTOBUILD=1 \
-    OPENCV4NODEJS_SKIP_TRACKING=1
+    OPENCV4NODEJS_SKIP_TRACKING=1 \
+    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DBUILD_opencv_videoio=OFF -DWITH_FFMPEG=OFF"
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -42,7 +43,7 @@ RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
 RUN node -e "const fs=require('fs'); const path=require('path'); const update=(workspace,value)=>{const file=path.join('packages',workspace,'package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']=value; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');}; update('bytebot-agent','../bytebot-cv'); update('bytebotd','../bytebot-cv');" \
     && npm install --prefix packages/shared \
     && npm install --prefix packages/bytebot-cv opencv-build \
-    && node -e "process.chdir('packages/bytebot-cv'); require('opencv-build').install();" \
+    && node -e "process.chdir('packages/bytebot-cv'); const { install } = require('opencv-build/build/install'); install().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });" \
     && OPENCV_LIB_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
        OPENCV_INCLUDE_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
        OPENCV_BIN_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \

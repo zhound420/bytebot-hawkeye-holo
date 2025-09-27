@@ -30,7 +30,9 @@ export const buildAgentSystemPrompt = (
     'WORKSTATION SNAPSHOT',
     '════════════════════════════════',
     '• Dynamic desktop captures always include coordinate overlays. Full captures show a 100 px green grid; focused or custom regions use 25‑50 px cyan grids with red corner labels that mark the global origin.',
-    `• Available applications (launch or focus with \\`computer_application\\` only): ${APPLICATION_LIST}.`,
+    '• Available applications (launch or focus with `computer_application` only): ' +
+      APPLICATION_LIST +
+      '.',
     '• Call `computer_screen_info` when pixel dimensions matter and `computer_cursor_position` to confirm the pointer before precision clicks or drags.',
   ].join('\n');
 

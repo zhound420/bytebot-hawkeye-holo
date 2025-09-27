@@ -36,6 +36,11 @@ type MatLike = {
   channels?: number | (() => number);
 };
 
+type MatConversion = {
+  mat: MatLike;
+  needsRelease: boolean;
+};
+
 type CanvasImageData = {
   data: Uint8ClampedArray;
   width: number;
@@ -429,11 +434,19 @@ export class ElementDetectorService {
     if (!hasCv) {
       return null;
     }
+    let conversion: MatConversion | null = null;
     try {
-      return cv.imdecode(buffer);
+      conversion = this.ensureMat(buffer, 'decodeImage');
+      return conversion.mat;
     } catch (error) {
       warnOnce('Failed to decode screenshot buffer', error);
       return null;
+    } finally {
+      // When ensureMat constructs a new Mat for us, the caller owns it.
+      if (conversion?.needsRelease) {
+        // Prevent automatic release here; transfer ownership by flagging false.
+        conversion.needsRelease = false;
+      }
     }
   }
 
@@ -486,24 +499,157 @@ export class ElementDetectorService {
     return true;
   }
 
-  private safeClone(mat: MatLike | null | undefined): MatLike | null {
+  private safeClone(mat: MatLike | null | undefined, source = 'safeClone'): MatLike | null {
+    return this.safeMatClone(mat, source);
+  }
+
+  private safeMatClone(mat: MatLike | null | undefined, source = 'safeMatClone'): MatLike | null {
     if (!mat) {
       return null;
     }
-    try {
-      if (typeof mat.clone === 'function') {
-        return mat.clone();
+
+    if (!hasCv || !cv?.Mat) {
+      if (typeof (mat as any).clone === 'function') {
+        return (mat as any).clone();
       }
-      if (typeof mat.copy === 'function') {
-        return mat.copy();
+      if (typeof (mat as any).copy === 'function') {
+        return (mat as any).copy();
       }
-      if (hasCv && cv?.Mat) {
-        return new cv.Mat(mat);
-      }
-    } catch (error) {
-      warnOnce('Mat clone failed', error);
+      return null;
     }
-    return null;
+
+    let conversion: MatConversion | null = null;
+    try {
+      conversion = this.ensureMat(mat, source);
+      const candidate = conversion.mat as any;
+      if (typeof candidate.clone === 'function') {
+        return candidate.clone();
+      }
+      if (typeof candidate.copy === 'function') {
+        return candidate.copy();
+      }
+      return new cv.Mat(candidate);
+    } catch (error) {
+      warnOnce(`${source} failed`, error);
+      if (typeof (mat as any).clone === 'function') {
+        return (mat as any).clone();
+      }
+      if (typeof (mat as any).copy === 'function') {
+        return (mat as any).copy();
+      }
+      return null;
+    } finally {
+      if (conversion?.needsRelease) {
+        this.releaseMat(conversion.mat);
+      }
+    }
+  }
+
+  private ensureMat(image: unknown, source = 'ensureMat'): MatConversion {
+    if (!hasCv || !cv?.Mat) {
+      throw new Error(`OpenCV Mat unavailable while processing ${source}`);
+    }
+
+    if (!image) {
+      throw new Error(`Received empty image value for ${source}`);
+    }
+
+    if (image instanceof cv.Mat) {
+      return { mat: image as MatLike, needsRelease: false };
+    }
+
+    if (Buffer.isBuffer(image)) {
+      try {
+        const decoded = cv.imdecode(image);
+        if (!decoded) {
+          throw new Error('imdecode returned null');
+        }
+        return { mat: decoded as MatLike, needsRelease: true };
+      } catch (error) {
+        throw new Error(`Failed to decode buffer for ${source}: ${(error as Error)?.message ?? error}`);
+      }
+    }
+
+    if (this.isCanvasImageData(image)) {
+      return this.createMatFromImageData(image, source);
+    }
+
+    if (this.isMatLike(image)) {
+      try {
+        const cloned = new cv.Mat(image as any);
+        return { mat: cloned as MatLike, needsRelease: true };
+      } catch (error) {
+        throw new Error(`Failed to construct Mat from MatLike for ${source}: ${(error as Error)?.message ?? error}`);
+      }
+    }
+
+    throw new Error(`Unsupported image type for ${source}: ${typeof image}`);
+  }
+
+  private createMatFromImageData(image: CanvasImageData, source: string): MatConversion {
+    if (!hasCv || !cv?.Mat) {
+      throw new Error(`OpenCV unavailable for ${source}`);
+    }
+
+    try {
+      if (typeof (cv as any).matFromImageData === 'function') {
+        const mat = (cv as any).matFromImageData(image);
+        return { mat: mat as MatLike, needsRelease: true };
+      }
+
+      const channels = image.data.length / (image.width * image.height);
+      const type = channels === 4
+        ? (typeof cv.CV_8UC4 === 'number' ? cv.CV_8UC4 : (cv as any).CV_8UC4 ?? 24)
+        : (typeof cv.CV_8UC3 === 'number' ? cv.CV_8UC3 : (cv as any).CV_8UC3 ?? 16);
+
+      const buffer = Buffer.from(image.data);
+      const matWithChannels = new cv.Mat(image.height, image.width, type, buffer);
+
+      if (channels === 4 && typeof (matWithChannels as any).cvtColor === 'function') {
+        const rgbaToBgr = typeof cv.COLOR_RGBA2BGR === 'number'
+          ? cv.COLOR_RGBA2BGR
+          : typeof cv.COLOR_BGRA2BGR === 'number'
+            ? cv.COLOR_BGRA2BGR
+            : typeof cv.COLOR_RGBA2RGB === 'number'
+              ? cv.COLOR_RGBA2RGB
+              : null;
+
+        if (rgbaToBgr !== null) {
+          const converted = (matWithChannels as any).cvtColor(rgbaToBgr);
+          this.releaseMat(matWithChannels);
+          return { mat: converted as MatLike, needsRelease: true };
+        }
+      }
+
+      return { mat: matWithChannels as MatLike, needsRelease: true };
+    } catch (error) {
+      throw new Error(`Failed to convert ImageData to Mat for ${source}: ${(error as Error)?.message ?? error}`);
+    }
+  }
+
+  private releaseConversion(conversion: MatConversion | null | undefined, preserve?: MatLike): void {
+    if (!conversion?.needsRelease || !conversion.mat) {
+      return;
+    }
+
+    if (preserve && conversion.mat === preserve) {
+      return;
+    }
+
+    this.releaseMat(conversion.mat);
+  }
+
+  private isCanvasImageData(value: unknown): value is CanvasImageData {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const candidate = value as Partial<CanvasImageData>;
+    return (
+      typeof candidate.width === 'number' &&
+      typeof candidate.height === 'number' &&
+      candidate.data instanceof Uint8ClampedArray
+    );
   }
 
   private toGray(mat: MatLike): MatLike {
@@ -542,11 +688,15 @@ export class ElementDetectorService {
     if (!hasCv) {
       return null;
     }
+    let conversion: MatConversion | null = null;
     try {
-      return cv.imencode('.png', mat);
+      conversion = this.ensureMat(mat, 'encodeMat');
+      return cv.imencode('.png', conversion.mat);
     } catch (error) {
       warnOnce('Failed to encode processed image for OCR', error);
       return null;
+    } finally {
+      this.releaseConversion(conversion);
     }
   }
 
@@ -609,157 +759,316 @@ export class ElementDetectorService {
     method: string,
   ): Promise<Buffer> {
     if (!hasCv) {
-      return this.preprocessImageCanvas(imageBuffer, method);
+      return this.preprocessImageCanvasBuffer(imageBuffer, method);
     }
+    let baseConversion: MatConversion | null = null;
+    let processed: MatLike | null = null;
+    let processedIsBase = false;
 
     try {
-      const mat = cv.imdecode(imageBuffer);
-      if (!mat) {
-        return imageBuffer;
-      }
-
-      let processedMat: MatLike;
+      baseConversion = this.ensureMat(imageBuffer, `preprocessImageForOCR:${method}`);
+      const baseMat = baseConversion.mat;
 
       if (method.includes('clahe')) {
-        processedMat = await this.applyClahePreprocessing(mat);
+        processed = await this.applyClahePreprocessing(baseMat);
       } else if (method.includes('denoise')) {
-        processedMat = await this.applyDenoisePreprocessing(mat);
+        processed = await this.applyDenoisePreprocessing(baseMat);
       } else if (method.includes('edge')) {
-        processedMat = await this.applyEdgePreprocessing(mat);
+        processed = await this.applyEdgePreprocessing(baseMat);
       } else {
-        processedMat =
-          typeof (mat as MatLike).clone === 'function' ? (mat as MatLike).clone!() : mat;
+        processed = this.safeMatClone(baseMat, `preprocessImageForOCR:${method}:clone`) ?? baseMat;
       }
 
-      const result = cv.imencode('.png', processedMat).toString('base64');
-
-      if (processedMat !== mat) {
-        this.releaseMat(processedMat);
+      processedIsBase = processed === baseMat;
+      const encoded = this.encodeMat(processedIsBase ? baseMat : processed);
+      if (!encoded) {
+        throw new Error('Failed to encode processed Mat');
       }
-      this.releaseMat(mat);
 
-      return Buffer.from(result, 'base64');
+      return encoded;
     } catch (error) {
       this.logger.error(
         `OCR preprocessing failed for method ${method}`,
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return imageBuffer;
+      return this.preprocessImageCanvasBuffer(imageBuffer, method);
+    } finally {
+      if (processed && !processedIsBase) {
+        this.releaseMat(processed);
+      }
+      if (baseConversion?.needsRelease) {
+        this.releaseMat(baseConversion.mat);
+      }
     }
   }
 
   private async applyClahePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return this.safeMatClone(mat, 'applyClahePreprocessing:noCv') ?? mat;
+    }
+
+    let baseConversion: MatConversion | null = null;
+    let workingMat: MatLike | null = null;
+    let workingNeedsRelease = false;
+    let claheInstance: any;
+    let output: MatLike | null = null;
+
     try {
-      const channels = this.getChannelCount(mat);
-      const gray =
-        channels > 1 && typeof (mat as any).cvtColor === 'function'
-          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
-          : typeof (mat as any).clone === 'function'
-            ? (mat as any).clone()
-            : mat;
+      baseConversion = this.ensureMat(mat, 'applyClahePreprocessing');
+      workingMat = baseConversion.mat;
 
-      let enhanced: MatLike;
+      const updateWorkingMat = (next: MatLike, markRelease: boolean) => {
+        if (workingNeedsRelease && workingMat && workingMat !== next) {
+          this.releaseMat(workingMat);
+        }
+        workingMat = next;
+        workingNeedsRelease = markRelease;
+      };
 
-      if (cv.createCLAHE) {
-        const clahe = cv.createCLAHE({ clipLimit: 3.0, tileGridSize: new cv.Size(8, 8) });
-        enhanced = clahe.apply(gray);
-      } else if ((cv as any).CLAHE) {
-        const clahe = new (cv as any).CLAHE(3.0, new cv.Size(8, 8));
-        enhanced = clahe.apply(gray);
-      } else {
-        this.logger.warn('CLAHE not available, using equalizeHist fallback');
-        enhanced = (gray as any).equalizeHist();
+      let workingAny = workingMat as any;
+      const channels = this.getChannelCount(workingMat);
+
+      if (channels > 1 && typeof workingAny.cvtColor === 'function') {
+        const gray = workingAny.cvtColor(cv.COLOR_BGR2GRAY ?? cv.COLOR_RGB2GRAY ?? 6);
+        updateWorkingMat(gray, true);
+        workingAny = workingMat as any;
+      } else if (typeof workingAny.clone === 'function') {
+        const clone = workingAny.clone();
+        if (clone) {
+          updateWorkingMat(clone, true);
+          workingAny = workingMat as any;
+        }
       }
 
-      if (gray !== mat) {
-        this.releaseMat(gray);
+      const desiredType =
+        typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+
+      try {
+        if (typeof workingAny.type === 'function') {
+          const currentType = workingAny.type();
+          if (typeof currentType === 'number' && currentType !== desiredType) {
+            if (typeof workingAny.convertTo === 'function') {
+              const converted = workingAny.convertTo(desiredType);
+              if (converted && this.isMatLike(converted)) {
+                updateWorkingMat(converted, true);
+                workingAny = workingMat as any;
+              }
+            } else if (typeof cv.convertScaleAbs === 'function') {
+              const converted = cv.convertScaleAbs(workingMat);
+              if (converted && this.isMatLike(converted)) {
+                updateWorkingMat(converted, true);
+                workingAny = workingMat as any;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        warnOnce('Failed to normalise CLAHE input to 8-bit', error);
       }
-      return enhanced;
+
+      let skipHistogramOps = false;
+      try {
+        if (typeof workingAny.type === 'function') {
+          const typeCheck = workingAny.type();
+          if (typeof typeCheck === 'number' && typeCheck !== desiredType) {
+            warnOnce('CLAHE input not CV_8UC1; returning clone fallback');
+            output = this.safeMatClone(workingMat, 'applyClahePreprocessing:typeFallback') ?? workingMat;
+            skipHistogramOps = true;
+          }
+        }
+      } catch (error) {
+        warnOnce('CLAHE input type check failed', error);
+      }
+
+      if (!skipHistogramOps) {
+        const tileSize = this.createTileSize(8);
+        if (typeof cv.createCLAHE === 'function') {
+          try {
+            claheInstance = cv.createCLAHE(3.0, tileSize);
+          } catch (innerError) {
+            warnOnce('createCLAHE invocation failed, attempting manual CLAHE initialization', innerError);
+          }
+        }
+
+        if (!claheInstance && typeof (cv as any).CLAHE === 'function') {
+          try {
+            claheInstance = new (cv as any).CLAHE(3.0, tileSize);
+          } catch (innerError) {
+            warnOnce('CLAHE constructor failed', innerError);
+          }
+        }
+
+        if (!claheInstance && typeof (cv as any).CLAHE === 'function') {
+          try {
+            claheInstance = new (cv as any).CLAHE();
+            if (typeof claheInstance.setClipLimit === 'function') {
+              claheInstance.setClipLimit(3.0);
+            }
+            if (typeof claheInstance.setTilesGridSize === 'function') {
+              claheInstance.setTilesGridSize(tileSize);
+            }
+          } catch (innerError) {
+            warnOnce('CLAHE default constructor failed', innerError);
+          }
+        }
+
+        if (claheInstance && typeof claheInstance.apply === 'function') {
+          output = claheInstance.apply(workingMat);
+        } else if (typeof (workingMat as any).equalizeHist === 'function') {
+          warnOnce('CLAHE not available, using equalizeHist fallback');
+          output = (workingMat as any).equalizeHist();
+        } else {
+          warnOnce('Histogram equalization unavailable; returning cloned input');
+          output = this.safeMatClone(workingMat, 'applyClahePreprocessing:fallback') ?? workingMat;
+        }
+      }
+
+      if (!output) {
+        throw new Error('CLAHE pipeline produced no output');
+      }
+
+      return output;
     } catch (error) {
       this.logger.error(
         'CLAHE preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
+      return this.safeMatClone(mat, 'applyClahePreprocessing:error') ?? mat;
+    } finally {
+      if (claheInstance && typeof claheInstance.delete === 'function') {
+        claheInstance.delete();
+      }
+      if (workingNeedsRelease && workingMat && workingMat !== output) {
+        this.releaseMat(workingMat);
+      }
+      if (baseConversion?.needsRelease && baseConversion.mat !== output && baseConversion.mat !== workingMat) {
+        this.releaseMat(baseConversion.mat);
+      }
     }
   }
 
   private async applyDenoisePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return this.safeMatClone(mat, 'applyDenoisePreprocessing:noCv') ?? mat;
+    }
+
+    let baseConversion: MatConversion | null = null;
+    let workingMat: MatLike | null = null;
+    let workingNeedsRelease = false;
+    let output: MatLike | null = null;
+
     try {
-      const channels = this.getChannelCount(mat);
-      const gray =
-        channels > 1 && typeof (mat as any).cvtColor === 'function'
-          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
-          : typeof (mat as any).clone === 'function'
-            ? (mat as any).clone()
-            : mat;
+      baseConversion = this.ensureMat(mat, 'applyDenoisePreprocessing');
+      workingMat = baseConversion.mat;
 
-      let denoised: MatLike;
+      const workingAny = workingMat as any;
+      const channels = this.getChannelCount(workingMat);
 
-      if (cv.fastNlMeansDenoising) {
-        denoised = (gray as any).fastNlMeansDenoising(10, 7, 21);
+      if (channels > 1 && typeof workingAny.cvtColor === 'function') {
+        const gray = workingAny.cvtColor(cv.COLOR_BGR2GRAY ?? cv.COLOR_RGB2GRAY ?? 6);
+        workingMat = gray;
+        workingNeedsRelease = true;
+      } else if (typeof workingAny.clone === 'function') {
+        const clone = workingAny.clone();
+        if (clone) {
+          workingMat = clone;
+          workingNeedsRelease = true;
+        }
+      }
+
+      if (cv.fastNlMeansDenoising && typeof workingAny.fastNlMeansDenoising === 'function') {
+        output = workingAny.fastNlMeansDenoising(10, 7, 21);
+      } else if (typeof workingAny.gaussianBlur === 'function') {
+        output = workingAny.gaussianBlur(new cv.Size(3, 3), 0);
       } else {
-        denoised = (gray as any).gaussianBlur(new cv.Size(3, 3), 0);
+        warnOnce('No denoise kernels available; returning clone');
+        output = this.safeMatClone(workingMat, 'applyDenoisePreprocessing:fallback') ?? workingMat;
       }
 
-      if (gray !== mat) {
-        this.releaseMat(gray);
+      if (!output) {
+        throw new Error('Denoise pipeline produced no output');
       }
-      return denoised;
+
+      return output;
     } catch (error) {
       this.logger.error(
         'Denoise preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
+      return this.safeMatClone(mat, 'applyDenoisePreprocessing:error') ?? mat;
+    } finally {
+      if (workingNeedsRelease && workingMat && workingMat !== output) {
+        this.releaseMat(workingMat);
+      }
+      if (baseConversion?.needsRelease && baseConversion.mat !== output && baseConversion.mat !== workingMat) {
+        this.releaseMat(baseConversion.mat);
+      }
     }
   }
 
   private async applyEdgePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return this.safeMatClone(mat, 'applyEdgePreprocessing:noCv') ?? mat;
+    }
+
+    let baseConversion: MatConversion | null = null;
+    let workingMat: MatLike | null = null;
+    let workingNeedsRelease = false;
+    let edges: MatLike | null = null;
+    let kernel: MatLike | null = null;
+    let enhanced: MatLike | null = null;
+    let returnMat: MatLike | null = null;
+
     try {
-      const channels = this.getChannelCount(mat);
-      const gray =
-        channels > 1 && typeof (mat as any).cvtColor === 'function'
-          ? (mat as any).cvtColor(cv.COLOR_BGR2GRAY)
-          : typeof (mat as any).clone === 'function'
-            ? (mat as any).clone()
-            : mat;
+      baseConversion = this.ensureMat(mat, 'applyEdgePreprocessing');
+      workingMat = baseConversion.mat;
 
-      const edgesCandidate =
-        typeof (gray as any).canny === 'function'
-          ? (gray as any).canny(50, 150)
-          : null;
+      const workingAny = workingMat as any;
+      const channels = this.getChannelCount(workingMat);
 
-      if (!this.isMatLike(edgesCandidate)) {
-        warnOnce('Canny returned non-mat output; skipping morphology stage');
-        if (gray !== mat) {
-          this.releaseMat(gray);
+      if (channels > 1 && typeof workingAny.cvtColor === 'function') {
+        const gray = workingAny.cvtColor(cv.COLOR_BGR2GRAY ?? cv.COLOR_RGB2GRAY ?? 6);
+        workingMat = gray;
+        workingNeedsRelease = true;
+      } else if (typeof workingAny.clone === 'function') {
+        const clone = workingAny.clone();
+        if (clone) {
+          workingMat = clone;
+          workingNeedsRelease = true;
         }
-        return this.safeClone(gray) ?? gray;
       }
 
-      const edges = edgesCandidate;
+      if (typeof (workingMat as any).canny !== 'function') {
+        warnOnce('Canny unavailable; returning cloned grayscale');
+        const fallback = workingMat ?? baseConversion?.mat ?? mat;
+        returnMat = this.safeMatClone(fallback, 'applyEdgePreprocessing:noCanny') ?? fallback;
+        return returnMat;
+      }
 
-      const morphRect = hasCv && typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
+      edges = (workingMat as any).canny(50, 150);
+      if (!this.isMatLike(edges)) {
+        warnOnce('Canny returned non-mat output; skipping morphology stage');
+        const fallback = workingMat ?? baseConversion?.mat ?? mat;
+        returnMat = this.safeMatClone(fallback, 'applyEdgePreprocessing:nonMatEdges') ?? fallback;
+        return returnMat;
+      }
 
-      const kernel =
-        hasCv && typeof cv.getStructuringElement === 'function' && typeof cv.Size === 'function'
-          ? cv.getStructuringElement(morphRect, new cv.Size(3, 3))
-          : null;
+      const morphRect = typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
+      if (typeof cv.getStructuringElement === 'function' && typeof cv.Size === 'function') {
+        kernel = cv.getStructuringElement(morphRect, new cv.Size(3, 3));
+      }
 
       if (!this.isMatLike(kernel)) {
         warnOnce('Structuring element creation failed; returning raw edges');
-        if (gray !== mat) {
-          this.releaseMat(gray);
-        }
-        return edges;
+        enhanced = edges;
+        returnMat = enhanced;
+        return returnMat;
       }
 
-      let enhanced: MatLike = edges;
-      const morphClose = hasCv && typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
+      const morphClose = typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
       if (typeof (edges as any).morphologyEx === 'function') {
         enhanced = (edges as any).morphologyEx(morphClose, kernel);
-      } else if (hasCv && typeof cv.morphologyEx === 'function') {
+      } else if (typeof cv.morphologyEx === 'function') {
         try {
           enhanced = cv.morphologyEx(edges, morphClose, kernel);
         } catch (error) {
@@ -771,23 +1080,36 @@ export class ElementDetectorService {
         enhanced = edges;
       }
 
-      if (gray !== mat) {
-        this.releaseMat(gray);
+      if (!enhanced) {
+        enhanced = edges ?? workingMat ?? baseConversion?.mat ?? mat;
       }
-      this.releaseMat(edges !== enhanced ? edges : null);
-      this.releaseMat(kernel);
 
-      return enhanced;
+      returnMat = (enhanced ?? edges ?? workingMat ?? baseConversion?.mat ?? mat) as MatLike;
+      return returnMat;
     } catch (error) {
       this.logger.error(
         'Edge preprocessing failed',
         (error as Error)?.stack ?? (error as Error)?.message ?? String(error),
       );
-      return typeof (mat as any).clone === 'function' ? (mat as any).clone() : mat;
+      returnMat = this.safeMatClone(mat, 'applyEdgePreprocessing:error') ?? mat;
+      return returnMat;
+    } finally {
+      if (kernel) {
+        this.releaseMat(kernel);
+      }
+      if (edges && edges !== returnMat && edges !== enhanced) {
+        this.releaseMat(edges);
+      }
+      if (workingNeedsRelease && workingMat && workingMat !== returnMat && workingMat !== enhanced) {
+        this.releaseMat(workingMat);
+      }
+      if (baseConversion?.needsRelease && baseConversion.mat !== returnMat && baseConversion.mat !== workingMat) {
+        this.releaseMat(baseConversion.mat);
+      }
     }
   }
 
-  private async preprocessImageCanvas(
+  private async preprocessImageCanvasBuffer(
     imageBuffer: Buffer,
     method: string,
   ): Promise<Buffer> {
@@ -800,12 +1122,12 @@ export class ElementDetectorService {
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      if (method.includes('contrast')) {
-        this.enhanceContrast(imageData.data);
-      } else if (method.includes('sharpen')) {
-        this.sharpenImage({ data: imageData.data, width: imageData.width, height: imageData.height });
-      }
+      const processed = await this.preprocessImageCanvas(
+        { data: new Uint8ClampedArray(imageData.data), width: imageData.width, height: imageData.height },
+        method,
+      );
 
+      imageData.data.set(processed.data);
       ctx.putImageData(imageData, 0, 0);
 
       return canvas.toBuffer('image/png');
@@ -816,6 +1138,27 @@ export class ElementDetectorService {
       );
       return imageBuffer;
     }
+  }
+
+  private async preprocessImageCanvas(
+    imageData: CanvasImageData,
+    method: string,
+  ): Promise<CanvasImageData> {
+    const cloned: CanvasImageData = {
+      data: new Uint8ClampedArray(imageData.data),
+      width: imageData.width,
+      height: imageData.height,
+    };
+
+    if (method.includes('contrast')) {
+      this.enhanceContrast(cloned.data);
+    }
+
+    if (method.includes('sharpen')) {
+      this.sharpenImage(cloned);
+    }
+
+    return cloned;
   }
 
   private enhanceContrast(data: Uint8ClampedArray): void {

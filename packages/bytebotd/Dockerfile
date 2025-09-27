@@ -30,10 +30,12 @@ RUN apt-get update && apt-get install -y \
     x11-apps sudo software-properties-common \
     # Desktop environment 
     xfce4 xfce4-goodies dbus wmctrl \
+    bluez bluetooth \
     # Display manager with autologin capability
     lightdm \
     # Development tools
-    python3 python3-pip curl wget git vim \
+    python3 python3-pip python3-dbus python3-gi gir1.2-glib-2.0 \
+    curl wget git vim \
     # Utilities
     supervisor netcat-openbsd \
     # Applications
@@ -268,6 +270,8 @@ RUN chown -R root:root /bytebot/packages/bytebotd/root && \
     find /bytebot/packages/bytebotd/root -type d -exec chmod 755 {} + && \
     find /bytebot/packages/bytebotd/root -type f -executable -exec chmod +x {} + && \
     cp -a /bytebot/packages/bytebotd/root/. /
+
+RUN chmod +x /usr/local/bin/bytebot-bluez-stub
 
 RUN chown -R user:user /home/user
 RUN chmod -R 755 /home/user

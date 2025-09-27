@@ -48,6 +48,7 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Progressive zoom capture** | Deterministic zoom ladder with cyan micro-grids that map local→global coordinates; see [zoom samples](test-zoom-with-grid.png). | Manual zoom commands with no coordinate reconciliation. |
 | **Coordinate telemetry & accuracy** | Telemetry pipeline with `BYTEBOT_COORDINATE_METRICS` and `BYTEBOT_COORDINATE_DEBUG`, an attempt towards accuracy.(COORDINATE_ACCURACY_IMPROVEMENTS.md). | No automated accuracy measurement or debug dataset. |
 | **Universal coordinate mapping** | Shared lookup in `config/universal-coordinates.yaml` bundled in repo and `@bytebot/shared`, auto-discovered without extra configuration. | Requires custom configuration for consistent coordinate frames. |
+| **Universal element detection** | CV pipeline merges visual heuristics, OCR enrichments, and semantic roles to emit consistent `UniversalUIElement` metadata for buttons, inputs, and clickable controls. | LLM prompts must infer UI semantics from raw OCR spans and manually chosen click targets. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
 | **Active Model desktop telemetry** | The desktop dashboard’s Active Model card (under `/desktop`) continuously surfaces the agent’s current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
 
@@ -76,6 +77,41 @@ To help you interpret the drawer’s live readouts, Hawkeye surfaces several lea
 - **Hotspots** — Highlighted regions where misses cluster, helping you identify UI zones that need larger affordances, different prompts, or manual overrides.
 
 Together, these metrics give you continuous feedback on how Hawkeye’s coordinate calibration improves over time and whether additional guardrails are necessary for stubborn workflows.
+
+### Universal UI Element Detector & Semantic Analyzer
+
+Hawkeye now surfaces a **universal element detection service** that outputs structured `UniversalUIElement` objects. The pipeline fuses:
+
+- **Visual pattern detection** (`VisualPatternDetectorService`) tuned for desktop buttons and text inputs using OpenCV edge, CLAHE, and sharpen filters.
+- **OCR enrichment** through `ElementDetectorService.detectElementsUniversal`, which pairs every candidate with text, semantic roles (`submit`, `cancel`, `search`, …), confidence, click targets, and human-friendly descriptions.
+- **Text-based semantics** (`TextSemanticAnalyzerService`) so downstream agents reason about intent rather than raw strings.
+
+Import `BytebotCvModule` in any Nest workspace to inject these services or call `detectElementsUniversal` directly from the agent `computer_detect_elements` tool. This drastically shortens the reasoning chain LLMs need before issuing `computer_click_element`.
+
+### OCR Preprocessing Improvements
+
+The CV stack now relies on OpenCV’s CLAHE implementation when available (with graceful fallbacks for distro-specific builds) and a safer sharpening pipeline. Capability checks run at startup, so missing features are logged once instead of spamming runtime warnings—and the OCR feed enjoys higher contrast inputs across platforms.
+
+### Keyboard & Shortcut Reliability
+
+`NutService` on the desktop daemon parses compound shortcuts such as `ctrl+shift+p`, mixed-case modifiers, and platform aliases (`cmd`, `option`, `win`). Legacy arrays like `['Control', 'Shift', 'X']` continue to work, but LLM tool calls can now emit compact strings and rely on the daemon to normalize, validate, and execute the correct nut-js sequence.
+
+### Running the Default Compose Stack
+
+To boot the Hawkeye desktop, agent, UI, and Postgres services without the LiteLLM proxy, use the standard compose topology:
+
+```bash
+docker compose -f docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml up -d
+```
+
+Default endpoints:
+
+- Agent API – `http://localhost:9991`
+- Web UI – `http://localhost:9992`
+- Desktop noVNC – `http://localhost:9990`
+
+If the UI reports `ECONNREFUSED` to `9991`, ensure the agent container is healthy (`docker compose ps bytebot-agent`) and inspect its logs (`docker compose logs bytebot-agent`) for Prisma or DI failures.
 
 ## Quick Start: Proxy Compose Stack
 

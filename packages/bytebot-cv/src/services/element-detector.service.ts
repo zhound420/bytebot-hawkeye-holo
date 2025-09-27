@@ -33,14 +33,9 @@ type MatLike = {
   getRegion?: (rect: any) => MatLike;
 };
 
-type PreprocessResult = {
-  image: MatLike;
-  scale: number;
-};
-
 type OcrStrategy = {
   name: string;
-  preprocess: (source: MatLike) => PreprocessResult | null;
+  preprocessMethod: string;
   tessParams: Record<string, string>;
   minConfidence: number;
 };
@@ -302,6 +297,13 @@ export class ElementDetectorService {
     }
 
     const strategies = this.buildStrategies();
+
+    const baseBuffer = this.encodeMat(regionMat);
+    if (!baseBuffer || baseBuffer.length === 0) {
+      warnOnce('Unable to encode region for OCR preprocessing');
+      return [];
+    }
+
     const attemptResults: {
       name: string;
       elements: DetectedElement[];
@@ -310,13 +312,8 @@ export class ElementDetectorService {
 
     for (const strategy of strategies) {
       try {
-        const processed = strategy.preprocess(regionMat);
-        if (!processed || !this.isValidSize(processed.image)) {
-          continue;
-        }
-
-        const encoded = this.encodeMat(processed.image);
-        if (!encoded) {
+        const processedBuffer = await this.preprocessImageForOCR(baseBuffer, strategy.preprocessMethod);
+        if (!processedBuffer || processedBuffer.length === 0) {
           continue;
         }
 
@@ -328,7 +325,7 @@ export class ElementDetectorService {
           await workerAny.setParameters(strategy.tessParams);
         }
 
-        const { data } = await worker.recognize(encoded);
+        const { data } = await worker.recognize(processedBuffer);
         const words = (data?.words ?? []).filter(
           (word) => (word.confidence ?? 0) >= strategy.minConfidence,
         );
@@ -336,13 +333,7 @@ export class ElementDetectorService {
           continue;
         }
 
-        const elements = this.wordsToElements(
-          words,
-          offsetX,
-          offsetY,
-          processed.scale,
-          strategy.name,
-        );
+        const elements = this.wordsToElements(words, offsetX, offsetY, 1, strategy.name);
 
         if (elements.length === 0) {
           continue;
@@ -371,33 +362,10 @@ export class ElementDetectorService {
   }
 
   private buildStrategies(): OcrStrategy[] {
-    if (!hasCv) {
-      return [
-        {
-          name: 'basic_psm8',
-          preprocess: (source) => ({ image: this.safeClone(source) ?? source, scale: 1 }),
-          tessParams: {
-            tessedit_pageseg_mode: '8',
-            tessedit_char_whitelist: DEFAULT_CHAR_WHITELIST,
-            preserve_interword_spaces: '1',
-            user_defined_dpi: '300',
-          },
-          minConfidence: 65,
-        },
-      ];
-    }
-
-    return [
+    const strategies: OcrStrategy[] = [
       {
-        name: 'clahe_psm8_scale_1.5',
-        preprocess: (source) => {
-          const base = this.safeClone(source) ?? source;
-          const scaled = this.scaleMat(base, 1.5);
-          const gray = this.toGray(scaled);
-          const claheApplied = this.applyClahe(gray, 2, 8);
-          const sharpened = this.applySharpen(claheApplied);
-          return { image: sharpened, scale: 1.5 };
-        },
+        name: 'clahe_psm8',
+        preprocessMethod: 'clahe_psm8',
         tessParams: {
           tessedit_pageseg_mode: '8',
           tessedit_char_whitelist: DEFAULT_CHAR_WHITELIST,
@@ -407,14 +375,8 @@ export class ElementDetectorService {
         minConfidence: 65,
       },
       {
-        name: 'denoise_psm6_scale_1.2',
-        preprocess: (source) => {
-          const base = this.safeClone(source) ?? source;
-          const scaled = this.scaleMat(base, 1.2);
-          const gray = this.toGray(scaled);
-          const denoised = this.applyDenoising(gray);
-          return { image: denoised, scale: 1.2 };
-        },
+        name: 'denoise_psm6',
+        preprocessMethod: 'denoise_psm6',
         tessParams: {
           tessedit_pageseg_mode: '6',
           tessedit_char_whitelist: DEFAULT_CHAR_WHITELIST,
@@ -423,14 +385,8 @@ export class ElementDetectorService {
         minConfidence: 60,
       },
       {
-        name: 'edge_psm7_scale_1.8',
-        preprocess: (source) => {
-          const base = this.safeClone(source) ?? source;
-          const scaled = this.scaleMat(base, 1.8);
-          const gray = this.toGray(scaled);
-          const edges = this.applyEdgeDetection(gray);
-          return { image: edges, scale: 1.8 };
-        },
+        name: 'edge_psm7',
+        preprocessMethod: 'edge_psm7',
         tessParams: {
           tessedit_pageseg_mode: '7',
           tessedit_char_whitelist: DEFAULT_CHAR_WHITELIST,
@@ -441,7 +397,7 @@ export class ElementDetectorService {
       },
       {
         name: 'basic_psm8',
-        preprocess: (source) => ({ image: this.safeClone(source) ?? source, scale: 1 }),
+        preprocessMethod: 'basic_psm8',
         tessParams: {
           tessedit_pageseg_mode: '8',
           tessedit_char_whitelist: DEFAULT_CHAR_WHITELIST,
@@ -451,6 +407,13 @@ export class ElementDetectorService {
         minConfidence: 65,
       },
     ];
+
+    if (!hasCv) {
+      // When OpenCV is unavailable, fall back to the simplest preprocessing path first
+      return strategies.filter((strategy) => strategy.name === 'basic_psm8');
+    }
+
+    return strategies;
   }
 
   private decodeImage(buffer: Buffer): MatLike | null {
@@ -534,23 +497,6 @@ export class ElementDetectorService {
     return null;
   }
 
-  private scaleMat(mat: MatLike, scale: number): MatLike {
-    if (!hasCv || typeof mat.resize !== 'function' || scale === 1) {
-      const clone = this.safeClone(mat);
-      return clone ?? mat;
-    }
-    const width = Math.max(1, Math.round(mat.cols * scale));
-    const height = Math.max(1, Math.round(mat.rows * scale));
-    try {
-      const size = new cv.Size(width, height);
-      return mat.resize(size, 0, 0, cv.INTER_CUBIC ?? 0);
-    } catch (error) {
-      warnOnce('Mat resize failed', error);
-      const clone = this.safeClone(mat);
-      return clone ?? mat;
-    }
-  }
-
   private toGray(mat: MatLike): MatLike {
     if (!hasCv || typeof mat.cvtColor !== 'function') {
       return mat;
@@ -560,102 +506,6 @@ export class ElementDetectorService {
     } catch (error) {
       warnOnce('cvtColor to grayscale failed', error);
       return mat;
-    }
-  }
-
-  private applyClahe(mat: MatLike, clipLimit: number, tileGridSize: number): MatLike {
-    if (!hasCv) {
-      return mat;
-    }
-
-    const grayscale = this.ensureGrayscale(mat);
-
-    try {
-      const tileSize = this.createTileSize(tileGridSize);
-
-      const claheAttempts: Array<() => any> = [
-        () => (typeof cv.createCLAHE === 'function' ? cv.createCLAHE(clipLimit, tileSize) : null),
-        () => (typeof cv.createCLAHE === 'function' ? cv.createCLAHE({ clipLimit, tileGridSize: tileSize }) : null),
-        () => {
-          const ctor = (cv as any).CLAHE;
-          return typeof ctor === 'function' ? new ctor(clipLimit, tileSize) : null;
-        },
-        () => {
-          const ctor = (cv as any).CLAHE;
-          return typeof ctor === 'function' ? new ctor({ clipLimit, tileGridSize: tileSize }) : null;
-        },
-        () => {
-          const factory = (cv as any).CLAHE;
-          return typeof factory === 'function' ? factory(clipLimit, tileSize) : null;
-        },
-        () => {
-          const factory = (cv as any).CLAHE;
-          return typeof factory === 'function' ? factory({ clipLimit, tileGridSize: tileSize }) : null;
-        },
-        () => {
-          const matClahe = (grayscale as any).clahe;
-          return typeof matClahe === 'function' ? matClahe.call(grayscale, clipLimit, tileSize) : null;
-        },
-        () => {
-          const matClahe = (grayscale as any).clahe;
-          return typeof matClahe === 'function' ? matClahe.call(grayscale, { clipLimit, tileGridSize: tileSize }) : null;
-        },
-      ];
-
-      for (const attempt of claheAttempts) {
-        let candidate: any = null;
-        try {
-          candidate = attempt();
-        } catch (error) {
-          continue;
-        }
-
-        if (!candidate) {
-          continue;
-        }
-
-        try {
-          // Some implementations return a Mat directly
-          if (this.isMat(candidate)) {
-            this.logger.debug?.('CLAHE applied via Mat return value');
-            return candidate;
-          }
-
-          if (typeof candidate.apply === 'function') {
-            const result = candidate.apply(grayscale);
-            this.logger.debug?.('CLAHE applied via CLAHE instance');
-            if (typeof candidate.delete === 'function') {
-              candidate.delete();
-            }
-            return result;
-          }
-        } catch (candidateError) {
-          warnOnce('CLAHE candidate failed', candidateError);
-        }
-      }
-
-      const grayscaleAny = grayscale as any;
-
-      if (typeof grayscaleAny.equalizeHistAdaptive === 'function') {
-        try {
-          const result = grayscaleAny.equalizeHistAdaptive();
-          this.logger.debug?.('Adaptive histogram equalization applied');
-          return result;
-        } catch (adaptiveError) {
-          warnOnce('Adaptive histogram equalization failed', adaptiveError);
-        }
-      }
-
-      if (typeof grayscaleAny.equalizeHist === 'function') {
-        warnOnce('CLAHE unavailable; using equalizeHist fallback');
-        return grayscaleAny.equalizeHist();
-      }
-
-      warnOnce('CLAHE unavailable and no fallback methods; returning grayscale');
-      return grayscale;
-    } catch (error) {
-      warnOnce('applyCLAHE failed', error);
-      return grayscale;
     }
   }
 
@@ -679,58 +529,6 @@ export class ElementDetectorService {
     return { width: size, height: size };
   }
 
-  private applyDenoising(mat: MatLike): MatLike {
-    if (!hasCv) {
-      return mat;
-    }
-    try {
-      if (typeof cv.fastNlMeansDenoising === 'function') {
-        return cv.fastNlMeansDenoising(mat, 3, 7, 21);
-      }
-      return mat;
-    } catch (error) {
-      warnOnce('fastNlMeansDenoising failed', error);
-      return mat;
-    }
-  }
-
-  private applyEdgeDetection(mat: MatLike): MatLike {
-    if (!hasCv) {
-      return mat;
-    }
-    try {
-      if (typeof mat.canny === 'function') {
-        return mat.canny(60, 120);
-      }
-      if (typeof cv.Canny === 'function') {
-        return cv.Canny(mat, 60, 120);
-      }
-      return mat;
-    } catch (error) {
-      warnOnce('Canny edge detection failed', error);
-      return mat;
-    }
-  }
-
-  private applySharpen(mat: MatLike): MatLike {
-    if (!hasCv) {
-      return mat;
-    }
-
-    const grayscale = this.ensureGrayscale(mat);
-
-    try {
-      const kernel = this.createSharpenKernel();
-      if (!kernel) {
-        return grayscale;
-      }
-      return this.safeFilter2D(grayscale, kernel);
-    } catch (error) {
-      warnOnce('filter2D sharpen failed', error);
-      return grayscale;
-    }
-  }
-
   private encodeMat(mat: MatLike): Buffer | null {
     if (!hasCv) {
       return null;
@@ -740,6 +538,326 @@ export class ElementDetectorService {
     } catch (error) {
       warnOnce('Failed to encode processed image for OCR', error);
       return null;
+    }
+  }
+
+  private releaseMat(mat: MatLike | null | undefined): void {
+    if (!mat) {
+      return;
+    }
+
+    const candidate = mat as any;
+
+    try {
+      if (typeof candidate.delete === 'function') {
+        candidate.delete();
+        return;
+      }
+
+      if (typeof candidate.release === 'function') {
+        candidate.release();
+      }
+    } catch (error) {
+      warnOnce('Mat release failed', error);
+    }
+  }
+
+  private isMatLike(value: unknown): value is MatLike {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const candidate = value as any;
+    if (candidate.rows !== undefined && candidate.cols !== undefined) {
+      return true;
+    }
+
+    if (hasCv && typeof cv.Mat === 'function') {
+      return value instanceof cv.Mat;
+    }
+
+    return false;
+  }
+
+  private async preprocessImageForOCR(imageBuffer: Buffer, method: string): Promise<Buffer> {
+    if (!hasCv) {
+      return this.preprocessImageCanvas(imageBuffer, method);
+    }
+
+    try {
+      const mat = cv.imdecode(imageBuffer);
+      if (!mat) {
+        return imageBuffer;
+      }
+
+      let processedMat: MatLike;
+
+      if (method.includes('clahe')) {
+        processedMat = await this.applyClahePreprocessing(mat);
+      } else if (method.includes('denoise')) {
+        processedMat = await this.applyDenoisePreprocessing(mat);
+      } else if (method.includes('edge')) {
+        processedMat = await this.applyEdgePreprocessing(mat);
+      } else {
+        processedMat = this.safeClone(mat) ?? mat;
+      }
+
+      const encoded = cv.imencode('.png', processedMat);
+
+      if (processedMat !== mat) {
+        this.releaseMat(processedMat);
+      }
+      this.releaseMat(mat);
+
+      return encoded ?? imageBuffer;
+    } catch (error) {
+      warnOnce(`OCR preprocessing failed for method ${method}`, error);
+      return this.preprocessImageCanvas(imageBuffer, method);
+    }
+  }
+
+  private async applyClahePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return mat;
+    }
+
+    const gray = this.toGray(mat);
+    const tileSize = this.createTileSize(8);
+    const clipLimit = 3.0;
+
+    const attempts: Array<() => any> = [];
+
+    if (typeof cv.createCLAHE === 'function') {
+      attempts.push(() => cv.createCLAHE(clipLimit, tileSize));
+      attempts.push(() => cv.createCLAHE({ clipLimit, tileGridSize: tileSize }));
+    }
+
+    const claheCtor = (cv as any).CLAHE;
+    if (typeof claheCtor === 'function') {
+      attempts.push(() => new claheCtor(clipLimit, tileSize));
+      attempts.push(() => new claheCtor({ clipLimit, tileGridSize: tileSize }));
+      attempts.push(() => claheCtor(clipLimit, tileSize));
+      attempts.push(() => claheCtor({ clipLimit, tileGridSize: tileSize }));
+    }
+
+    const grayAny = gray as any;
+    if (typeof grayAny.clahe === 'function') {
+      attempts.push(() => grayAny.clahe(clipLimit, tileSize));
+      attempts.push(() => grayAny.clahe({ clipLimit, tileGridSize: tileSize }));
+    }
+
+    for (const attempt of attempts) {
+      let candidate: any;
+      try {
+        candidate = attempt();
+      } catch {
+        continue;
+      }
+
+      if (!candidate) {
+        continue;
+      }
+
+      try {
+        if (this.isMatLike(candidate)) {
+          this.releaseMat(gray !== mat ? gray : null);
+          return candidate;
+        }
+
+        if (typeof candidate.apply === 'function') {
+          const result = candidate.apply(gray);
+          if (typeof candidate.delete === 'function') {
+            candidate.delete();
+          }
+          this.releaseMat(gray !== mat ? gray : null);
+          return result;
+        }
+      } catch (error) {
+        warnOnce('CLAHE candidate application failed', error);
+      }
+    }
+
+    try {
+      if (typeof grayAny.equalizeHistAdaptive === 'function') {
+        const adaptive = grayAny.equalizeHistAdaptive();
+        this.releaseMat(gray !== mat ? gray : null);
+        return adaptive;
+      }
+
+      if (typeof grayAny.equalizeHist === 'function') {
+        warnOnce('CLAHE unavailable; using equalizeHist fallback');
+        const equalized = grayAny.equalizeHist();
+        this.releaseMat(gray !== mat ? gray : null);
+        return equalized;
+      }
+    } catch (error) {
+      warnOnce('Histogram equalization fallback failed', error);
+    }
+
+    const clone = this.safeClone(gray);
+    if (clone) {
+      if (gray !== mat) {
+        this.releaseMat(gray);
+      }
+      return clone;
+    }
+
+    return gray;
+  }
+
+  private async applyDenoisePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return mat;
+    }
+
+    const gray = this.toGray(mat);
+    try {
+      const grayAny = gray as any;
+
+      if (typeof grayAny.fastNlMeansDenoising === 'function') {
+        const denoised = grayAny.fastNlMeansDenoising(10, 7, 21);
+        this.releaseMat(gray !== mat ? gray : null);
+        return denoised;
+      }
+
+      if (typeof cv.fastNlMeansDenoising === 'function') {
+        const denoised = cv.fastNlMeansDenoising(gray, 10, 7, 21);
+        this.releaseMat(gray !== mat ? gray : null);
+        return denoised;
+      }
+
+      const blurred = typeof gray.gaussianBlur === 'function'
+        ? gray.gaussianBlur(new cv.Size(3, 3), 0)
+        : gray;
+
+      if (blurred !== gray) {
+        this.releaseMat(gray !== mat ? gray : null);
+        return blurred;
+      }
+
+      return gray;
+    } catch (error) {
+      warnOnce('Denoise preprocessing failed', error);
+      const clone = this.safeClone(gray);
+      if (clone) {
+        if (gray !== mat) {
+          this.releaseMat(gray);
+        }
+        return clone;
+      }
+
+      return gray;
+    }
+  }
+
+  private async applyEdgePreprocessing(mat: MatLike): Promise<MatLike> {
+    if (!hasCv) {
+      return mat;
+    }
+
+    const gray = this.toGray(mat);
+    try {
+      const cannyOutput = typeof (gray as any).canny === 'function'
+        ? (gray as any).canny(50, 150)
+        : typeof cv.Canny === 'function'
+          ? cv.Canny(gray, 50, 150)
+          : gray;
+
+      let enhanced = cannyOutput;
+
+      if (typeof cv.getStructuringElement === 'function') {
+        const kernel = cv.getStructuringElement(cv.MORPH_RECT ?? 0, this.createTileSize(3));
+        if (kernel && typeof enhanced.morphologyEx === 'function') {
+          const closed = enhanced.morphologyEx(cv.MORPH_CLOSE ?? 3, kernel);
+          this.releaseMat(enhanced !== cannyOutput ? enhanced : null);
+          enhanced = closed;
+          if (cannyOutput !== gray) {
+            this.releaseMat(cannyOutput);
+          }
+        }
+        this.releaseMat(kernel);
+      }
+
+      if (gray !== mat && enhanced !== gray) {
+        this.releaseMat(gray);
+      }
+
+      return enhanced;
+    } catch (error) {
+      warnOnce('Edge preprocessing failed', error);
+      const clone = this.safeClone(gray);
+      if (clone) {
+        if (gray !== mat) {
+          this.releaseMat(gray);
+        }
+        return clone;
+      }
+
+      return gray;
+    }
+  }
+
+  private async preprocessImageCanvas(imageBuffer: Buffer, method: string): Promise<Buffer> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { createCanvas, loadImage } = require('canvas') as typeof import('canvas');
+
+      const img = await loadImage(imageBuffer);
+      const canvas = createCanvas(img.width, img.height);
+      const ctx = canvas.getContext('2d');
+
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      if (method.includes('contrast')) {
+        this.enhanceContrast(imageData.data);
+      } else if (method.includes('sharpen')) {
+        this.sharpenImage(imageData);
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toBuffer('image/png');
+    } catch (error) {
+      warnOnce(`Canvas preprocessing failed for method ${method}`, error);
+      return imageBuffer;
+    }
+  }
+
+  private enhanceContrast(data: Uint8ClampedArray): void {
+    const contrast = 1.2;
+    const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+      data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+      data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+    }
+  }
+
+  private sharpenImage(imageData: { data: Uint8ClampedArray; width: number; height: number }): void {
+    const { data, width, height } = imageData;
+    const kernel = [
+      0, -1, 0,
+      -1, 5, -1,
+      0, -1, 0,
+    ];
+
+    const temp = new Uint8ClampedArray(data);
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        for (let c = 0; c < 3; c++) {
+          let sum = 0;
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              const idx = ((y + ky) * width + (x + kx)) * 4 + c;
+              sum += temp[idx] * kernel[(ky + 1) * 3 + (kx + 1)];
+            }
+          }
+          const idx = (y * width + x) * 4 + c;
+          data[idx] = Math.min(255, Math.max(0, sum));
+        }
+      }
     }
   }
 
@@ -768,93 +886,6 @@ export class ElementDetectorService {
       warnOnce('ensureGrayscale failed', error);
       return mat;
     }
-  }
-
-  private createSharpenKernel(): MatLike | null {
-    if (!hasCv || typeof cv.Mat !== 'function') {
-      warnOnce('OpenCV Mat unavailable; cannot create sharpen kernel');
-      return null;
-    }
-    try {
-      return new cv.Mat(
-        [
-          [-1, -1, -1],
-          [-1, 9, -1],
-          [-1, -1, -1],
-        ],
-        cv.CV_32F ?? 5,
-      );
-    } catch (error) {
-      warnOnce('createSharpenKernel failed', error);
-      return null;
-    }
-  }
-
-  private safeFilter2D(mat: MatLike, kernel: MatLike): MatLike {
-    if (!hasCv) {
-      return mat;
-    }
-
-    try {
-      const kernelAny = kernel as any;
-      const rows =
-        typeof kernelAny.rows === 'function'
-          ? kernelAny.rows()
-          : kernelAny.rows ?? 0;
-      const cols =
-        typeof kernelAny.cols === 'function'
-          ? kernelAny.cols()
-          : kernelAny.cols ?? 0;
-
-      if (rows === 0 || cols === 0) {
-        throw new Error('Invalid kernel dimensions');
-      }
-
-      let result: MatLike | null = null;
-
-      if (typeof cv.filter2D === 'function') {
-        result = cv.filter2D(mat, -1, kernel);
-      }
-
-      if (!result && typeof (mat as any).filter2D === 'function') {
-        result = (mat as any).filter2D(-1, kernel);
-      }
-
-      if (!result) {
-        warnOnce('filter2D unavailable; skipping sharpen');
-        return mat;
-      }
-
-      return result;
-    } catch (error) {
-      warnOnce('safeFilter2D failed', error);
-      return mat;
-    } finally {
-      const kernelAny = kernel as any;
-      if (kernelAny && typeof kernelAny.delete === 'function') {
-        try {
-          kernelAny.delete();
-        } catch (deleteError) {
-          warnOnce('kernel delete failed', deleteError);
-        }
-      }
-    }
-  }
-
-  private isMat(candidate: MatLike): boolean {
-    if (!candidate) {
-      return false;
-    }
-
-    if ((candidate as any).rows !== undefined && (candidate as any).cols !== undefined) {
-      return true;
-    }
-
-    if (hasCv && typeof cv.Mat === 'function') {
-      return candidate instanceof cv.Mat;
-    }
-
-    return false;
   }
 
   private wordsToElements(

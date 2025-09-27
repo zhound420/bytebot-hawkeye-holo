@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     python3 \
     python3-pip \
+    cmake \
+    curl \
+    wget \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 

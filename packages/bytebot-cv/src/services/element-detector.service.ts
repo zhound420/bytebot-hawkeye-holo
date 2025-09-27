@@ -571,63 +571,70 @@ export class ElementDetectorService {
     const grayscale = this.ensureGrayscale(mat);
 
     try {
-      const tileSize = typeof cv.Size === 'function' ? new cv.Size(tileGridSize, tileGridSize) : { width: tileGridSize, height: tileGridSize };
+      const tileSize = this.createTileSize(tileGridSize);
 
-      if (typeof cv.createCLAHE === 'function') {
+      const claheAttempts: Array<() => any> = [
+        () => (typeof cv.createCLAHE === 'function' ? cv.createCLAHE(clipLimit, tileSize) : null),
+        () => (typeof cv.createCLAHE === 'function' ? cv.createCLAHE({ clipLimit, tileGridSize: tileSize }) : null),
+        () => {
+          const ctor = (cv as any).CLAHE;
+          return typeof ctor === 'function' ? new ctor(clipLimit, tileSize) : null;
+        },
+        () => {
+          const ctor = (cv as any).CLAHE;
+          return typeof ctor === 'function' ? new ctor({ clipLimit, tileGridSize: tileSize }) : null;
+        },
+        () => {
+          const factory = (cv as any).CLAHE;
+          return typeof factory === 'function' ? factory(clipLimit, tileSize) : null;
+        },
+        () => {
+          const factory = (cv as any).CLAHE;
+          return typeof factory === 'function' ? factory({ clipLimit, tileGridSize: tileSize }) : null;
+        },
+        () => {
+          const matClahe = (grayscale as any).clahe;
+          return typeof matClahe === 'function' ? matClahe.call(grayscale, clipLimit, tileSize) : null;
+        },
+        () => {
+          const matClahe = (grayscale as any).clahe;
+          return typeof matClahe === 'function' ? matClahe.call(grayscale, { clipLimit, tileGridSize: tileSize }) : null;
+        },
+      ];
+
+      for (const attempt of claheAttempts) {
+        let candidate: any = null;
         try {
-          const clahe = cv.createCLAHE(clipLimit, tileSize);
-          const result = clahe.apply(grayscale);
-          this.logger.debug?.('CLAHE applied via cv.createCLAHE');
-          if (typeof clahe.delete === 'function') {
-            clahe.delete();
-          }
-          return result;
-        } catch (createError) {
-          warnOnce('cv.createCLAHE failed; falling back to alternate CLAHE paths', createError);
+          candidate = attempt();
+        } catch (error) {
+          continue;
         }
-      }
 
-      const claheCtor = (cv as any).CLAHE;
-      if (typeof claheCtor === 'function') {
+        if (!candidate) {
+          continue;
+        }
+
         try {
-          const instance = new claheCtor(clipLimit, tileSize);
-          if (instance && typeof instance.apply === 'function') {
-            const result = instance.apply(grayscale);
-            this.logger.debug?.('CLAHE applied via cv.CLAHE constructor');
-            if (typeof instance.delete === 'function') {
-              instance.delete();
+          // Some implementations return a Mat directly
+          if (this.isMat(candidate)) {
+            this.logger.debug?.('CLAHE applied via Mat return value');
+            return candidate;
+          }
+
+          if (typeof candidate.apply === 'function') {
+            const result = candidate.apply(grayscale);
+            this.logger.debug?.('CLAHE applied via CLAHE instance');
+            if (typeof candidate.delete === 'function') {
+              candidate.delete();
             }
             return result;
           }
-        } catch (ctorError) {
-          warnOnce('cv.CLAHE constructor failed', ctorError);
-        }
-        try {
-          const factoryInstance = claheCtor(clipLimit, tileSize);
-          if (factoryInstance && typeof factoryInstance.apply === 'function') {
-            const result = factoryInstance.apply(grayscale);
-            this.logger.debug?.('CLAHE applied via cv.CLAHE factory');
-            if (typeof factoryInstance.delete === 'function') {
-              factoryInstance.delete();
-            }
-            return result;
-          }
-        } catch (factoryError) {
-          warnOnce('cv.CLAHE factory failed', factoryError);
+        } catch (candidateError) {
+          warnOnce('CLAHE candidate failed', candidateError);
         }
       }
 
       const grayscaleAny = grayscale as any;
-
-      if (typeof grayscaleAny.clahe === 'function') {
-        try {
-          const result = grayscaleAny.clahe(clipLimit, tileSize);
-          this.logger.debug?.('CLAHE applied via Mat.clahe');
-          return result;
-        } catch (matClaheError) {
-          warnOnce('Mat.clahe failed; attempting adaptive fallback', matClaheError);
-        }
-      }
 
       if (typeof grayscaleAny.equalizeHistAdaptive === 'function') {
         try {
@@ -650,6 +657,26 @@ export class ElementDetectorService {
       warnOnce('applyCLAHE failed', error);
       return grayscale;
     }
+  }
+
+  private createTileSize(size: number): any {
+    if (!hasCv) {
+      return { width: size, height: size };
+    }
+
+    try {
+      if (typeof cv.Size === 'function') {
+        return new cv.Size(size, size);
+      }
+
+      if (typeof (cv as any).size === 'function') {
+        return (cv as any).size(size, size);
+      }
+    } catch (error) {
+      warnOnce('Tile size construction failed', error);
+    }
+
+    return { width: size, height: size };
   }
 
   private applyDenoising(mat: MatLike): MatLike {
@@ -812,6 +839,22 @@ export class ElementDetectorService {
         }
       }
     }
+  }
+
+  private isMat(candidate: MatLike): boolean {
+    if (!candidate) {
+      return false;
+    }
+
+    if ((candidate as any).rows !== undefined && (candidate as any).cols !== undefined) {
+      return true;
+    }
+
+    if (hasCv && typeof cv.Mat === 'function') {
+      return candidate instanceof cv.Mat;
+    }
+
+    return false;
   }
 
   private wordsToElements(
@@ -1351,10 +1394,7 @@ export class ElementDetectorService {
   }
 
   private async createWorker(): Promise<Worker> {
-    const worker = await createWorker();
-    await worker.loadLanguage('eng');
-    await worker.initialize('eng');
-    return worker;
+    return createWorker();
   }
 
   private async getTemplateDetector() {

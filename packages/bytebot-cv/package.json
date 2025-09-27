@@ -20,5 +20,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "postinstall": "node scripts/strip-opencv-tracking.js . && node scripts/verify-opencv-capabilities.js"
+  },
+  "opencv4nodejs": {
+    "autoBuildFlags": "-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON",
+    "autoBuildOpencvVersion": "4.6.0"
   }
 }

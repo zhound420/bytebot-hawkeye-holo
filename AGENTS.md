@@ -11,6 +11,7 @@
 - `npm run build --prefix packages/bytebot-ui` produces production bundles for the dashboard.
 - `npm test --prefix <package>` executes that package's Jest suite; `npm run test:watch --prefix <package>` keeps it hot-reloading.
 - `npm install --prefix packages/bytebot-cv` now validates OpenCV CLAHE support; export `OPENCV4NODEJS_AUTOBUILD_FLAGS="-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"` before reinstalling if the check fails.
+- The OpenCV autobuild pulls `opencv_contrib`; if logs say "skipping opencv_contrib" unset `OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB` and rebuild (`docker compose build --no-cache` is the quickest sanity check).
 - `docker compose -f docker/docker-compose.yml up -d` starts the full sandbox; tear down with the matching `down` command.
 
 ## Coding Style & Naming Conventions

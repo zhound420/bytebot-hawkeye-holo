@@ -17,7 +17,7 @@ ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
     OPENCV4NODEJS_AUTOBUILD=1 \
     OPENCV4NODEJS_SKIP_TRACKING=1 \
-    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DBUILD_opencv_videoio=OFF -DWITH_FFMPEG=OFF"
+    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DBUILD_opencv_videoio=OFF -DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation

@@ -1,32 +1,34 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- The monorepo centers each product under `packages/`, with `packages/bytebot-cv` for vision pipelines, `packages/bytebot-agent` for automation flows, `packages/bytebot-agent-cc` for contact-center logic, `packages/bytebot-ui` for dashboards, `packages/bytebotd` for the desktop daemon, and `packages/bytebot-llm-proxy` for LLM brokering.
-- Keep unit specs beside sources as `name.spec.ts`; docs belong in `docs/`, container assets in `docker/` and `helm/`, and overlays or fixtures in `static/`.
-- Shared DTOs and utilities live in `packages/shared`; publish or rebuild there before consuming updates downstream.
+- Monorepo roots live under `packages/`; key products include `bytebot-cv` for vision, `bytebot-agent` and `bytebot-agent-cc` for automation, `bytebot-ui` for dashboards, `bytebotd` for the desktop daemon, and `bytebot-llm-proxy` for LLM brokerage.
+- Shared DTOs and utilities reside in `packages/shared`; regenerate them with `npm run build --prefix packages/shared` before consuming changes elsewhere.
+- Co-locate specs as `*.spec.ts` beside their sources, document features in `docs/`, keep container assets in `docker/` and `helm/`, and place fixtures or overlays in `static/`.
 
 ## Build, Test, and Development Commands
-- Run `npm install` once from the repo root to hydrate workspace dependencies.
-- Target a package with `npm run <script> --prefix <package>`, e.g. `npm run start:dev --prefix packages/bytebot-agent` or `npm run dev --prefix packages/bytebot-ui`.
-- Refresh shared contracts using `npm run build --prefix packages/shared`.
-- Launch the full sandbox via `docker compose -f docker/docker-compose.yml up -d` and tear down with `docker compose -f docker/docker-compose.yml down`.
+- `npm install` (repo root) hydrates workspace dependencies.
+- `npm run start:dev --prefix packages/bytebot-agent` launches backend flows; swap the prefix to target other packages.
+- `npm run build --prefix packages/bytebot-ui` produces production bundles for the dashboard.
+- `npm test --prefix <package>` executes that package's Jest suite; `npm run test:watch --prefix <package>` keeps it hot-reloading.
+- `npm install --prefix packages/bytebot-cv` now validates OpenCV CLAHE support; export `OPENCV4NODEJS_AUTOBUILD_FLAGS="-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"` before reinstalling if the check fails.
+- `docker compose -f docker/docker-compose.yml up -d` starts the full sandbox; tear down with the matching `down` command.
 
 ## Coding Style & Naming Conventions
-- Default to TypeScript with 2-space indentation, single quotes, trailing commas; classes in PascalCase, variables camelCase, Prisma models snake_case.
-- Prefer co-located modules over deep relative imports; export cross-cutting helpers through `packages/shared`.
-- Run `npm run format` before committing to apply the unified Prettier + ESLint ruleset.
+- TypeScript first with 2-space indentation, single quotes, trailing commas, and camelCase variables; classes stay in PascalCase and Prisma models in snake_case.
+- Prefer local module imports; export shared helpers through `packages/shared`.
+- Run `npm run format` before committing to apply Prettier + ESLint.
 
 ## Testing Guidelines
-- Jest covers unit, integration, and e2e paths; execute with `npm test --prefix <package>` and watch changes via `npm run test:watch --prefix <package>`.
-- Backend e2e coverage lives in `packages/bytebot-agent` and runs with `npm run test:e2e --prefix packages/bytebot-agent`.
-- Keep mocks local to their specs, refresh fixtures when DTO schemas evolve, and block merges on failing suites.
+- Jest covers unit, integration, and e2e paths; ensure new features ship with companion specs following the `<name>.spec.ts` pattern.
+- Backend e2e suites live in `packages/bytebot-agent`; invoke them via `npm run test:e2e --prefix packages/bytebot-agent` before major releases.
+- Refresh mocks and fixtures when DTO schemas evolve to prevent contract drift.
 
 ## Commit & Pull Request Guidelines
-- Use imperative commit subjects (e.g., `Improve coordinate telemetry`) and stage only intentional hunks.
-- PRs should capture intent, link issues, flag schema or environment changes, attach UI captures when visuals shift, and note required rollouts.
-- Coordinate with downstream consumers whenever shared contracts or computer-vision pipelines evolve.
+- Write imperative commit subjects (e.g., `Improve coordinate telemetry`) and stage only intentional hunks.
+- PRs should describe intent, link issues, flag schema or environment changes, and include UI captures when visuals shift.
+- Coordinate with downstream teams whenever `packages/shared` or vision pipelines change to avoid breaking consumers.
 
 ## Security & Configuration Tips
-- Load secrets through package-level `.env` files or `docker/.env`; never check credentials into git.
-- Document feature flags such as `BYTEBOT_SMART_FOCUS` or `BYTEBOT_COORDINATE_METRICS` in PR notes.
-- Align dependency upgrades across packages and rerun impacted build/test scripts to confirm compatibility.
+- Load secrets through package-level `.env` files or `docker/.env`; never commit credentials.
+- Document feature flags such as `BYTEBOT_SMART_FOCUS` or `BYTEBOT_COORDINATE_METRICS` in PR notes and validate the impacted flows.
+- Align dependency upgrades across packages and rerun affected builds or tests to confirm compatibility.

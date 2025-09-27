@@ -10,7 +10,10 @@ ENV NODE_PATH=/app/node_modules:/app/packages/bytebot-agent/node_modules:/app/pa
 ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
     OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
-    OPENCV4NODEJS_SKIP_TRACKING=1
+    OPENCV4NODEJS_SKIP_TRACKING=1 \
+    OPENCV_LIB_DIR=/usr/lib/aarch64-linux-gnu \
+    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
+    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}
 
 RUN apt-get update && apt-get install -y \
     libopencv-dev \

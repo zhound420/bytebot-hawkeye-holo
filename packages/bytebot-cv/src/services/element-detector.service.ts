@@ -92,6 +92,17 @@ const MIN_INTERACTIVE_HEIGHT = 14;
 const DEFAULT_CHAR_WHITELIST =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/\\"\'`~!@#$%^&*()_+={}[]|:;,.?<>';
 
+type OpenCvCapabilities = {
+  clahe: boolean;
+  claheCtor: boolean;
+  matClahe: boolean;
+  equalizeHistAdaptive: boolean;
+  fastNlMeans: boolean;
+  filter2D: boolean;
+  claheMethod?: string;
+  claheDiagnostics?: Record<string, string>;
+};
+
 @Injectable()
 export class ElementDetectorService {
   private readonly logger = new Logger(ElementDetectorService.name);
@@ -102,22 +113,33 @@ export class ElementDetectorService {
   private edgeDetector: InstanceType<EdgeDetectorModule['EdgeDetector']> | null = null;
   private templateDetectorLoaded = false;
   private edgeDetectorLoaded = false;
+  private opencvCapabilities: OpenCvCapabilities = {
+    clahe: false,
+    claheCtor: false,
+    matClahe: false,
+    equalizeHistAdaptive: false,
+    fastNlMeans: false,
+    filter2D: false,
+    claheDiagnostics: {},
+  };
+  private claheFactory: (() => any) | null = null;
+  private claheFactoryName: string | null = null;
 
   constructor(
     @Optional()
     @Inject(forwardRef(() => UniversalDetectorService))
     private readonly universalDetector?: UniversalDetectorService,
   ) {
-    this.checkOpenCVCapabilities();
+    this.detectOpenCVCapabilities();
   }
 
-  private checkOpenCVCapabilities(): void {
+  private detectOpenCVCapabilities(): void {
     if (!hasCv) {
       this.logger.warn('OpenCV not available; vision features will degrade');
       return;
     }
 
-    const capabilities = {
+    this.opencvCapabilities = {
       clahe: typeof cv.createCLAHE === 'function',
       claheCtor: typeof (cv as any).CLAHE === 'function',
       matClahe: typeof (cv.Mat?.prototype as any)?.clahe === 'function',
@@ -126,15 +148,234 @@ export class ElementDetectorService {
       fastNlMeans:
         typeof (cv.Mat?.prototype as any)?.fastNlMeansDenoising === 'function' ||
         typeof cv.fastNlMeansDenoising === 'function',
-      filter2D: typeof cv.filter2D === 'function' ||
+      filter2D:
+        typeof cv.filter2D === 'function' ||
         typeof (cv.Mat?.prototype as any)?.filter2D === 'function',
-    } as const;
+      claheDiagnostics: {},
+    };
 
-    this.logger.log(`OpenCV capabilities: ${JSON.stringify(capabilities)}`);
+    const diagnostics = this.opencvCapabilities.claheDiagnostics ?? {};
+    const versionInfo = (() => {
+      try {
+        return (cv as any).version ?? (cv as any).VERSION ?? 'unknown';
+      } catch (error) {
+        diagnostics.versionError = (error as Error)?.message ?? String(error);
+        return 'unknown';
+      }
+    })();
 
-    if (!capabilities.clahe && !capabilities.matClahe) {
-      this.logger.warn('CLAHE not available - OCR quality may be reduced');
+    try {
+      if (typeof cv.getBuildInformation === 'function') {
+        const buildInfo = cv.getBuildInformation();
+        const buildSummary = typeof buildInfo === 'string'
+          ? buildInfo.split('\n').slice(0, 3).join(' | ')
+          : 'unavailable';
+        this.logger.debug(`[ElementDetectorService] OpenCV build info: ${buildSummary}`);
+      }
+    } catch (error) {
+      diagnostics.buildInfoError = (error as Error)?.message ?? String(error);
     }
+
+    try {
+      const moduleKeys = Object.keys(cv).filter((key) => {
+        try {
+          const value = (cv as any)[key];
+          return typeof value === 'object' && value !== null;
+        } catch {
+          return false;
+        }
+      });
+
+      const preview = moduleKeys.slice(0, 15);
+      if (moduleKeys.length > 0) {
+        this.logger.debug(
+          `[ElementDetectorService] OpenCV modules (${moduleKeys.length}): ${preview.join(', ')}${moduleKeys.length > preview.length ? ', …' : ''}`,
+        );
+      }
+    } catch (error) {
+      diagnostics.modulesError = (error as Error)?.message ?? String(error);
+    }
+
+    const claheResult = this.resolveClaheFactory();
+    if (claheResult.success) {
+      this.claheFactory = claheResult.factory;
+      this.claheFactoryName = claheResult.method ?? null;
+      this.opencvCapabilities.clahe = true;
+      this.opencvCapabilities.claheMethod = claheResult.method;
+      this.logger.log(
+        `[ElementDetectorService] CLAHE available via ${claheResult.method} (OpenCV ${versionInfo})`,
+      );
+    } else {
+      this.claheFactory = null;
+      this.claheFactoryName = null;
+      this.opencvCapabilities.claheMethod = undefined;
+      diagnostics.claheError = claheResult.error ?? 'Unknown';
+      this.logger.warn(
+        `[ElementDetectorService] CLAHE unavailable after ${claheResult.attempts} attempts - OCR quality may be reduced`,
+      );
+    }
+
+    if (Object.keys(diagnostics).length > 0) {
+      this.logger.debug(
+        `[ElementDetectorService] OpenCV diagnostics: ${JSON.stringify(diagnostics)}`,
+      );
+    }
+
+    this.opencvCapabilities.claheDiagnostics = diagnostics;
+  }
+
+  private resolveClaheFactory(): {
+    success: boolean;
+    factory: (() => any) | null;
+    method?: string;
+    error?: string;
+    attempts: number;
+  } {
+    if (!hasCv) {
+      return {
+        success: false,
+        factory: null,
+        error: 'OpenCV unavailable',
+        attempts: 0,
+      };
+    }
+
+    const clipLimit = 3.0;
+    const createTile = () => this.createTileSize(8);
+    const desiredType =
+      typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+
+    let sampleMat: MatLike | null = null;
+    try {
+      sampleMat = new cv.Mat(32, 32, desiredType, 128);
+    } catch (error) {
+      warnOnce('Failed to allocate sample Mat for CLAHE detection', error);
+    }
+
+    const attempts: Array<{
+      name: string;
+      available: boolean;
+      factory: () => any;
+    }> = [
+      {
+        name: 'cv.createCLAHE(options)',
+        available: typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE({ clipLimit, tileGridSize: createTile() }),
+      },
+      {
+        name: 'cv.createCLAHE(args)',
+        available: typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE(clipLimit, createTile()),
+      },
+      {
+        name: 'cv.createCLAHE()',
+        available: typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE(),
+      },
+      {
+        name: 'new cv.CLAHE(args)',
+        available: typeof (cv as any).CLAHE === 'function',
+        factory: () => new (cv as any).CLAHE(clipLimit, createTile()),
+      },
+      {
+        name: 'new cv.CLAHE(options)',
+        available: typeof (cv as any).CLAHE === 'function',
+        factory: () => new (cv as any).CLAHE({ clipLimit, tileGridSize: createTile() }),
+      },
+      {
+        name: 'new cv.CLAHE() + setters',
+        available: typeof (cv as any).CLAHE === 'function',
+        factory: () => {
+          const inst = new (cv as any).CLAHE();
+          inst.setClipLimit?.(clipLimit);
+          inst.setTilesGridSize?.(createTile());
+          return inst;
+        },
+      },
+      {
+        name: 'cv.imgproc.createCLAHE',
+        available: typeof (cv as any).imgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).imgproc.createCLAHE(clipLimit, createTile()),
+      },
+    ];
+
+    const diagnostics: Record<string, string> = {};
+    let attemptsExecuted = 0;
+
+    for (const attempt of attempts) {
+      if (!attempt.available) {
+        continue;
+      }
+
+      attemptsExecuted += 1;
+      let instance: any = null;
+      let testInput: MatLike | null = null;
+      let testOutput: MatLike | null = null;
+
+      try {
+        instance = attempt.factory();
+        if (!instance || typeof instance.apply !== 'function') {
+          throw new Error('CLAHE instance does not expose apply');
+        }
+
+        if (sampleMat && typeof (sampleMat as any).clone === 'function') {
+          testInput = (sampleMat as any).clone();
+        } else {
+          testInput = sampleMat ?? new cv.Mat(32, 32, desiredType, 128);
+        }
+
+        testOutput = instance.apply(testInput);
+        if (!this.isMatLike(testOutput)) {
+          throw new Error('CLAHE apply returned non-mat result');
+        }
+
+        this.releaseMat(testInput !== sampleMat ? testInput : null);
+        if (testOutput && testOutput !== sampleMat) {
+          this.releaseMat(testOutput);
+        }
+        instance.delete?.();
+
+        const factory = () => {
+          const created = attempt.factory();
+          if (!created || typeof created.apply !== 'function') {
+            throw new Error(`CLAHE factory (${attempt.name}) returned invalid instance at runtime`);
+          }
+          return created;
+        };
+
+        if (sampleMat) {
+          this.releaseMat(sampleMat);
+          sampleMat = null;
+        }
+
+        return {
+          success: true,
+          factory,
+          method: attempt.name,
+          attempts: attemptsExecuted,
+        };
+      } catch (error) {
+        diagnostics[attempt.name] = (error as Error)?.message ?? String(error);
+        this.releaseMat(testOutput);
+        this.releaseMat(testInput);
+        try {
+          instance?.delete?.();
+        } catch (deleteError) {
+          diagnostics[`${attempt.name}:delete`] = (deleteError as Error)?.message ?? String(deleteError);
+        }
+        continue;
+      }
+    }
+
+    this.releaseMat(sampleMat);
+
+    return {
+      success: false,
+      factory: null,
+      method: undefined,
+      error: JSON.stringify(diagnostics),
+      attempts: attemptsExecuted,
+    };
   }
 
   async detectElements(
@@ -881,45 +1122,23 @@ export class ElementDetectorService {
       }
 
       if (!skipHistogramOps) {
-        const tileSize = this.createTileSize(8);
-        if (typeof cv.createCLAHE === 'function') {
+        const claheFactory = this.claheFactory;
+        if (claheFactory) {
           try {
-            claheInstance = cv.createCLAHE(3.0, tileSize);
-          } catch (innerError) {
-            warnOnce('createCLAHE invocation failed, attempting manual CLAHE initialization', innerError);
-          }
-        }
-
-        if (!claheInstance && typeof (cv as any).CLAHE === 'function') {
-          try {
-            claheInstance = new (cv as any).CLAHE(3.0, tileSize);
-          } catch (innerError) {
-            warnOnce('CLAHE constructor failed', innerError);
-          }
-        }
-
-        if (!claheInstance && typeof (cv as any).CLAHE === 'function') {
-          try {
-            claheInstance = new (cv as any).CLAHE();
-            if (typeof claheInstance.setClipLimit === 'function') {
-              claheInstance.setClipLimit(3.0);
+            claheInstance = claheFactory();
+            if (!claheInstance || typeof claheInstance.apply !== 'function') {
+              throw new Error('CLAHE factory returned invalid instance');
             }
-            if (typeof claheInstance.setTilesGridSize === 'function') {
-              claheInstance.setTilesGridSize(tileSize);
-            }
-          } catch (innerError) {
-            warnOnce('CLAHE default constructor failed', innerError);
+            output = claheInstance.apply(workingMat);
+          } catch (error) {
+            warnOnce(`CLAHE factory ${this.claheFactoryName ?? 'unknown'} failed; switching to fallback`, error);
+            this.claheFactory = null;
+            this.claheFactoryName = null;
           }
         }
 
-        if (claheInstance && typeof claheInstance.apply === 'function') {
-          output = claheInstance.apply(workingMat);
-        } else if (typeof (workingMat as any).equalizeHist === 'function') {
-          warnOnce('CLAHE not available, using equalizeHist fallback');
-          output = (workingMat as any).equalizeHist();
-        } else {
-          warnOnce('Histogram equalization unavailable; returning cloned input');
-          output = this.safeMatClone(workingMat, 'applyClahePreprocessing:fallback') ?? workingMat;
+        if (!output) {
+          output = this.applyHistogramFallbacks(workingMat, 'applyClahePreprocessing:fallback');
         }
       }
 
@@ -1003,6 +1222,97 @@ export class ElementDetectorService {
       if (baseConversion?.needsRelease && baseConversion.mat !== output && baseConversion.mat !== workingMat) {
         this.releaseMat(baseConversion.mat);
       }
+    }
+  }
+
+  private applyHistogramFallbacks(mat: MatLike, context: string): MatLike {
+    const attempts: Array<{
+      name: string;
+      action: () => MatLike | null | undefined;
+    }> = [
+      {
+        name: 'mat.equalizeHist',
+        action: () => (mat as any)?.equalizeHist?.(),
+      },
+      {
+        name: 'cv.equalizeHist',
+        action: () => (typeof (cv as any).equalizeHist === 'function' ? (cv as any).equalizeHist(mat) : null),
+      },
+      {
+        name: 'mat.convertTo',
+        action: () => (mat as any)?.convertTo?.(-1, 1.2, 12),
+      },
+      {
+        name: 'cv.convertScaleAbs',
+        action: () => (typeof cv.convertScaleAbs === 'function' ? cv.convertScaleAbs(mat, 1.2, 12) : null),
+      },
+      {
+        name: 'gammaCorrection',
+        action: () => this.applyGammaCorrection(mat, 0.9),
+      },
+    ];
+
+    for (const attempt of attempts) {
+      let candidate: MatLike | null | undefined;
+      try {
+        candidate = attempt.action();
+      } catch (error) {
+        warnOnce(`Histogram fallback ${attempt.name} failed`, error);
+        candidate = null;
+      }
+
+      if (!candidate || !this.isMatLike(candidate)) {
+        if (candidate && candidate !== mat) {
+          this.releaseMat(candidate);
+        }
+        continue;
+      }
+
+      if (candidate !== mat) {
+        warnOnce(`Using histogram fallback ${attempt.name} for ${context}`);
+      }
+
+      return candidate;
+    }
+
+    warnOnce(`All histogram fallbacks failed for ${context}; returning clone`);
+    return this.safeMatClone(mat, `${context}:clone`) ?? mat;
+  }
+
+  private applyGammaCorrection(mat: MatLike, gamma: number): MatLike | null {
+    if (!hasCv || typeof cv.pow !== 'function') {
+      return null;
+    }
+
+    try {
+      const floatType = typeof cv.CV_32F === 'number' ? cv.CV_32F : (cv as any).CV_32F ?? -1;
+      const u8Type = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? -1;
+      const normalized = (mat as any)?.convertTo?.(floatType, 1 / 255.0, 0);
+      if (!normalized || !this.isMatLike(normalized)) {
+        return null;
+      }
+
+      const gammaCorrected = cv.pow(normalized, gamma);
+      if (!gammaCorrected || !this.isMatLike(gammaCorrected)) {
+        this.releaseMat(normalized);
+        return null;
+      }
+
+      const scaled = (gammaCorrected as any)?.convertTo?.(u8Type, 255.0, 0);
+      this.releaseMat(gammaCorrected !== normalized ? gammaCorrected : null);
+      this.releaseMat(normalized);
+
+      if (!scaled || !this.isMatLike(scaled)) {
+        if (scaled && scaled !== mat) {
+          this.releaseMat(scaled);
+        }
+        return null;
+      }
+
+      return scaled;
+    } catch (error) {
+      warnOnce('Gamma correction fallback failed', error);
+      return null;
     }
   }
 

@@ -13,13 +13,10 @@ FROM public.ecr.aws/ubuntu/ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
-ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
-    OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
+ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    OPENCV_LIB_DIR=/usr/lib/aarch64-linux-gnu \
-    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
-    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/local/lib
+    OPENCV4NODEJS_AUTOBUILD=1 \
+    OPENCV4NODEJS_SKIP_TRACKING=1
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
@@ -194,33 +191,37 @@ COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
 RUN apt-get update && apt-get install -y \
-    libopencv-dev \
-    libopencv-contrib-dev \
-    libopencv-core-dev \
-    libopencv-imgproc-dev \
-    libopencv-photo-dev \
-    libopencv-highgui-dev \
-    libopencv-imgcodecs-dev \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    pkg-config \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    python3 \
-    python3-pip \
+    build-essential \
     cmake \
+    git \
     curl \
     wget \
-    build-essential \
+    python3 \
+    python3-pip \
+    pkg-config \
+    libgtk-3-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libopenexr-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
     ln -sf /usr/lib/${multiarch} /usr/lib/opencv
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
     && /usr/bin/npm install --prefix ../shared \
-    && /usr/bin/npm install --prefix ../bytebot-cv \
+    && /usr/bin/npm install --prefix ../bytebot-cv opencv-build \
+    && node -e "process.chdir('/bytebot/packages/bytebot-cv'); require('opencv-build').install();" \
+    && OPENCV_LIB_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
+       OPENCV_INCLUDE_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
+       OPENCV_BIN_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \
+       /usr/bin/npm install --prefix ../bytebot-cv \
     && /usr/bin/npm install --prefix . --build-from-source
 
 WORKDIR /bytebot/packages/bytebot-cv

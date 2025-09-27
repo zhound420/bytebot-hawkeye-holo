@@ -7,37 +7,32 @@ COPY ./packages ./packages
 COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
 
 ENV NODE_PATH=/app/node_modules:/app/packages/bytebot-agent/node_modules:/app/packages/bytebot-cv/node_modules
-ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=0 \
-    OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
+ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB=0 \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    OPENCV_LIB_DIR=/usr/lib/aarch64-linux-gnu \
-    OPENCV_INCLUDE_DIR="/usr/include/opencv4" \
-    LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/local/lib
+    OPENCV4NODEJS_AUTOBUILD=1 \
+    OPENCV4NODEJS_SKIP_TRACKING=1
 
 RUN apt-get update && apt-get install -y \
-    libopencv-dev \
-    libopencv-dev \
-    libopencv-contrib-dev \
-    libopencv-core-dev \
-    libopencv-imgproc-dev \
-    libopencv-photo-dev \
-    libopencv-highgui-dev \
-    libopencv-imgcodecs-dev \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    pkg-config \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    python3 \
-    python3-pip \
+    build-essential \
     cmake \
+    git \
     curl \
     wget \
-    build-essential \
+    python3 \
+    python3-pip \
+    pkg-config \
+    libgtk-3-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libopenexr-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # legacy symlink no longer required when using autobuild; keep for compatibility
@@ -46,7 +41,12 @@ RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
 
 RUN node -e "const fs=require('fs'); const path=require('path'); const update=(workspace,value)=>{const file=path.join('packages',workspace,'package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']=value; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');}; update('bytebot-agent','../bytebot-cv'); update('bytebotd','../bytebot-cv');" \
     && npm install --prefix packages/shared \
-    && npm install --prefix packages/bytebot-cv \
+    && npm install --prefix packages/bytebot-cv opencv-build \
+    && node -e "process.chdir('packages/bytebot-cv'); require('opencv-build').install();" \
+    && OPENCV_LIB_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
+       OPENCV_INCLUDE_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
+       OPENCV_BIN_DIR=/app/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \
+       npm install --prefix packages/bytebot-cv \
     && npm install --prefix packages/bytebot-agent
 
 WORKDIR /app/packages/bytebot-cv

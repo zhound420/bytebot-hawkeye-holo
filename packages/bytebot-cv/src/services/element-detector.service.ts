@@ -1769,7 +1769,7 @@ export class ElementDetectorService {
       returnMat = this.safeMatClone(mat, 'applyEdgePreprocessing:error') ?? mat;
       return returnMat;
     } finally {
-      this.releaseConversion(edgesConversion, returnMat);
+      this.releaseConversion(edgesConversion, returnMat ?? undefined);
       if (kernel) {
         this.releaseMat(kernel);
       }

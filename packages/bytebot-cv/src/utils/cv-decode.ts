@@ -9,8 +9,8 @@ type CanvasImageCtor = new () => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { Image }: { Image: CanvasImageCtor } = require('canvas');
 
-type CvModule = typeof import('opencv4nodejs');
-export type CvMat = InstanceType<CvModule['Mat']>;
+type CvModule = Record<string, any>;
+export type CvMat = any;
 
 type DecodeOptions = {
   source?: string;

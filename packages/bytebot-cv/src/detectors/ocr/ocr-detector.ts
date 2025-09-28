@@ -1,6 +1,7 @@
 import { createWorker, Worker } from 'tesseract.js';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 import { decodeImageBuffer } from '../../utils/cv-decode';
+import { getOpenCvModule, hasOpenCv, logOpenCvWarning } from '../../utils/opencv-loader';
 
 interface RecognizeRectangleOption {
   rectangle: {
@@ -11,32 +12,31 @@ interface RecognizeRectangleOption {
   };
 }
 
-let cv: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  cv = require('opencv4nodejs');
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[OCRDetector] opencv4nodejs not available. Falling back to basic OCR pipeline.',
-    (error as Error)?.message ?? error,
-  );
-}
+const cv: any = getOpenCvModule();
+const hasCv = hasOpenCv();
 
-const hasCv = !!cv;
+logOpenCvWarning('OCRDetector');
 
 const toErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
-    return error.message;
+    return stripStack(error.message);
   }
   if (typeof error === 'string') {
-    return error;
+    return stripStack(error);
   }
   try {
     return JSON.stringify(error);
   } catch {
     return String(error);
   }
+};
+
+const stripStack = (message: string | undefined): string => {
+  if (!message) {
+    return '';
+  }
+  const [firstLine] = message.split('\n');
+  return firstLine?.trim() ?? '';
 };
 
 const warnedMessages = new Set<string>();

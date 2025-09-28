@@ -1,35 +1,33 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core packages live in `packages/`; `bytebot-cv` handles vision flows, `bytebot-agent` and `bytebot-agent-cc` automate workflows, `bytebot-ui` ships dashboards, `bytebotd` powers the desktop daemon, and `bytebot-llm-proxy` brokers LLM traffic.
-- Shared DTOs and helpers reside in `packages/shared`; regenerate them with `npm run build --prefix packages/shared` before consuming updates elsewhere.
-- Keep specs adjacent to sources as `*.spec.ts`; product docs live in `docs/`, container assets in `docker/` and `helm/`, and reference fixtures or overlays in `static/`.
+- Core services live under `packages/`: `bytebot-agent` and `bytebot-agent-cc` drive automation flows, `bytebot-cv` delivers computer-vision pipelines, `bytebot-ui` renders dashboards, `bytebotd` runs the desktop daemon, and `bytebot-llm-proxy` mediates LLM traffic.
+- Shared DTOs, types, and utilities are in `packages/shared`; rerun `npm run build --prefix packages/shared` after changing any shape.
+- Keep feature tests beside implementation as `*.spec.ts`; reference assets and docs in `docs/`, `docker/`, `helm/`, and `static/` when wiring integrations.
 
 ## Build, Test, and Development Commands
-- `npm install` in the repo root installs workspace dependencies.
-- `npm run start:dev --prefix packages/bytebot-agent` boots backend flows; swap the prefix for other services.
-- `npm run build --prefix packages/bytebot-ui` produces production-ready UI bundles.
-- `npm test --prefix <package>` runs Jest for that package; `npm run test:watch --prefix <package>` keeps feedback hot.
-- `npm run test:e2e --prefix packages/bytebot-agent` exercises end-to-end agent scenarios.
-- `npm install --prefix packages/bytebot-cv` validates the OpenCV toolchain; export `OPENCV4NODEJS_AUTOBUILD_FLAGS="-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"` if CLAHE support fails.
-- `docker compose -f docker/docker-compose.yml up -d` spins up the full sandbox; use the matching `down` command to stop it.
+- `npm install` — bootstrap workspace dependencies from the repo root.
+- `npm run start:dev --prefix packages/bytebot-agent` — launch the primary agent backend; swap the prefix for other services (for example `packages/bytebot-ui`).
+- `npm run build --prefix packages/bytebot-ui` — produce production-ready UI bundles.
+- `npm test --prefix <package>` — run unit and integration suites; `npm run test:e2e --prefix packages/bytebot-agent` covers full automation flows.
+- `docker compose -f docker/docker-compose.yml up -d` — start the sandbox stack; use `down` to stop and clean.
 
 ## Coding Style & Naming Conventions
-- TypeScript-first codebase with 2-space indentation, single quotes, trailing commas, and semantically named camelCase variables; classes stay in PascalCase and Prisma models remain snake_case.
-- Favor local module imports; surface shared utilities through `packages/shared`.
-- Run `npm run format` before commits to apply Prettier and ESLint.
+- TypeScript-first codebase with 2-space indentation, single quotes, trailing commas, and mandatory semicolons.
+- Favor camelCase for variables/functions, PascalCase for classes, and snake_case for Prisma models.
+- Import shared helpers via relative paths or the `packages/shared` entrypoint; run `npm run format` to apply Prettier + ESLint.
 
 ## Testing Guidelines
-- Jest drives unit, integration, and e2e coverage; mirror new features with nearby specs following the `<name>.spec.ts` pattern.
-- Refresh mocks and fixtures whenever DTO schemas evolve to prevent contract drift.
-- Run `npm run test:e2e --prefix packages/bytebot-agent` ahead of releases that touch automation flows.
+- Jest underpins all suites; mirror the implementation module name in each `*.spec.ts` file.
+- Regenerate fixtures whenever shared DTOs shift to prevent contract drift.
+- Prior to merging, execute targeted `npm test --prefix <package>` runs and finish with `npm run test:e2e --prefix packages/bytebot-agent` for regression coverage.
 
 ## Commit & Pull Request Guidelines
-- Write imperative commit subjects (e.g., `Improve coordinate telemetry`) and stage only intentional hunks.
-- PRs should explain intent, link issues, flag schema or feature-toggle changes, and include UI captures when visuals shift.
-- Coordinate with downstream teams when modifying `packages/shared` or computer-vision pipelines to avoid breaking consumers.
+- Use imperative commit subjects (examples: `Improve coordinate telemetry`, `Add agent metrics hook`) and stage only intentional hunks.
+- PRs should explain intent, link related issues, note schema or feature-flag changes, and attach UI captures when dashboards change.
+- Coordinate with downstream consumers before modifying shared DTOs or computer-vision pipelines to avoid breaking dependent agents.
 
 ## Security & Configuration Tips
-- Load secrets through package-level `.env` files or `docker/.env`; never commit credentials.
-- Document flags such as `BYTEBOT_SMART_FOCUS` or `BYTEBOT_COORDINATE_METRICS` in PR notes and verify the affected flows.
-- Align dependency upgrades across packages and rerun the impacted builds or tests to confirm compatibility.
+- Store secrets in package-level `.env` files or `docker/.env`; never commit credentials.
+- Document feature flags such as `BYTEBOT_SMART_FOCUS` or `BYTEBOT_COORDINATE_METRICS` in PR descriptions and verify dependent flows after toggles.
+- Rerun relevant builds or tests after dependency upgrades to confirm compatibility before releasing.

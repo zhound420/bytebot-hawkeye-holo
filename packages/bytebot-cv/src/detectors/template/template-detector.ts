@@ -1,10 +1,11 @@
-import * as cv from 'opencv4nodejs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 import { decodeImageBuffer } from '../../utils/cv-decode';
+import { getOpenCvModule, logOpenCvWarning } from '../../utils/opencv-loader';
 
-type CvMat = InstanceType<typeof cv.Mat>;
+type CvModule = any;
+type CvMat = any;
 
 type TemplateEntry = {
   name: string;
@@ -13,21 +14,28 @@ type TemplateEntry = {
 };
 
 export class TemplateDetector {
+  private readonly cv = getOpenCvModule();
   private templates: TemplateEntry[] = [];
 
   constructor() {
+    logOpenCvWarning('TemplateDetector');
+    if (!this.cv) {
+      return;
+    }
     this.loadCommonTemplates();
   }
 
   async detect(screenshotBuffer: Buffer, region?: BoundingBox): Promise<DetectedElement[]> {
-    if (!screenshotBuffer?.length || !this.templates.length) {
+    const cv = this.cv;
+
+    if (!cv || !screenshotBuffer?.length || !this.templates.length) {
       return [];
     }
 
     const screenshot = decodeImageBuffer(cv, screenshotBuffer, {
       source: 'TemplateDetector.detect',
     });
-    const { mat: searchMat, offsetX, offsetY } = this.extractRegion(screenshot, region);
+    const { mat: searchMat, offsetX, offsetY } = this.extractRegion(cv, screenshot, region);
     const elements: DetectedElement[] = [];
 
     for (const template of this.templates) {
@@ -71,6 +79,11 @@ export class TemplateDetector {
   }
 
   private loadCommonTemplates(): void {
+    const cv = this.cv;
+
+    if (!cv) {
+      return;
+    }
     const templateDir = path.join(__dirname, 'templates');
     const definitions: Array<{ name: string; file: string; type: ElementType }> = [
       { name: 'install-button', file: 'install-button.png', type: 'button' },
@@ -97,7 +110,7 @@ export class TemplateDetector {
     }
   }
 
-  private extractRegion(image: CvMat, region?: BoundingBox): {
+  private extractRegion(cv: CvModule, image: CvMat, region?: BoundingBox): {
     mat: CvMat;
     offsetX: number;
     offsetY: number;

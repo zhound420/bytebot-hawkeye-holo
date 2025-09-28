@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UniversalUIElement } from '../interfaces/universal-element.interface';
 import { decodeImageBuffer } from '../utils/cv-decode';
+import { getOpenCvModule, hasOpenCv, logOpenCvWarning } from '../utils/opencv-loader';
 
 // Lazy-load OpenCV so environments without the native bindings degrade gracefully.
 type CvModule = typeof import('opencv4nodejs');
@@ -8,20 +9,8 @@ type RectLike = { x: number; y: number; width: number; height: number };
 
 type MatLike = any;
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-let cv: CvModule | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  cv = require('opencv4nodejs');
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[VisualPatternDetectorService] opencv4nodejs not available; visual heuristics disabled.',
-    (error as Error)?.message ?? error,
-  );
-}
-
-const hasCv = !!cv;
+const cv: any = getOpenCvModule();
+const hasCv = hasOpenCv();
 
 @Injectable()
 export class VisualPatternDetectorService {
@@ -137,7 +126,7 @@ export class VisualPatternDetectorService {
 
   private ensureCv(): boolean {
     if (!hasCv) {
-      this.logger.warn('opencv4nodejs unavailable; skipping visual pattern detection.');
+      logOpenCvWarning('VisualPatternDetectorService', this.logger);
       return false;
     }
     return true;

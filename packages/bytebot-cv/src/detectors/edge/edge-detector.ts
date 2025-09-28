@@ -1,20 +1,33 @@
-import * as cv from 'opencv4nodejs';
 import { BoundingBox, DetectedElement, ElementType } from '../../types';
 import { decodeImageBuffer } from '../../utils/cv-decode';
+import { getOpenCvModule, logOpenCvWarning } from '../../utils/opencv-loader';
 
-type CvRect = InstanceType<typeof cv.Rect>;
-type CvMat = InstanceType<typeof cv.Mat>;
+type CvModule = any;
+type CvRect = any;
+type CvMat = any;
 
 export class EdgeDetector {
+  private readonly cv = getOpenCvModule();
+
+  constructor() {
+    logOpenCvWarning('EdgeDetector');
+  }
+
   async detect(screenshotBuffer: Buffer, region?: BoundingBox): Promise<DetectedElement[]> {
     if (!screenshotBuffer?.length) {
+      return [];
+    }
+
+    const cv = this.cv;
+
+    if (!cv) {
       return [];
     }
 
     const screenshot = decodeImageBuffer(cv, screenshotBuffer, {
       source: 'EdgeDetector.detect',
     });
-    const { mat: searchMat, offsetX, offsetY } = this.extractRegion(screenshot, region);
+    const { mat: searchMat, offsetX, offsetY } = this.extractRegion(cv, screenshot, region);
     const gray = searchMat.cvtColor(cv.COLOR_BGR2GRAY);
     const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
     const edges = blurred.canny(50, 150);
@@ -78,7 +91,7 @@ export class EdgeDetector {
     return 'unknown';
   }
 
-  private extractRegion(image: CvMat, region?: BoundingBox): {
+  private extractRegion(cv: CvModule, image: CvMat, region?: BoundingBox): {
     mat: CvMat;
     offsetX: number;
     offsetY: number;

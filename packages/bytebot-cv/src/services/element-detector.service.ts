@@ -17,6 +17,7 @@ import {
 } from '../interfaces/universal-element.interface';
 import { UniversalDetectorService } from './universal-detector.service';
 import { decodeImageBuffer } from '../utils/cv-decode';
+import { getOpenCvModule, hasOpenCv, logOpenCvWarning } from '../utils/opencv-loader';
 
 type TemplateDetectorModule = typeof import('../detectors/template/template-detector');
 type EdgeDetectorModule = typeof import('../detectors/edge/edge-detector');
@@ -61,33 +62,44 @@ type ClaheProviderResult = {
   source: string;
 };
 
-let cv: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  cv = require('opencv4nodejs');
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[ElementDetectorService] opencv4nodejs not available. OCR pipeline will degrade gracefully.',
-    (error as Error)?.message ?? error,
-  );
-}
+const cv: any = getOpenCvModule();
+const hasCv = hasOpenCv();
 
-const hasCv = !!cv;
+logOpenCvWarning('ElementDetectorService');
 const warnedMessages = new Set<string>();
+
+const formatErrorDetail = (error: unknown): string => {
+  if (!error) {
+    return '';
+  }
+  if (typeof error === 'string') {
+    const [firstLine] = error.split('\n');
+    return firstLine?.trim() ?? '';
+  }
+  const message = (error as Error)?.message ?? String(error);
+  const [firstLine] = message.split('\n');
+  return firstLine?.trim() ?? '';
+};
 
 const warnOnce = (message: string, error?: unknown) => {
   if (warnedMessages.has(message)) {
     return;
   }
   warnedMessages.add(message);
-  if (error) {
+  const baseMessage = `[ElementDetectorService] ${message}`;
+  if (!error) {
     // eslint-disable-next-line no-console
-    console.warn(`[ElementDetectorService] ${message}: ${(error as Error)?.message ?? error}`);
-  } else {
-    // eslint-disable-next-line no-console
-    console.warn(`[ElementDetectorService] ${message}`);
+    console.warn(baseMessage);
+    return;
   }
+  const detail = formatErrorDetail(error);
+  if (detail) {
+    // eslint-disable-next-line no-console
+    console.warn(`${baseMessage}: ${detail}`);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(baseMessage);
 };
 
 const MIN_WIDTH = 10;
@@ -211,9 +223,19 @@ export class ElementDetectorService {
       this.claheApplyMethod = claheCapability.applyMethod ?? null;
       this.opencvCapabilities.clahe = true;
       this.opencvCapabilities.claheMethod = claheCapability.methodName;
-      this.logger.log(
-        `[ElementDetectorService] CLAHE available via method index ${claheCapability.methodIndex ?? 'unknown'} (${claheCapability.methodName ?? 'unnamed'} -> ${claheCapability.applyMethod ?? 'apply'}) on OpenCV ${versionInfo}`,
-      );
+      if (claheCapability.methodIndex === null && (claheCapability.errors?.length ?? 0) > 0) {
+        diagnostics.claheFallback = JSON.stringify(claheCapability.errors);
+      }
+      const methodDescriptor = `${claheCapability.methodName ?? 'unnamed'} -> ${claheCapability.applyMethod ?? 'apply'}`;
+      if (claheCapability.methodIndex === null) {
+        this.logger.log(
+          `[ElementDetectorService] CLAHE fallback enabled (${methodDescriptor}) on OpenCV ${versionInfo}`,
+        );
+      } else {
+        this.logger.log(
+          `[ElementDetectorService] CLAHE available via method index ${claheCapability.methodIndex} (${methodDescriptor}) on OpenCV ${versionInfo}`,
+        );
+      }
     } else {
       this.claheProvider = null;
       this.claheFactoryName = null;
@@ -261,148 +283,85 @@ export class ElementDetectorService {
     const desiredType =
       typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
 
-    const methods: Array<{ name: string; factory: () => any }> = [
+    const methodDefinitions: Array<{
+      name: string;
+      guard?: () => boolean;
+      factory: () => any;
+    }> = [
       {
         name: 'cv.imgproc.createCLAHE(clip, Size)',
-        factory: () => {
-          const fn = (cv as any).imgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.imgproc.createCLAHE unavailable');
-          }
-          return fn(clipLimit, createTile());
-        },
+        guard: () => typeof (cv as any).imgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).imgproc.createCLAHE(clipLimit, createTile()),
       },
       {
         name: 'cv.imgproc.createCLAHE(options)',
-        factory: () => {
-          const fn = (cv as any).imgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.imgproc.createCLAHE unavailable');
-          }
-          return fn({ clipLimit, tileGridSize: createTile() });
-        },
+        guard: () => typeof (cv as any).imgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).imgproc.createCLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'cv.imgproc.createCLAHE()',
-        factory: () => {
-          const fn = (cv as any).imgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.imgproc.createCLAHE unavailable');
-          }
-          return fn();
-        },
+        guard: () => typeof (cv as any).imgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).imgproc.createCLAHE(),
       },
       {
         name: 'cv.xphoto.createCLAHE(clip, Size)',
-        factory: () => {
-          const fn = (cv as any).xphoto?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.xphoto.createCLAHE unavailable');
-          }
-          return fn(clipLimit, createTile());
-        },
+        guard: () => typeof (cv as any).xphoto?.createCLAHE === 'function',
+        factory: () => (cv as any).xphoto.createCLAHE(clipLimit, createTile()),
       },
       {
         name: 'cv.xphoto.createCLAHE(options)',
-        factory: () => {
-          const fn = (cv as any).xphoto?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.xphoto.createCLAHE unavailable');
-          }
-          return fn({ clipLimit, tileGridSize: createTile() });
-        },
+        guard: () => typeof (cv as any).xphoto?.createCLAHE === 'function',
+        factory: () => (cv as any).xphoto.createCLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'cv.xphoto.createCLAHE()',
-        factory: () => {
-          const fn = (cv as any).xphoto?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.xphoto.createCLAHE unavailable');
-          }
-          return fn();
-        },
+        guard: () => typeof (cv as any).xphoto?.createCLAHE === 'function',
+        factory: () => (cv as any).xphoto.createCLAHE(),
       },
       {
         name: 'cv.ximgproc.createCLAHE(clip, Size)',
-        factory: () => {
-          const fn = (cv as any).ximgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.ximgproc.createCLAHE unavailable');
-          }
-          return fn(clipLimit, createTile());
-        },
+        guard: () => typeof (cv as any).ximgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).ximgproc.createCLAHE(clipLimit, createTile()),
       },
       {
         name: 'cv.ximgproc.createCLAHE(options)',
-        factory: () => {
-          const fn = (cv as any).ximgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.ximgproc.createCLAHE unavailable');
-          }
-          return fn({ clipLimit, tileGridSize: createTile() });
-        },
+        guard: () => typeof (cv as any).ximgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).ximgproc.createCLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'cv.ximgproc.createCLAHE()',
-        factory: () => {
-          const fn = (cv as any).ximgproc?.createCLAHE;
-          if (typeof fn !== 'function') {
-            throw new Error('cv.ximgproc.createCLAHE unavailable');
-          }
-          return fn();
-        },
+        guard: () => typeof (cv as any).ximgproc?.createCLAHE === 'function',
+        factory: () => (cv as any).ximgproc.createCLAHE(),
       },
       {
         name: 'cv.createCLAHE(clip, Size)',
-        factory: () => {
-          if (typeof cv.createCLAHE !== 'function') {
-            throw new Error('cv.createCLAHE unavailable');
-          }
-          return cv.createCLAHE(clipLimit, createTile());
-        },
+        guard: () => typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE(clipLimit, createTile()),
       },
       {
         name: 'cv.createCLAHE(options)',
-        factory: () => {
-          if (typeof cv.createCLAHE !== 'function') {
-            throw new Error('cv.createCLAHE unavailable');
-          }
-          return cv.createCLAHE({ clipLimit, tileGridSize: createTile() });
-        },
+        guard: () => typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'cv.createCLAHE()',
-        factory: () => {
-          if (typeof cv.createCLAHE !== 'function') {
-            throw new Error('cv.createCLAHE unavailable');
-          }
-          return cv.createCLAHE();
-        },
+        guard: () => typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE(),
       },
       {
         name: 'new cv.CLAHE(clip, Size)',
-        factory: () => {
-          if (typeof (cv as any).CLAHE !== 'function') {
-            throw new Error('cv.CLAHE constructor unavailable');
-          }
-          return new (cv as any).CLAHE(clipLimit, createTile());
-        },
+        guard: () => typeof (cv as any).CLAHE === 'function',
+        factory: () => new (cv as any).CLAHE(clipLimit, createTile()),
       },
       {
         name: 'new cv.CLAHE(options)',
-        factory: () => {
-          if (typeof (cv as any).CLAHE !== 'function') {
-            throw new Error('cv.CLAHE constructor unavailable');
-          }
-          return new (cv as any).CLAHE({ clipLimit, tileGridSize: createTile() });
-        },
+        guard: () => typeof (cv as any).CLAHE === 'function',
+        factory: () => new (cv as any).CLAHE({ clipLimit, tileGridSize: createTile() }),
       },
       {
         name: 'new cv.CLAHE() + setters',
+        guard: () => typeof (cv as any).CLAHE === 'function',
         factory: () => {
-          if (typeof (cv as any).CLAHE !== 'function') {
-            throw new Error('cv.CLAHE constructor unavailable');
-          }
           const inst = new (cv as any).CLAHE();
           inst.setClipLimit?.(clipLimit);
           inst.setTilesGridSize?.(createTile());
@@ -411,22 +370,58 @@ export class ElementDetectorService {
       },
       {
         name: 'cv.createCLAHE(clipLimit only)',
-        factory: () => {
-          if (typeof cv.createCLAHE !== 'function') {
-            throw new Error('cv.createCLAHE unavailable');
-          }
-          return cv.createCLAHE(clipLimit);
-        },
+        guard: () => typeof cv.createCLAHE === 'function',
+        factory: () => cv.createCLAHE(clipLimit),
       },
     ];
+
+    const methods: Array<{ name: string; factory: () => any; index: number }> = [];
+
+    methodDefinitions.forEach((definition, definitionIndex) => {
+      let available = true;
+      if (typeof definition.guard === 'function') {
+        try {
+          available = Boolean(definition.guard());
+        } catch (error) {
+          const err = error as Error & { constructor?: { name?: string } };
+          errors.push({
+            index: `${definitionIndex}:guard`,
+            method: definition.name,
+            name: err?.name ?? 'Error',
+            message: err?.message ?? String(err),
+            constructor: err?.constructor?.name ?? 'unknown',
+            stack: typeof err?.stack === 'string' ? err.stack.split('\n')[0] : 'guard check failed',
+          });
+          available = false;
+        }
+      }
+
+      if (!available) {
+        errors.push({
+          index: definitionIndex.toString(),
+          method: definition.name,
+          name: 'Unavailable',
+          message: 'CLAHE factory guard returned false',
+          constructor: 'Guard',
+          stack: 'guard returned false',
+        });
+        return;
+      }
+
+      methods.push({
+        name: definition.name,
+        factory: definition.factory,
+        index: definitionIndex,
+      });
+    });
 
     const errors: Array<Record<string, string>> = [];
     let attempts = 0;
 
     const createSampleMat = () => new cv.Mat(32, 32, desiredType, 128);
 
-    for (let index = 0; index < methods.length; index += 1) {
-      const method = methods[index];
+    for (const method of methods) {
+      const methodIndex = method.index;
       let instance: any = null;
       let sampleInput: MatLike | null = null;
       let sampleOutput: MatLike | null = null;
@@ -469,9 +464,8 @@ export class ElementDetectorService {
         this.releaseMat(sampleDest);
         instance.delete?.();
 
-        // eslint-disable-next-line no-console
-        console.log(
-          `[ElementDetectorService] CLAHE method ${index} successful (${method.name}) using '${applyMethod}'`,
+        this.logger.debug(
+          `[ElementDetectorService] CLAHE method ${methodIndex} successful (${method.name}) using '${applyMethod}'`,
         );
 
         return {
@@ -490,7 +484,7 @@ export class ElementDetectorService {
             }
             return { instance: created, method: methodName, source: method.name };
           },
-          methodIndex: index,
+          methodIndex,
           methodName: method.name,
           applyMethod,
           errors,
@@ -499,7 +493,7 @@ export class ElementDetectorService {
       } catch (error) {
         const err = error as Error & { constructor?: { name?: string } };
         const info = {
-          index: index.toString(),
+          index: methodIndex.toString(),
           method: method.name,
           name: err?.name ?? 'Error',
           message: err?.message ?? String(err),
@@ -508,8 +502,7 @@ export class ElementDetectorService {
         };
         errors.push(info);
         try {
-          // eslint-disable-next-line no-console
-          console.log('[ElementDetectorService] CLAHE method failed:', info);
+          this.logger.debug(`[ElementDetectorService] CLAHE method failed (${method.name}): ${info.message}`);
         } catch {
           /* noop */
         }
@@ -522,7 +515,7 @@ export class ElementDetectorService {
         } catch (deleteError) {
           const delErr = deleteError as Error & { constructor?: { name?: string } };
           const deleteInfo = {
-            index: `${index}:delete`,
+            index: `${methodIndex}:delete`,
             method: method.name,
             name: delErr?.name ?? 'Error',
             message: delErr?.message ?? String(delErr),
@@ -531,8 +524,9 @@ export class ElementDetectorService {
           };
           errors.push(deleteInfo);
           try {
-            // eslint-disable-next-line no-console
-            console.log('[ElementDetectorService] CLAHE method cleanup failed:', deleteInfo);
+            this.logger.debug(
+              `[ElementDetectorService] CLAHE method cleanup failed (${method.name}): ${deleteInfo.message}`,
+            );
           } catch {
             /* noop */
           }
@@ -542,8 +536,9 @@ export class ElementDetectorService {
 
     try {
       const sizeTest = new cv.Size(8, 8);
-      // eslint-disable-next-line no-console
-      console.log('[ElementDetectorService] cv.Size constructor works:', sizeTest);
+      this.logger.debug(
+        `[ElementDetectorService] cv.Size constructor works (width=${sizeTest.width}, height=${sizeTest.height})`,
+      );
     } catch (error) {
       const err = error as Error & { constructor?: { name?: string } };
       const sizeInfo = {
@@ -556,11 +551,36 @@ export class ElementDetectorService {
       };
       errors.push(sizeInfo);
       try {
-        // eslint-disable-next-line no-console
-        console.log('[ElementDetectorService] cv.Size constructor failed:', sizeInfo);
+        this.logger.debug(
+          `[ElementDetectorService] cv.Size constructor failed: ${sizeInfo.message}`,
+        );
       } catch {
         /* noop */
       }
+    }
+
+    const fallbackProvider = this.createClaheFallbackProvider();
+    if (fallbackProvider) {
+      errors.push({
+        index: 'fallback',
+        method: 'Histogram CLAHE fallback',
+        name: 'Fallback',
+        message: 'Native CLAHE bindings unavailable; using histogram-based fallback',
+        constructor: 'Fallback',
+        stack: 'fallback selected',
+      });
+      this.logger.warn(
+        '[ElementDetectorService] Native CLAHE bindings unavailable; using histogram fallback provider',
+      );
+      return {
+        success: true,
+        provider: fallbackProvider,
+        methodIndex: null,
+        methodName: 'Histogram CLAHE fallback',
+        applyMethod: 'apply',
+        errors,
+        attempts,
+      };
     }
 
     return {
@@ -572,6 +592,41 @@ export class ElementDetectorService {
       errors,
       attempts,
     };
+  }
+
+  private createClaheFallbackProvider(): (() => ClaheProviderResult) | null {
+    if (!hasCv || !cv?.Mat) {
+      return null;
+    }
+
+    const createInstance = () => ({
+      apply: (input: MatLike) => {
+        const enhanced = this.applyHistogramFallbacks(
+          input,
+          'claheFallback:histogramEqualisation',
+        );
+
+        if (!enhanced || !this.isMatLike(enhanced)) {
+          return this.safeMatClone(input, 'claheFallback:cloneOnNull') ?? input;
+        }
+
+        if (enhanced === input) {
+          const clone = this.safeMatClone(input, 'claheFallback:cloneOnSame');
+          return clone ?? input;
+        }
+
+        return enhanced;
+      },
+      delete: () => {
+        /* no-op */
+      },
+    });
+
+    return () => ({
+      instance: createInstance(),
+      method: 'apply',
+      source: 'Histogram CLAHE fallback',
+    });
   }
 
   private discoverClaheApplyMethod(clahe: any): string | null {
@@ -594,12 +649,7 @@ export class ElementDetectorService {
 
     for (const candidate of candidates) {
       if (typeof clahe[candidate] === 'function') {
-        try {
-          // eslint-disable-next-line no-console
-          console.log(`[ElementDetectorService] Found CLAHE method: ${candidate}`);
-        } catch {
-          /* noop */
-        }
+        this.logger.debug(`[ElementDetectorService] Found CLAHE apply method candidate: ${candidate}`);
         return candidate;
       }
     }
@@ -607,16 +657,14 @@ export class ElementDetectorService {
     try {
       const availableMethods = this.listFunctionProperties(clahe);
       if (availableMethods.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log('[ElementDetectorService] Available CLAHE methods:', availableMethods);
+        this.logger.debug(
+          `[ElementDetectorService] Available CLAHE methods: ${availableMethods.join(', ')}`,
+        );
       }
     } catch (error) {
-      try {
-        // eslint-disable-next-line no-console
-        console.log('[ElementDetectorService] Failed to enumerate CLAHE methods:', error);
-      } catch {
-        /* noop */
-      }
+      this.logger.debug(
+        `[ElementDetectorService] Failed to enumerate CLAHE methods: ${(error as Error)?.message ?? String(error)}`,
+      );
     }
 
     return null;
@@ -1429,8 +1477,7 @@ export class ElementDetectorService {
             }
             output = resultingMat;
             this.claheApplyMethod = method;
-            // eslint-disable-next-line no-console
-            console.log(
+            this.logger.debug(
               `[ElementDetectorService] CLAHE applied successfully via ${source} using method '${method}'`,
             );
           } catch (error) {
@@ -1635,6 +1682,7 @@ export class ElementDetectorService {
     let workingMat: MatLike | null = null;
     let workingNeedsRelease = false;
     let edges: MatLike | null = null;
+    let edgesConversion: MatConversion | null = null;
     let kernel: MatLike | null = null;
     let enhanced: MatLike | null = null;
     let returnMat: MatLike | null = null;
@@ -1671,6 +1719,13 @@ export class ElementDetectorService {
         const fallback = workingMat ?? baseConversion?.mat ?? mat;
         returnMat = this.safeMatClone(fallback, 'applyEdgePreprocessing:nonMatEdges') ?? fallback;
         return returnMat;
+      }
+
+      try {
+        edgesConversion = this.ensureMat(edges, 'applyEdgePreprocessing:edges');
+        edges = edgesConversion.mat;
+      } catch (conversionError) {
+        warnOnce('Failed to normalise edge data before morphology', conversionError);
       }
 
       const morphRect = typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
@@ -1714,10 +1769,11 @@ export class ElementDetectorService {
       returnMat = this.safeMatClone(mat, 'applyEdgePreprocessing:error') ?? mat;
       return returnMat;
     } finally {
+      this.releaseConversion(edgesConversion, returnMat);
       if (kernel) {
         this.releaseMat(kernel);
       }
-      if (edges && edges !== returnMat && edges !== enhanced) {
+      if (!edgesConversion && edges && edges !== returnMat && edges !== enhanced) {
         this.releaseMat(edges);
       }
       if (workingNeedsRelease && workingMat && workingMat !== returnMat && workingMat !== enhanced) {
@@ -2394,6 +2450,12 @@ export class ElementDetectorService {
       return this.templateDetector;
     }
     this.templateDetectorLoaded = true;
+
+    if (!hasCv) {
+      this.templateDetector = null;
+      return this.templateDetector;
+    }
+
     try {
       const module: TemplateDetectorModule = await import('../detectors/template/template-detector');
       this.templateDetector = new module.TemplateDetector();
@@ -2409,6 +2471,12 @@ export class ElementDetectorService {
       return this.edgeDetector;
     }
     this.edgeDetectorLoaded = true;
+
+    if (!hasCv) {
+      this.edgeDetector = null;
+      return this.edgeDetector;
+    }
+
     try {
       const module: EdgeDetectorModule = await import('../detectors/edge/edge-detector');
       this.edgeDetector = new module.EdgeDetector();

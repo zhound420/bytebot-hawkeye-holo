@@ -40,6 +40,8 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
+RUN npm install -g node-gyp
+
 # legacy symlink no longer required when using autobuild; keep for compatibility
 RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
     ln -sf /usr/lib/${multiarch} /usr/lib/opencv || true

@@ -9,8 +9,11 @@ COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
 ENV NODE_PATH=/app/node_modules:/app/packages/bytebot-agent/node_modules:/app/packages/bytebot-cv/node_modules
 ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
     OPENCV4NODEJS_AUTOBUILD=1 \
+    OPENCV4NODEJS_AUTOBUILD_WITHOUT_CONTRIB= \
     OPENCV4NODEJS_SKIP_TRACKING=1 \
-    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"
+    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DBUILD_opencv_xfeatures2d=ON -DOPENCV_ENABLE_NONFREE=ON"
+
+ENV CXXFLAGS="-DOPENCV_ENABLE_NONFREE"
 
 RUN apt-get update && apt-get install -y \
     build-essential \

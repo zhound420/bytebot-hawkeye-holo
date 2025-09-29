@@ -2,28 +2,58 @@
   "name": "@bytebot/cv",
   "version": "1.0.0",
   "main": "dist/index.js",
+  "description": "ByteBot Computer Vision package with OpenCV bindings",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "dependencies": {
-    "@nestjs/common": "^10.0.0",
-    "@types/node": "^20.0.0",
-    "canvas": "^2.11.2",
-    "fuzzysearch": "^1.0.3",
-    "lodash": "^4.17.21",
-    "node-gyp": "^10.0.1",
-    "opencv4nodejs": "^5.6.0",
-    "sharp": "^0.33.0",
-    "tesseract.js": "^5.0.4"
+    "@nestjs/common": "10.3.10",
+    "canvas": "2.11.2",
+    "fuzzysearch": "1.0.3",
+    "lodash": "4.17.21",
+    "node-gyp": "10.2.0",
+    "opencv4nodejs": "5.6.0",
+    "sharp": "0.33.5",
+    "tesseract.js": "5.1.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.0",
-    "typescript": "^5.0.0"
+    "@types/lodash": "4.17.7",
+    "@types/node": "20.14.15",
+    "typescript": "5.5.4"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "postinstall": "node scripts/patch-opencv-binding.js && node scripts/strip-opencv-tracking.js . && node scripts/verify-opencv-capabilities.js"
+    "postinstall": "node scripts/patch-opencv-binding.js && node scripts/strip-opencv-tracking.js . && node scripts/verify-opencv-capabilities.js",
+    "verify": "node scripts/verify-opencv-capabilities.js",
+    "patch": "node scripts/patch-opencv-binding.js"
   },
   "opencv4nodejs": {
-    "autoBuildFlags": "-DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DBUILD_opencv_xfeatures2d=ON -DOPENCV_ENABLE_NONFREE=ON",
-    "autoBuildOpencvVersion": "4.6.0"
+    "disableAutoBuild": 1,
+    "autoBuildFlags": "",
+    "prebuild": "download"
+  },
+  "bytebot": {
+    "compatibilityMatrix": {
+      "opencv": "4.6.x",
+      "node": "20.x",
+      "ubuntu": "22.04",
+      "architecture": ["x64", "arm64"]
+    },
+    "buildRequirements": {
+      "systemPackages": [
+        "libopencv-dev",
+        "libopencv-contrib-dev",
+        "build-essential",
+        "cmake",
+        "pkg-config"
+      ],
+      "environmentVariables": {
+        "OPENCV4NODEJS_DISABLE_AUTOBUILD": "1",
+        "OPENCV4NODEJS_SKIP_TRACKING": "1",
+        "CXXFLAGS": "-DOPENCV_ENABLE_NONFREE"
+      }
+    }
   }
 }

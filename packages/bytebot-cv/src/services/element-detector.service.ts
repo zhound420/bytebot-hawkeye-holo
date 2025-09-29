@@ -62,6 +62,13 @@ type ClaheProviderResult = {
   source: string;
 };
 
+type MorphologyProviderResult = {
+  instance: any;
+  method: string;
+  source: string;
+  operation: string;
+};
+
 const cv: any = getOpenCvModule();
 const hasCv = hasOpenCv();
 
@@ -118,8 +125,14 @@ type OpenCvCapabilities = {
   equalizeHistAdaptive: boolean;
   fastNlMeans: boolean;
   filter2D: boolean;
+  morphologyEx: boolean;
+  morphologyExMat: boolean;
+  morphologyExImgproc: boolean;
+  getStructuringElement: boolean;
   claheMethod?: string;
+  morphologyMethod?: string;
   claheDiagnostics?: Record<string, string>;
+  morphologyDiagnostics?: Record<string, string>;
 };
 
 @Injectable()
@@ -139,11 +152,19 @@ export class ElementDetectorService {
     equalizeHistAdaptive: false,
     fastNlMeans: false,
     filter2D: false,
+    morphologyEx: false,
+    morphologyExMat: false,
+    morphologyExImgproc: false,
+    getStructuringElement: false,
     claheDiagnostics: {},
+    morphologyDiagnostics: {},
   };
   private claheProvider: (() => ClaheProviderResult) | null = null;
   private claheFactoryName: string | null = null;
   private claheApplyMethod: string | null = null;
+  private morphologyProvider: (() => MorphologyProviderResult) | null = null;
+  private morphologyFactoryName: string | null = null;
+  private morphologyApplyMethod: string | null = null;
 
   constructor(
     @Optional()
@@ -171,7 +192,12 @@ export class ElementDetectorService {
       filter2D:
         typeof cv.filter2D === 'function' ||
         typeof (cv.Mat?.prototype as any)?.filter2D === 'function',
+      morphologyEx: typeof cv.morphologyEx === 'function',
+      morphologyExMat: typeof (cv.Mat?.prototype as any)?.morphologyEx === 'function',
+      morphologyExImgproc: typeof (cv as any).imgproc?.morphologyEx === 'function',
+      getStructuringElement: typeof cv.getStructuringElement === 'function',
       claheDiagnostics: {},
+      morphologyDiagnostics: {},
     };
 
     const diagnostics = this.opencvCapabilities.claheDiagnostics ?? {};
@@ -248,13 +274,48 @@ export class ElementDetectorService {
       );
     }
 
-    if (Object.keys(diagnostics).length > 0) {
+    // Detect morphology capabilities
+    const morphologyDiagnostics = this.opencvCapabilities.morphologyDiagnostics ?? {};
+    const morphologyCapability = this.detectMorphologyCapability();
+    if (morphologyCapability.success) {
+      this.morphologyProvider = morphologyCapability.provider;
+      this.morphologyFactoryName = morphologyCapability.methodName ?? null;
+      this.morphologyApplyMethod = morphologyCapability.applyMethod ?? null;
+      this.opencvCapabilities.morphologyEx = true;
+      this.opencvCapabilities.morphologyMethod = morphologyCapability.methodName;
+      if (morphologyCapability.methodIndex === null && (morphologyCapability.errors?.length ?? 0) > 0) {
+        morphologyDiagnostics.morphologyFallback = JSON.stringify(morphologyCapability.errors);
+      }
+      const morphMethodDescriptor = `${morphologyCapability.methodName ?? 'unnamed'} -> ${morphologyCapability.applyMethod ?? 'morphologyEx'}`;
+      if (morphologyCapability.methodIndex === null) {
+        this.logger.log(
+          `[ElementDetectorService] Morphology fallback enabled (${morphMethodDescriptor}) on OpenCV ${versionInfo}`,
+        );
+      } else {
+        this.logger.log(
+          `[ElementDetectorService] Morphology available via method index ${morphologyCapability.methodIndex} (${morphMethodDescriptor}) on OpenCV ${versionInfo}`,
+        );
+      }
+    } else {
+      this.morphologyProvider = null;
+      this.morphologyFactoryName = null;
+      this.morphologyApplyMethod = null;
+      this.opencvCapabilities.morphologyEx = false;
+      this.opencvCapabilities.morphologyMethod = undefined;
+      morphologyDiagnostics.morphologyError = JSON.stringify(morphologyCapability.errors ?? []);
+      this.logger.warn(
+        `[ElementDetectorService] Morphology unavailable after ${morphologyCapability.attempts} attempts - edge detection quality may be reduced`,
+      );
+    }
+
+    if (Object.keys(diagnostics).length > 0 || Object.keys(morphologyDiagnostics).length > 0) {
       this.logger.debug(
-        `[ElementDetectorService] OpenCV diagnostics: ${JSON.stringify(diagnostics)}`,
+        `[ElementDetectorService] OpenCV diagnostics: ${JSON.stringify({...diagnostics, ...morphologyDiagnostics})}`,
       );
     }
 
     this.opencvCapabilities.claheDiagnostics = diagnostics;
+    this.opencvCapabilities.morphologyDiagnostics = morphologyDiagnostics;
   }
 
   private detectClaheCapability(): {
@@ -278,6 +339,7 @@ export class ElementDetectorService {
       };
     }
 
+    const errors: Array<Record<string, string>> = [];
     const clipLimit = 4.0;
     const createTile = () => new cv.Size(8, 8);
     const desiredType =
@@ -415,7 +477,6 @@ export class ElementDetectorService {
       });
     });
 
-    const errors: Array<Record<string, string>> = [];
     let attempts = 0;
 
     const createSampleMat = () => new cv.Mat(32, 32, desiredType, 128);
@@ -581,6 +642,249 @@ export class ElementDetectorService {
         errors,
         attempts,
       };
+    }
+
+    return {
+      success: false,
+      provider: null,
+      methodIndex: null,
+      methodName: undefined,
+      applyMethod: undefined,
+      errors,
+      attempts,
+    };
+  }
+
+  private detectMorphologyCapability(): {
+    success: boolean;
+    provider: (() => MorphologyProviderResult) | null;
+    methodIndex: number | null;
+    methodName?: string;
+    applyMethod?: string;
+    errors: Array<Record<string, string>>;
+    attempts: number;
+  } {
+    if (!hasCv) {
+      return {
+        success: false,
+        provider: null,
+        methodIndex: null,
+        methodName: undefined,
+        applyMethod: undefined,
+        errors: [{ reason: 'OpenCV unavailable' }],
+        attempts: 0,
+      };
+    }
+
+    const createSampleMat = () => {
+      // Use enhanced morphology-compatible Mat creation
+      const mat = this.createMorphologyMat(32, 32);
+      if (mat) {
+        return mat;
+      }
+      
+      // Fallback to original method
+      const desiredType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+      return new cv.Mat(32, 32, desiredType, 128);
+    };
+
+    const createKernel = () => {
+      try {
+        const morphRect = typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
+        if (typeof cv.getStructuringElement === 'function' && typeof cv.Size === 'function') {
+          return cv.getStructuringElement(morphRect, new cv.Size(3, 3));
+        }
+        return null;
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const morphClose = typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
+
+    const methodDefinitions: Array<{
+      name: string;
+      guard?: () => boolean;
+      factory: () => any;
+    }> = [
+      {
+        name: 'cv.morphologyEx(src, morphType, kernel)',
+        guard: () => typeof cv.morphologyEx === 'function',
+        factory: () => ({
+          morphologyEx: (src: MatLike, morphType: number, kernel: any) => cv.morphologyEx(src, morphType, kernel),
+        }),
+      },
+      {
+        name: 'cv.imgproc.morphologyEx(src, morphType, kernel)',
+        guard: () => typeof (cv as any).imgproc?.morphologyEx === 'function',
+        factory: () => ({
+          morphologyEx: (src: MatLike, morphType: number, kernel: any) => (cv as any).imgproc.morphologyEx(src, morphType, kernel),
+        }),
+      },
+      {
+        name: 'src.morphologyEx(morphType, kernel)',
+        guard: () => {
+          try {
+            const testMat = createSampleMat();
+            const hasMethod = typeof (testMat as any).morphologyEx === 'function';
+            this.releaseMat(testMat);
+            return hasMethod;
+          } catch {
+            return false;
+          }
+        },
+        factory: () => ({
+          morphologyEx: (src: MatLike, morphType: number, kernel: any) => (src as any).morphologyEx(morphType, kernel),
+        }),
+      },
+      {
+        name: 'cv.Mat.morphologyEx(src, morphType, kernel)',
+        guard: () => typeof (cv.Mat as any)?.morphologyEx === 'function',
+        factory: () => ({
+          morphologyEx: (src: MatLike, morphType: number, kernel: any) => (cv.Mat as any).morphologyEx(src, morphType, kernel),
+        }),
+      },
+    ];
+
+    const methods: Array<{ name: string; factory: () => any; index: number }> = [];
+    const errors: Array<Record<string, string>> = [];
+
+    methodDefinitions.forEach((definition, definitionIndex) => {
+      let available = true;
+      if (typeof definition.guard === 'function') {
+        try {
+          available = Boolean(definition.guard());
+        } catch (error) {
+          const err = error as Error & { constructor?: { name?: string } };
+          errors.push({
+            index: `${definitionIndex}:guard`,
+            method: definition.name,
+            name: err?.name ?? 'Error',
+            message: err?.message ?? String(err),
+            constructor: err?.constructor?.name ?? 'unknown',
+            stack: typeof err?.stack === 'string' ? err.stack.split('\n')[0] : 'guard check failed',
+          });
+          available = false;
+        }
+      }
+
+      if (!available) {
+        errors.push({
+          index: definitionIndex.toString(),
+          method: definition.name,
+          name: 'Unavailable',
+          message: 'Morphology factory guard returned false',
+          constructor: 'Guard',
+          stack: 'guard returned false',
+        });
+        return;
+      }
+
+      methods.push({
+        name: definition.name,
+        factory: definition.factory,
+        index: definitionIndex,
+      });
+    });
+
+    let attempts = 0;
+
+    for (const method of methods) {
+      const methodIndex = method.index;
+      let instance: any = null;
+      let sampleInput: MatLike | null = null;
+      let sampleOutput: MatLike | null = null;
+      let kernel: any = null;
+
+      if (typeof method.factory !== 'function') {
+        continue;
+      }
+
+      try {
+        attempts += 1;
+        instance = method.factory();
+        if (!instance || typeof instance.morphologyEx !== 'function') {
+          throw new Error('Morphology factory returned invalid instance');
+        }
+
+        sampleInput = createSampleMat();
+        if (!sampleInput) {
+          throw new Error('Failed to create sample Mat for morphology testing');
+        }
+        
+        // Use enhanced Mat validation for OpenCV 4.8 compatibility
+        const validatedInput = this.ensureMorphologyMat(sampleInput);
+        if (!validatedInput) {
+          throw new Error('Failed to create OpenCV 4.8 compatible Mat for morphology testing');
+        }
+        
+        kernel = createKernel();
+        if (!kernel) {
+          throw new Error('Failed to create morphology kernel');
+        }
+
+        sampleOutput = instance.morphologyEx(validatedInput!, morphClose, kernel!);
+        
+        // If we created a new validated input, we need to clean it up
+        if (validatedInput !== sampleInput) {
+          this.releaseMat(validatedInput!);
+        }
+        if (!this.isValidMat(sampleOutput)) {
+          throw new Error('Morphology method did not produce valid Mat output');
+        }
+
+        this.releaseMat(sampleOutput !== sampleInput ? sampleOutput : null);
+        this.releaseMat(sampleInput);
+        this.releaseMat(kernel);
+
+        this.logger.debug(
+          `[ElementDetectorService] Morphology method ${methodIndex} successful (${method.name})`,
+        );
+
+        return {
+          success: true,
+          provider: () => {
+            if (typeof method.factory !== 'function') {
+              throw new Error(`Morphology provider ${method.name} became unavailable`);
+            }
+            const created = method.factory();
+            if (!created || typeof created.morphologyEx !== 'function') {
+              throw new Error(`Morphology provider ${method.name} returned invalid instance`);
+            }
+            return { 
+              instance: created, 
+              method: 'morphologyEx', 
+              source: method.name,
+              operation: 'morphologyEx'
+            };
+          },
+          methodIndex,
+          methodName: method.name,
+          applyMethod: 'morphologyEx',
+          errors,
+          attempts,
+        };
+      } catch (error) {
+        const err = error as Error & { constructor?: { name?: string } };
+        const info = {
+          index: methodIndex.toString(),
+          method: method.name,
+          name: err?.name ?? 'Error',
+          message: err?.message ?? String(err),
+          constructor: err?.constructor?.name ?? 'unknown',
+          stack: typeof err?.stack === 'string' ? err.stack.split('\n')[0] : 'no stack',
+        };
+        errors.push(info);
+        try {
+          this.logger.debug(`[ElementDetectorService] Morphology method failed (${method.name}): ${info.message}`);
+        } catch {
+          /* noop */
+        }
+      } finally {
+        this.releaseMat(sampleOutput);
+        this.releaseMat(sampleInput);
+        this.releaseMat(kernel);
+      }
     }
 
     return {
@@ -1160,8 +1464,8 @@ export class ElementDetectorService {
         ? (typeof cv.CV_8UC4 === 'number' ? cv.CV_8UC4 : (cv as any).CV_8UC4 ?? 24)
         : (typeof cv.CV_8UC3 === 'number' ? cv.CV_8UC3 : (cv as any).CV_8UC3 ?? 16);
 
-      const buffer = Buffer.from(image.data);
-      const matWithChannels = new cv.Mat(image.height, image.width, type, buffer);
+      const buffer = Buffer.from(image.data.buffer || image.data);
+      const matWithChannels = new cv.Mat(image.height, image.width, type, buffer as any);
 
       if (channels === 4 && typeof (matWithChannels as any).cvtColor === 'function') {
         const rgbaToBgr = typeof cv.COLOR_RGBA2BGR === 'number'
@@ -1249,7 +1553,7 @@ export class ElementDetectorService {
     let conversion: MatConversion | null = null;
     try {
       conversion = this.ensureMat(mat, 'encodeMat');
-      return cv.imencode('.png', conversion.mat);
+      return cv.imencode('.png', conversion.mat) as any;
     } catch (error) {
       warnOnce('Failed to encode processed image for OCR', error);
       return null;
@@ -1294,6 +1598,218 @@ export class ElementDetectorService {
     }
 
     return false;
+  }
+
+  /**
+   * Enhanced Mat validation for OpenCV 4.8 strict type checking
+   */
+  private isValidMat(value: unknown): value is MatLike {
+    if (!this.isMatLike(value)) {
+      return false;
+    }
+
+    const mat = value as any;
+    
+    // Validate essential Mat properties first
+    if (typeof mat.rows !== 'number' || typeof mat.cols !== 'number') {
+      return false;
+    }
+
+    if (mat.rows <= 0 || mat.cols <= 0) {
+      return false;
+    }
+
+    // OpenCV 4.8 requires proper Mat instance validation for native operations
+    if (hasCv && typeof cv.Mat === 'function') {
+      // For morphology operations, prefer actual cv.Mat instances
+      if (!(mat instanceof cv.Mat)) {
+        // Allow Mat-like objects but flag them for conversion
+        return this.hasMatInterface(mat);
+      }
+    }
+
+    // Check if Mat is not empty (OpenCV 4.8 requirement)
+    try {
+      if (typeof mat.empty === 'function' && mat.empty()) {
+        return false;
+      }
+    } catch {
+      // If empty() check fails, Mat might be invalid but could still be usable
+      // Don't fail validation here, let the calling code handle it
+    }
+
+    // Additional OpenCV 4.8 validation
+    try {
+      if (typeof mat.type === 'function') {
+        const matType = mat.type();
+        // Ensure type is a valid OpenCV type
+        if (typeof matType !== 'number' || matType < 0) {
+          return false;
+        }
+      }
+    } catch {
+      // Type check failed, but Mat might still be valid
+    }
+
+    return true;
+  }
+
+  /**
+   * Check if object has essential Mat interface methods
+   */
+  private hasMatInterface(obj: any): boolean {
+    if (!obj || typeof obj !== 'object') {
+      return false;
+    }
+
+    const requiredProps = ['rows', 'cols'];
+    const optionalMethods = ['clone', 'copy', 'convertTo', 'type'];
+    
+    // Check required properties
+    for (const prop of requiredProps) {
+      if (typeof obj[prop] !== 'number') {
+        return false;
+      }
+    }
+
+    // Check if at least some optional methods exist
+    const methodCount = optionalMethods.filter(method => typeof obj[method] === 'function').length;
+    return methodCount >= 2; // Require at least 2 methods for Mat-like behavior
+  }
+
+  /**
+   * Create a properly constructed Mat for morphology operations in OpenCV 4.8
+   */
+  private createMorphologyMat(rows: number = 32, cols: number = 32): MatLike | null {
+    if (!hasCv || !cv?.Mat) {
+      return null;
+    }
+
+    try {
+      const desiredType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+      
+      // Method 1: Try with data buffer initialization (most reliable for OpenCV 4.8)
+      try {
+        const data = new Uint8Array(rows * cols);
+        data.fill(128); // Fill with gray value
+        const matWithData = new cv.Mat(rows, cols, desiredType, Buffer.from(data) as any);
+        
+        if (this.isValidMat(matWithData)) {
+          return matWithData as MatLike;
+        }
+        this.releaseMat(matWithData);
+      } catch (dataError) {
+        // Continue to next method
+      }
+      
+      // Method 2: Try basic Mat constructor
+      try {
+        const mat = new cv.Mat(rows, cols, desiredType);
+        
+        // Initialize with Scalar using our polyfill
+        if (typeof mat.setTo === 'function') {
+          // Use the Scalar polyfill we added
+          const scalar = new cv.Scalar(128);
+          if (scalar) {
+            mat.setTo(scalar);
+          }
+        }
+
+        if (this.isValidMat(mat)) {
+          return mat as MatLike;
+        }
+        this.releaseMat(mat);
+      } catch (basicError) {
+        // Continue to next method
+      }
+
+      // Method 3: Try with zeros/ones initialization
+      try {
+        let mat: any = null;
+        
+        if (typeof cv.Mat.zeros === 'function') {
+          mat = cv.Mat.zeros(rows, cols, desiredType);
+        } else if (typeof cv.Mat.ones === 'function') {
+          mat = cv.Mat.ones(rows, cols, desiredType);
+          // Scale ones to gray value if possible
+          if (typeof mat.mul === 'function') {
+            const scaledMat = mat.mul(128);
+            this.releaseMat(mat);
+            mat = scaledMat;
+          }
+        }
+        
+        if (mat && this.isValidMat(mat)) {
+          return mat as MatLike;
+        }
+        this.releaseMat(mat);
+      } catch (zerosError) {
+        // Final fallback handled below
+      }
+
+      // Method 4: Last resort - create minimal valid Mat
+      const basicMat = new cv.Mat(rows, cols, desiredType);
+      if (this.isValidMat(basicMat)) {
+        return basicMat as MatLike;
+      }
+      this.releaseMat(basicMat);
+      
+      return null;
+    } catch (error) {
+      warnOnce('Failed to create morphology-compatible Mat', error);
+      return null;
+    }
+  }
+
+  /**
+   * Ensure Mat is compatible with OpenCV 4.8 morphology operations
+   */
+  private ensureMorphologyMat(input: MatLike): MatLike | null {
+    if (!this.isValidMat(input)) {
+      return null;
+    }
+
+    if (!hasCv || !cv?.Mat) {
+      return input;
+    }
+
+    try {
+      // For OpenCV 4.8, ensure Mat is a proper cv.Mat instance
+      if (!(input instanceof cv.Mat)) {
+        // Convert to proper cv.Mat
+        const converted = new cv.Mat(input as any);
+        if (!this.isValidMat(converted)) {
+          this.releaseMat(converted);
+          return null;
+        }
+        return converted as MatLike;
+      }
+
+      // Validate existing Mat properties
+      const mat = input as any;
+      
+      // Check type compatibility for morphology
+      if (typeof mat.type === 'function') {
+        const matType = mat.type();
+        const expectedType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+        
+        if (matType !== expectedType) {
+          // Convert to proper type
+          if (typeof mat.convertTo === 'function') {
+            const converted = mat.convertTo(expectedType);
+            if (this.isValidMat(converted)) {
+              return converted as MatLike;
+            }
+            this.releaseMat(converted);
+          }
+        }
+      }
+
+      return input;
+    } catch (error) {
+      warnOnce('Failed to ensure morphology Mat compatibility', error);
+      return null;
+    }
   }
 
 
@@ -1741,17 +2257,46 @@ export class ElementDetectorService {
       }
 
       const morphClose = typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
-      if (typeof (edges as any).morphologyEx === 'function') {
-        enhanced = (edges as any).morphologyEx(morphClose, kernel);
-      } else if (typeof cv.morphologyEx === 'function') {
+      
+      // Use morphology provider system for consistent morphology operations
+      let morphologyProvider = this.morphologyProvider;
+      if (!morphologyProvider) {
+        this.logger.warn('Morphology factory unavailable during edge preprocessing; retrying capability detection');
+        const capability = this.detectMorphologyCapability();
+        if (capability.success) {
+          morphologyProvider = this.morphologyProvider;
+        } else {
+          this.logger.warn(
+            `Morphology detection retry failed: ${JSON.stringify(capability.errors ?? [])}`,
+          );
+        }
+      }
+
+      if (morphologyProvider && edges && kernel) {
         try {
-          enhanced = cv.morphologyEx(edges, morphClose, kernel);
+          const { instance, method, source } = morphologyProvider();
+          if (!instance || typeof instance[method] !== 'function') {
+            throw new Error(`Morphology provider ${source} returned invalid instance (method=${method})`);
+          }
+          enhanced = instance[method](edges, morphClose, kernel);
+          this.morphologyApplyMethod = method;
+          this.logger.debug(
+            `[ElementDetectorService] Morphology applied successfully via ${source} using method '${method}'`,
+          );
         } catch (error) {
-          warnOnce('Global morphologyEx failed; returning raw edges', error);
+          warnOnce(`Morphology factory ${this.morphologyFactoryName ?? 'unknown'} failed; using fallback`, error);
+          this.morphologyProvider = null;
+          this.morphologyFactoryName = null;
+          this.morphologyApplyMethod = null;
           enhanced = edges;
         }
       } else {
-        warnOnce('MorphologyEx unsupported; returning raw edges');
+        const diagnosticsSnapshot = this.opencvCapabilities.morphologyDiagnostics
+          ? JSON.stringify(this.opencvCapabilities.morphologyDiagnostics)
+          : 'unknown';
+        warnOnce(
+          `Morphology unavailable; returning raw edges (diagnostics=${diagnosticsSnapshot})`,
+        );
         enhanced = edges;
       }
 

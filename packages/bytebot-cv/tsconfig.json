@@ -2,8 +2,9 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2021",
-    "lib": ["ES2021"],
+    "lib": ["ES2021", "DOM"],
     "moduleResolution": "node",
+    "types": ["node"],
     "declaration": true,
     "sourceMap": true,
     "outDir": "./dist",
@@ -15,7 +16,6 @@
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
-    "types": ["node"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },

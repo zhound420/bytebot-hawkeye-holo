@@ -41,7 +41,17 @@ const stripStack = (message: string | undefined): string => {
 
 const warnedMessages = new Set<string>();
 let filter2DSupported: boolean | null = null;
-let morphologyExSupported: boolean | null = null;
+
+// Morphology provider system
+type MorphologyProviderResult = {
+  instance: any;
+  method: string;
+  source: string;
+  operation: string;
+};
+
+let morphologyProvider: (() => MorphologyProviderResult) | null = null;
+let morphologyCapabilityDetected = false;
 
 const warn = (message: string, error?: unknown): void => {
   if (error !== undefined) {
@@ -294,24 +304,160 @@ const adaptiveThreshold = (
   return mat;
 };
 
+// Detect morphology capabilities and create provider
+const detectMorphologyCapability = (): boolean => {
+  if (!hasCv || morphologyCapabilityDetected) {
+    return morphologyProvider !== null;
+  }
+
+  morphologyCapabilityDetected = true;
+
+  const createSampleMat = () => {
+    const desiredType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+    return new cv.Mat(32, 32, desiredType, 128);
+  };
+
+  const createKernel = () => {
+    try {
+      const morphRect = typeof cv.MORPH_RECT === 'number' ? cv.MORPH_RECT : 0;
+      if (typeof cv.getStructuringElement === 'function' && typeof cv.Size === 'function') {
+        return cv.getStructuringElement(morphRect, new cv.Size(3, 3));
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const morphClose = typeof cv.MORPH_CLOSE === 'number' ? cv.MORPH_CLOSE : 3;
+
+  const methodDefinitions: Array<{
+    name: string;
+    guard?: () => boolean;
+    factory: () => any;
+  }> = [
+    {
+      name: 'cv.morphologyEx(src, morphType, kernel)',
+      guard: () => typeof cv.morphologyEx === 'function',
+      factory: () => ({
+        morphologyEx: (src: any, morphType: number, kernel: any) => cv.morphologyEx(src, morphType, kernel),
+      }),
+    },
+    {
+      name: 'cv.imgproc.morphologyEx(src, morphType, kernel)',
+      guard: () => typeof (cv as any).imgproc?.morphologyEx === 'function',
+      factory: () => ({
+        morphologyEx: (src: any, morphType: number, kernel: any) => (cv as any).imgproc.morphologyEx(src, morphType, kernel),
+      }),
+    },
+    {
+      name: 'src.morphologyEx(morphType, kernel)',
+      guard: () => {
+        try {
+          const testMat = createSampleMat();
+          const hasMethod = typeof (testMat as any).morphologyEx === 'function';
+          try { testMat?.delete?.(); } catch {}
+          return hasMethod;
+        } catch {
+          return false;
+        }
+      },
+      factory: () => ({
+        morphologyEx: (src: any, morphType: number, kernel: any) => (src as any).morphologyEx(morphType, kernel),
+      }),
+    },
+    {
+      name: 'cv.Mat.morphologyEx(src, morphType, kernel)',
+      guard: () => typeof (cv.Mat as any)?.morphologyEx === 'function',
+      factory: () => ({
+        morphologyEx: (src: any, morphType: number, kernel: any) => (cv.Mat as any).morphologyEx(src, morphType, kernel),
+      }),
+    },
+  ];
+
+  for (const method of methodDefinitions) {
+    let available = true;
+    if (typeof method.guard === 'function') {
+      try {
+        available = Boolean(method.guard());
+      } catch (error) {
+        available = false;
+      }
+    }
+
+    if (!available) continue;
+
+    let sampleInput: any = null;
+    let sampleOutput: any = null;
+    let kernel: any = null;
+
+    try {
+      const instance = method.factory();
+      if (!instance || typeof instance.morphologyEx !== 'function') {
+        continue;
+      }
+
+      sampleInput = createSampleMat();
+      kernel = createKernel();
+      if (!kernel) {
+        continue;
+      }
+
+      sampleOutput = instance.morphologyEx(sampleInput, morphClose, kernel);
+      if (!sampleOutput) {
+        continue;
+      }
+
+      // Success! Create the provider
+      morphologyProvider = () => ({
+        instance,
+        method: 'morphologyEx',
+        source: method.name,
+        operation: 'morphologyEx'
+      });
+
+      try { sampleOutput?.delete?.(); } catch {}
+      try { sampleInput?.delete?.(); } catch {}
+      try { kernel?.delete?.(); } catch {}
+
+      return true;
+    } catch (error) {
+      // Continue to next method
+    } finally {
+      try { sampleOutput?.delete?.(); } catch {}
+      try { sampleInput?.delete?.(); } catch {}
+      try { kernel?.delete?.(); } catch {}
+    }
+  }
+
+  return false;
+};
+
 const morph = (mat: any, op: number, kernel: any) => {
   if (!hasCv || !mat || !kernel) {
     return mat;
   }
-  if (morphologyExSupported === false) {
+
+  // Ensure morphology capability is detected
+  if (!detectMorphologyCapability()) {
     return mat;
   }
-  if (typeof cv.morphologyEx === 'function') {
-    try {
-      const result = cv.morphologyEx(mat, op, kernel);
-      morphologyExSupported = true;
-      return result;
-    } catch (error) {
-      warnOnce('global morphologyEx failed', error);
-      morphologyExSupported = false;
-    }
+
+  if (!morphologyProvider) {
+    return mat;
   }
-  return mat;
+
+  try {
+    const { instance, method, source } = morphologyProvider();
+    if (!instance || typeof instance[method] !== 'function') {
+      warnOnce(`Morphology provider ${source} returned invalid instance`);
+      return mat;
+    }
+    return instance[method](mat, op, kernel);
+  } catch (error) {
+    warnOnce('Morphology operation failed', error);
+    return mat;
+  }
 };
 
 const bitwiseOr = (a: any, b: any) => {

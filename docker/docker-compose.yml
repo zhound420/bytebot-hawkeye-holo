@@ -2,12 +2,10 @@ name: bytebot
 
 services:
   bytebot-desktop:
-    # Build from source
+    # Build from source with OpenCV 4.8.0
     build:
       context: ..
       dockerfile: packages/bytebotd/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
     shm_size: "2g"
     container_name: bytebot-desktop
     restart: unless-stopped
@@ -59,8 +57,6 @@ services:
     build:
       context: ..
       dockerfile: packages/bytebot-agent/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-agent:edge
     container_name: bytebot-agent
     restart: unless-stopped
     ports:

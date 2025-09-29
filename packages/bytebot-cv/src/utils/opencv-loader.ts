@@ -7,8 +7,34 @@ type LoadState = {
 
 type WarnTarget = Pick<Console, 'warn'> | { warn: (...args: any[]) => unknown };
 
+// Declare require function for environments where it's not automatically available
+declare const require: (id: string) => any;
+
+// Declare process for Node.js environment
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 let cachedState: LoadState | null = null;
 const warnedContexts = new Set<string>();
+
+function applyOpenCvPolyfills(cv: CvModule | null): void {
+  if (!cv) {
+    return;
+  }
+
+  // Apply CLAHE polyfill
+  applyClahePolyfill(cv);
+  
+  // Apply Scalar polyfill for OpenCV 4.8 compatibility
+  applyScalarPolyfill(cv);
+  
+  // Apply morphology polyfills
+  applyMorphologyPolyfills(cv);
+  
+  // Apply Mat construction polyfills
+  applyMatPolyfills(cv);
+}
 
 function applyClahePolyfill(cv: CvModule | null): void {
   if (!cv) {
@@ -44,20 +70,214 @@ function applyClahePolyfill(cv: CvModule | null): void {
   ensureFactory((cv as any).ximgproc);
 }
 
+function applyScalarPolyfill(cv: CvModule | null): void {
+  if (!cv) {
+    return;
+  }
+
+  // Enhanced Scalar polyfill for OpenCV 4.8 compatibility
+  const createScalarPolyfill = (val0: number, val1?: number, val2?: number, val3?: number) => {
+    const values = [val0 ?? 0, val1 ?? 0, val2 ?? 0, val3 ?? 0];
+    
+    // Try native Scalar methods first
+    if (typeof (cv as any).scalar === 'function') {
+      try {
+        return (cv as any).scalar(...values);
+      } catch (error) {
+        // Continue to fallback methods
+      }
+    }
+    
+    if (typeof (cv as any).Vec4d === 'function') {
+      try {
+        return new (cv as any).Vec4d(...values);
+      } catch (error) {
+        // Continue to fallback methods  
+      }
+    }
+    
+    // Enhanced fallback with OpenCV 4.8 compatible interface
+    const scalarObj: any = {
+      val: values,
+      isScalar: true,
+      length: 4,
+      // Add array-like access
+      0: values[0],
+      1: values[1], 
+      2: values[2],
+      3: values[3],
+      // OpenCV 4.8 compatibility methods
+      at: (index: number) => values[index] ?? 0,
+      get: (index: number) => values[index] ?? 0,
+      set: (index: number, value: number) => { 
+        values[index] = value; 
+        if (index >= 0 && index <= 3) {
+          scalarObj[index] = value;
+        }
+      },
+      clone: () => createScalarPolyfill(values[0], values[1], values[2], values[3]),
+      toString: () => `Scalar(${values.join(', ')})`,
+      // Add iteration support
+      [Symbol.iterator]: function* () {
+        for (let i = 0; i < 4; i++) {
+          yield values[i];
+        }
+      }
+    };
+    
+    return scalarObj;
+  };
+
+  // Apply Scalar polyfill if missing or broken
+  if (typeof (cv as any).Scalar !== 'function') {
+    (cv as any).Scalar = createScalarPolyfill;
+  } else {
+    // Test existing Scalar and wrap if problematic
+    try {
+      const testScalar = new (cv as any).Scalar(128);
+      if (!testScalar || typeof testScalar !== 'object') {
+        (cv as any).Scalar = createScalarPolyfill;
+      }
+    } catch (error) {
+      (cv as any).Scalar = createScalarPolyfill;
+    }
+  }
+    
+  // Also add scalar as lowercase function
+  if (typeof (cv as any).scalar !== 'function') {
+    (cv as any).scalar = (cv as any).Scalar;
+  }
+}
+
+function applyMorphologyPolyfills(cv: CvModule | null): void {
+  if (!cv) {
+    return;
+  }
+
+  // Ensure morphology constants are available
+  const morphConstants = {
+    MORPH_RECT: 0,
+    MORPH_CROSS: 1, 
+    MORPH_ELLIPSE: 2,
+    MORPH_ERODE: 0,
+    MORPH_DILATE: 1,
+    MORPH_OPEN: 2,
+    MORPH_CLOSE: 3,
+    MORPH_GRADIENT: 4,
+    MORPH_TOPHAT: 5,
+    MORPH_BLACKHAT: 6
+  };
+
+  // Add missing morphology constants
+  Object.entries(morphConstants).forEach(([key, value]) => {
+    if (typeof (cv as any)[key] !== 'number') {
+      (cv as any)[key] = value;
+    }
+  });
+
+  // Ensure getStructuringElement is available
+  if (typeof cv.getStructuringElement !== 'function' && typeof (cv as any).imgproc?.getStructuringElement === 'function') {
+    cv.getStructuringElement = (cv as any).imgproc.getStructuringElement;
+  }
+}
+
+function applyMatPolyfills(cv: CvModule | null): void {
+  if (!cv) {
+    return;
+  }
+
+  // Ensure CV type constants are available
+  const cvTypes = {
+    CV_8UC1: 0,
+    CV_8UC2: 8,
+    CV_8UC3: 16,
+    CV_8UC4: 24,
+    CV_32F: 5,
+    CV_32FC1: 5,
+    CV_32FC3: 21
+  };
+
+  Object.entries(cvTypes).forEach(([key, value]) => {
+    if (typeof (cv as any)[key] !== 'number') {
+      (cv as any)[key] = value;
+    }
+  });
+
+  // Enhance Mat constructor with better error handling
+  if (typeof cv.Mat === 'function') {
+    const originalMat = cv.Mat;
+    cv.Mat = function(...args: any[]) {
+      try {
+        return new originalMat(...args);
+      } catch (error) {
+        // Enhanced error context for debugging
+        const errorMsg = `Mat construction failed with args: ${JSON.stringify(args)} - ${(error as Error).message}`;
+        throw new Error(errorMsg);
+      }
+    };
+    
+    // Preserve prototype and static methods
+    cv.Mat.prototype = originalMat.prototype;
+    Object.setPrototypeOf(cv.Mat, originalMat);
+    Object.getOwnPropertyNames(originalMat).forEach(prop => {
+      if (prop !== 'prototype' && prop !== 'name' && prop !== 'length') {
+        try {
+          cv.Mat[prop] = originalMat[prop];
+        } catch {
+          // Ignore descriptor errors
+        }
+      }
+    });
+  }
+}
+
 function ensureState(): LoadState {
   if (cachedState) {
     return cachedState;
   }
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const module = require('opencv4nodejs') as CvModule;
-    applyClahePolyfill(module);
-    cachedState = { module, errorMessage: null };
-  } catch (error) {
-    cachedState = { module: null, errorMessage: formatLoadError(error) };
+  // Check if start-prod.js already found opencv4nodejs and set environment hint
+  const envModulePath = process.env.OPENCV_MODULE_PATH;
+  
+  // Try loading opencv4nodejs from multiple possible locations
+  const possiblePaths = [
+    'opencv4nodejs',  // Standard require
+    '../../../bytebot-cv/node_modules/opencv4nodejs',  // From agent to cv package
+    '../../bytebot-cv/node_modules/opencv4nodejs',     // Alternative relative path
+    './node_modules/opencv4nodejs',                    // Local node_modules
+    '../node_modules/opencv4nodejs',                   // Parent node_modules
+    // Additional paths for compiled dist directory context
+    '../../../../node_modules/opencv4nodejs',          // From dist to root node_modules
+    '../../../node_modules/opencv4nodejs',             // From dist to package node_modules
+    '../../node_modules/opencv4nodejs',                // From dist subdirectory
+    '../../../packages/bytebot-cv/node_modules/opencv4nodejs',  // From dist to cv package
+    '../../../../packages/bytebot-cv/node_modules/opencv4nodejs', // Alternative dist to cv
+  ];
+
+  // If start-prod.js found a working path, try that first
+  if (envModulePath) {
+    possiblePaths.unshift(envModulePath);
   }
 
+  let lastError: unknown = null;
+  
+  for (const modulePath of possiblePaths) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const module = require(modulePath) as CvModule;
+      if (module) {
+        applyOpenCvPolyfills(module);
+        cachedState = { module, errorMessage: null };
+        return cachedState;
+      }
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+  }
+
+  // If we get here, all attempts failed
+  cachedState = { module: null, errorMessage: formatLoadError(lastError) };
   return cachedState;
 }
 
@@ -113,7 +333,7 @@ function formatLoadError(error: unknown): string {
     return `${unavailableMessage} ${stripRequireStack(error)}`.trim();
   }
 
-  const err = error as NodeJS.ErrnoException;
+  const err = error as { code?: string; message?: string };
 
   if (err.code === 'MODULE_NOT_FOUND') {
     return `${unavailableMessage} Module not found in the current runtime.`;

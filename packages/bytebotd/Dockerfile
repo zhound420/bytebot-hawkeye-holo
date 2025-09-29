@@ -3,7 +3,8 @@
 # -----------------------------------------------------------------------------
 
 # Base image
-FROM public.ecr.aws/ubuntu/ubuntu:22.04
+# Use Ubuntu 24.04 LTS base for OpenCV 4.8.0 support
+FROM public.ecr.aws/ubuntu/ubuntu:24.04
 
 
 # -----------------------------------------------------------------------------
@@ -13,15 +14,16 @@ FROM public.ecr.aws/ubuntu/ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
-ENV OPENCV4NODEJS_AUTOBUILD_OPENCV_VERSION=4.6.0 \
-    OPENCV4NODEJS_AUTOBUILD=1 \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    OPENCV4NODEJS_AUTOBUILD_FLAGS="-DBUILD_opencv_videoio=OFF -DWITH_FFMPEG=OFF -DBUILD_opencv_imgproc=ON -DBUILD_opencv_photo=ON -DBUILD_opencv_xphoto=ON -DBUILD_opencv_ximgproc=ON -DOPENCV_ENABLE_NONFREE=ON"
+# Disable OpenCV auto-build to use system packages instead
+ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
+    OPENCV4NODEJS_SKIP_TRACKING=1
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
 # -----------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
+    # Essential build tools (needed for dpkg-architecture)
+    dpkg-dev \
     # X11 / VNC
     xvfb x11vnc xauth x11-xserver-utils \
     x11-apps sudo software-properties-common \
@@ -57,10 +59,11 @@ RUN mkdir -p /run/dbus && \
 RUN apt-get update && apt-get install -y \
     # Install necessary for adding PPA
     software-properties-common apt-transport-https wget gnupg \
-    # Install Additional Graphics Libraries
+    # Install Additional Graphics Libraries (Ubuntu 24.04 compatible)
     mesa-utils \
     libgl1-mesa-dri \
-    libgl1-mesa-glx \
+    libglx-mesa0 \
+    libgl1-mesa-dev \
     # Install Sandbox Capabilities
     libcap2-bin \
     # Install Fonts
@@ -154,8 +157,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN pip3 install --upgrade pip
+# Ubuntu 24.04 comes with pip 24.0 which is sufficient - no upgrade needed
 
 # -----------------------------------------------------------------------------
 # 4. VNC and remote access setup
@@ -213,23 +215,33 @@ RUN apt-get update && apt-get install -y \
     libgstreamer-plugins-base1.0-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
+    # Install system OpenCV packages instead of building from source
+    libopencv-dev \
+    libopencv-contrib-dev \
+    libopencv-imgproc-dev \
+    libopencv-imgcodecs-dev \
+    libopencv-objdetect-dev \
+    libopencv-ml-dev \
+    libopencv-photo-dev \
+    libopencv-video-dev \
+    libopencv-calib3d-dev \
+    libopencv-features2d-dev \
+    libopencv-highgui-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
     ln -sf /usr/lib/${multiarch} /usr/lib/opencv
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
     && /usr/bin/npm install --prefix ../shared \
-    && /usr/bin/npm install --ignore-scripts --prefix ../bytebot-cv opencv-build \
-    && node -e "const { install } = require('/bytebot/packages/bytebot-cv/node_modules/opencv-build/build/install'); install().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });" \
-    && OPENCV_LIB_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/lib \
-       OPENCV_INCLUDE_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/include \
-       OPENCV_BIN_DIR=/bytebot/packages/bytebot-cv/node_modules/opencv-build/opencv/build/bin \
+    && multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
+    && OPENCV_LIB_DIR=/usr/lib/${multiarch} \
+       OPENCV_INCLUDE_DIR=/usr/include/opencv4 \
+       OPENCV_BIN_DIR=/usr/bin \
        /usr/bin/npm install --prefix ../bytebot-cv \
     && /usr/bin/npm rebuild --build-from-source --prefix ../bytebot-cv canvas \
     && /usr/bin/npm install --prefix . --build-from-source
 
 WORKDIR /bytebot/packages/bytebot-cv
-RUN /usr/bin/npm rebuild opencv4nodejs --build-from-source --loglevel verbose \
-    && /usr/bin/npm run build
+RUN /usr/bin/npm run build
 
 WORKDIR /bytebot/packages/bytebotd
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source

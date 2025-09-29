@@ -3,7 +3,7 @@ import { createCanvas } from 'canvas';
 type CanvasImageCtor = new () => {
   width: number;
   height: number;
-  src: string | Buffer;
+  src: string | any;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -19,7 +19,7 @@ type DecodeOptions = {
 
 export function decodeImageBuffer(
   cvModule: CvModule | null,
-  buffer: Buffer,
+  buffer: any,
   options: DecodeOptions = {},
 ): CvMat {
   if (!cvModule) {
@@ -38,7 +38,7 @@ export function decodeImageBuffer(
   return decodeViaCanvas(cvModule, buffer, source);
 }
 
-function decodeViaCanvas(cvModule: CvModule, buffer: Buffer, source: string): CvMat {
+function decodeViaCanvas(cvModule: CvModule, buffer: any, source: string): CvMat {
   try {
     const image = new Image();
     image.src = buffer;
@@ -62,7 +62,8 @@ function decodeViaCanvas(cvModule: CvModule, buffer: Buffer, source: string): Cv
       ? (typeof (cvModule as any).CV_8UC4 === 'number' ? (cvModule as any).CV_8UC4 : 24)
       : (typeof (cvModule as any).CV_8UC3 === 'number' ? (cvModule as any).CV_8UC3 : 16);
 
-    const mat = new cvModule.Mat(imageData.height, imageData.width, type, Buffer.from(imageData.data));
+    const bufferData = (globalThis as any).Buffer ? (globalThis as any).Buffer.from(imageData.data) : new Uint8Array(imageData.data);
+    const mat = new cvModule.Mat(imageData.height, imageData.width, type, bufferData as any);
 
     if (channels === 4 && typeof (mat as any).cvtColor === 'function') {
       const rgbaToBgr = determineColorConversion(cvModule);

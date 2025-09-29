@@ -203,7 +203,27 @@ export class ElementDetectorService {
     const diagnostics = this.opencvCapabilities.claheDiagnostics ?? {};
     const versionInfo = (() => {
       try {
-        return (cv as any).version ?? (cv as any).VERSION ?? 'unknown';
+        const ver = (cv as any).version;
+        
+        // Handle string version
+        if (typeof ver === 'string') {
+          return ver;
+        }
+        
+        // Handle object version {major, minor, patch}
+        if (typeof ver === 'object' && ver !== null) {
+          const { major, minor, patch } = ver;
+          if (major !== undefined) {
+            return `${major}.${minor || 0}.${patch || 0}`;
+          }
+        }
+        
+        // Try VERSION constant
+        if (typeof (cv as any).VERSION === 'string') {
+          return (cv as any).VERSION;
+        }
+        
+        return 'unknown';
       } catch (error) {
         diagnostics.versionError = (error as Error)?.message ?? String(error);
         return 'unknown';
@@ -677,15 +697,21 @@ export class ElementDetectorService {
     }
 
     const createSampleMat = () => {
-      // Use enhanced morphology-compatible Mat creation
+      // Use enhanced morphology-compatible Mat creation for OpenCV 4.8
       const mat = this.createMorphologyMat(32, 32);
       if (mat) {
         return mat;
       }
       
-      // Fallback to original method
+      // Fallback: create basic Mat with buffer initialization for compatibility
       const desiredType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
-      return new cv.Mat(32, 32, desiredType, 128);
+      try {
+        const data = new Uint8Array(32 * 32);
+        data.fill(128);
+        return new cv.Mat(32, 32, desiredType, Buffer.from(data) as any);
+      } catch {
+        return new cv.Mat(32, 32, desiredType, 128);
+      }
     };
 
     const createKernel = () => {
@@ -823,7 +849,13 @@ export class ElementDetectorService {
           throw new Error('Failed to create morphology kernel');
         }
 
-        sampleOutput = instance.morphologyEx(validatedInput!, morphClose, kernel!);
+        // CRITICAL: Validate kernel is also a proper Mat instance for OpenCV 4.8
+        const validatedKernel = this.ensureMorphologyMat(kernel);
+        if (!validatedKernel) {
+          throw new Error('Failed to create OpenCV 4.8 compatible kernel Mat');
+        }
+
+        sampleOutput = instance.morphologyEx(validatedInput!, morphClose, validatedKernel!);
         
         // If we created a new validated input, we need to clean it up
         if (validatedInput !== sampleInput) {
@@ -883,6 +915,7 @@ export class ElementDetectorService {
       } finally {
         this.releaseMat(sampleOutput);
         this.releaseMat(sampleInput);
+        // Clean up kernel (original will be released, validated kernel was already cleaned up in try block)
         this.releaseMat(kernel);
       }
     }
@@ -2278,7 +2311,29 @@ export class ElementDetectorService {
           if (!instance || typeof instance[method] !== 'function') {
             throw new Error(`Morphology provider ${source} returned invalid instance (method=${method})`);
           }
-          enhanced = instance[method](edges, morphClose, kernel);
+          
+          // CRITICAL: Validate kernel is a proper Mat instance for OpenCV 4.8
+          const validatedKernel = this.ensureMorphologyMat(kernel);
+          if (!validatedKernel) {
+            throw new Error('Kernel Mat validation failed for OpenCV 4.8 compatibility');
+          }
+          
+          // Ensure edges Mat is also validated
+          const validatedEdges = this.ensureMorphologyMat(edges);
+          if (!validatedEdges) {
+            throw new Error('Edges Mat validation failed for OpenCV 4.8 compatibility');
+          }
+          
+          enhanced = instance[method](validatedEdges, morphClose, validatedKernel);
+          
+          // Clean up validated copies if they're different from originals
+          if (validatedKernel !== kernel) {
+            this.releaseMat(validatedKernel);
+          }
+          if (validatedEdges !== edges) {
+            this.releaseMat(validatedEdges);
+          }
+          
           this.morphologyApplyMethod = method;
           this.logger.debug(
             `[ElementDetectorService] Morphology applied successfully via ${source} using method '${method}'`,

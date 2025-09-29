@@ -4,6 +4,44 @@ const fs = require('fs');
 const path = require('path');
 
 /**
+ * Extract OpenCV version string from various possible formats
+ */
+function getOpenCvVersionString(cv) {
+  if (!cv) return 'unavailable';
+  
+  // Try cv.version as string
+  if (typeof cv.version === 'string') {
+    return cv.version;
+  }
+  
+  // Try cv.version as object {major, minor, patch}
+  if (typeof cv.version === 'object' && cv.version !== null) {
+    const { major, minor, patch, revision } = cv.version;
+    if (major !== undefined) {
+      return `${major}.${minor || 0}.${patch || 0}${revision ? `.${revision}` : ''}`;
+    }
+  }
+  
+  // Try cv.VERSION
+  if (typeof cv.VERSION === 'string') {
+    return cv.VERSION;
+  }
+  
+  // Try extracting from getBuildInformation
+  if (typeof cv.getBuildInformation === 'function') {
+    try {
+      const buildInfo = cv.getBuildInformation();
+      const match = buildInfo.match(/OpenCV\s+(\d+\.\d+\.\d+)/i);
+      if (match && match[1]) {
+        return match[1];
+      }
+    } catch {}
+  }
+  
+  return 'unknown';
+}
+
+/**
  * Try to load opencv4nodejs from multiple possible locations with platform awareness
  */
 function loadOpenCvWithFallback() {
@@ -51,7 +89,7 @@ function loadOpenCvWithFallback() {
       const module = require(modulePath);
       if (module && typeof module.Mat === 'function') {
         console.log(`[start-prod] ✓ Successfully loaded opencv4nodejs from: ${modulePath}`);
-        console.log(`[start-prod] ✓ OpenCV version: ${module.version || 'unknown'}`);
+        console.log(`[start-prod] ✓ OpenCV version: ${getOpenCvVersionString(module)}`);
         
         // Set environment variables for runtime services
         process.env.OPENCV_MODULE_PATH = resolvedPath;
@@ -161,7 +199,7 @@ function verifyOpenCvBindings() {
     }
     
     console.log('[start-prod] ✓ Basic Mat operations successful');
-    console.log(`[start-prod] ✓ OpenCV version: ${cv.version || 'Unknown'}`);
+    console.log(`[start-prod] ✓ OpenCV version: ${getOpenCvVersionString(cv)}`);
     console.log('[start-prod] ✓ opencv4nodejs verification completed successfully');
     
     return true;

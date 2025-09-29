@@ -228,6 +228,29 @@ function applyMatPolyfills(cv: CvModule | null): void {
         }
       }
     });
+
+    // Add Mat.type() polyfill if missing (common in opencv4nodejs v6.3.0 with OpenCV 4.6.0)
+    if (cv.Mat.prototype && typeof cv.Mat.prototype.type !== 'function') {
+      cv.Mat.prototype.type = function() {
+        // Try to determine type from channels and depth
+        try {
+          const channels = typeof this.channels === 'function' ? this.channels() : 
+                          typeof this.channels === 'number' ? this.channels : 1;
+          
+          // Default to appropriate type based on channels
+          switch (channels) {
+            case 1: return (cv as any).CV_8UC1 ?? 0;
+            case 2: return (cv as any).CV_8UC2 ?? 8;
+            case 3: return (cv as any).CV_8UC3 ?? 16;
+            case 4: return (cv as any).CV_8UC4 ?? 24;
+            default: return (cv as any).CV_8UC1 ?? 0;
+          }
+        } catch {
+          // Fallback to grayscale type
+          return (cv as any).CV_8UC1 ?? 0;
+        }
+      };
+    }
   }
 }
 
@@ -239,19 +262,29 @@ function ensureState(): LoadState {
   // Check if start-prod.js already found opencv4nodejs and set environment hint
   const envModulePath = process.env.OPENCV_MODULE_PATH;
   
-  // Try loading opencv4nodejs from multiple possible locations
+  // Try loading @u4/opencv4nodejs (maintained fork) from multiple possible locations
   const possiblePaths = [
-    'opencv4nodejs',  // Standard require
-    '../../../bytebot-cv/node_modules/opencv4nodejs',  // From agent to cv package
-    '../../bytebot-cv/node_modules/opencv4nodejs',     // Alternative relative path
-    './node_modules/opencv4nodejs',                    // Local node_modules
-    '../node_modules/opencv4nodejs',                   // Parent node_modules
+    '@u4/opencv4nodejs',  // Standard require for maintained fork
+    'opencv4nodejs',  // Fallback to old package if still present
+    '../../../bytebot-cv/node_modules/@u4/opencv4nodejs',  // From agent to cv package
+    '../../bytebot-cv/node_modules/@u4/opencv4nodejs',     // Alternative relative path
+    './node_modules/@u4/opencv4nodejs',                    // Local node_modules
+    '../node_modules/@u4/opencv4nodejs',                   // Parent node_modules
+    '../../../bytebot-cv/node_modules/opencv4nodejs',  // Fallback to old package
+    '../../bytebot-cv/node_modules/opencv4nodejs',     // Alternative relative path (old)
+    './node_modules/opencv4nodejs',                    // Local node_modules (old)
+    '../node_modules/opencv4nodejs',                   // Parent node_modules (old)
     // Additional paths for compiled dist directory context
-    '../../../../node_modules/opencv4nodejs',          // From dist to root node_modules
-    '../../../node_modules/opencv4nodejs',             // From dist to package node_modules
-    '../../node_modules/opencv4nodejs',                // From dist subdirectory
-    '../../../packages/bytebot-cv/node_modules/opencv4nodejs',  // From dist to cv package
-    '../../../../packages/bytebot-cv/node_modules/opencv4nodejs', // Alternative dist to cv
+    '../../../../node_modules/@u4/opencv4nodejs',          // From dist to root node_modules
+    '../../../node_modules/@u4/opencv4nodejs',             // From dist to package node_modules
+    '../../node_modules/@u4/opencv4nodejs',                // From dist subdirectory
+    '../../../packages/bytebot-cv/node_modules/@u4/opencv4nodejs',  // From dist to cv package
+    '../../../../packages/bytebot-cv/node_modules/@u4/opencv4nodejs', // Alternative dist to cv
+    '../../../../node_modules/opencv4nodejs',          // From dist to root node_modules (old)
+    '../../../node_modules/opencv4nodejs',             // From dist to package node_modules (old)
+    '../../node_modules/opencv4nodejs',                // From dist subdirectory (old)
+    '../../../packages/bytebot-cv/node_modules/opencv4nodejs',  // From dist to cv package (old)
+    '../../../../packages/bytebot-cv/node_modules/opencv4nodejs', // Alternative dist to cv (old)
   ];
 
   // If start-prod.js found a working path, try that first

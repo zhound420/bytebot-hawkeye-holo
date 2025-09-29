@@ -1796,9 +1796,10 @@ export class ElementDetectorService {
 
   /**
    * Ensure Mat is compatible with OpenCV 4.8 morphology operations
+   * Updated to work with incomplete opencv4nodejs bindings (missing Mat.type())
    */
   private ensureMorphologyMat(input: MatLike): MatLike | null {
-    if (!this.isValidMat(input)) {
+    if (!input || !this.isMatLike(input)) {
       return null;
     }
 
@@ -1809,40 +1810,75 @@ export class ElementDetectorService {
     try {
       // For OpenCV 4.8, ensure Mat is a proper cv.Mat instance
       if (!(input instanceof cv.Mat)) {
-        // Convert to proper cv.Mat
-        const converted = new cv.Mat(input as any);
-        if (!this.isValidMat(converted)) {
+        // Try to convert to proper cv.Mat
+        try {
+          const converted = new cv.Mat(input as any);
+          if (converted && this.isMatLike(converted)) {
+            return converted as MatLike;
+          }
           this.releaseMat(converted);
+        } catch (conversionError) {
+          // If conversion fails, try to use input as-is if it has basic Mat interface
+          if (this.hasBasicMatInterface(input)) {
+            return input;
+          }
           return null;
         }
-        return converted as MatLike;
       }
 
-      // Validate existing Mat properties
+      // Validate existing Mat properties (without using type() since it may be missing)
       const mat = input as any;
       
-      // Check type compatibility for morphology
+      // Check type compatibility for morphology (only if type() exists)
       if (typeof mat.type === 'function') {
-        const matType = mat.type();
-        const expectedType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
-        
-        if (matType !== expectedType) {
-          // Convert to proper type
-          if (typeof mat.convertTo === 'function') {
-            const converted = mat.convertTo(expectedType);
-            if (this.isValidMat(converted)) {
-              return converted as MatLike;
+        try {
+          const matType = mat.type();
+          const expectedType = typeof cv.CV_8UC1 === 'number' ? cv.CV_8UC1 : (cv as any).CV_8UC1 ?? 0;
+          
+          if (typeof matType === 'number' && matType !== expectedType) {
+            // Convert to proper type if possible
+            if (typeof mat.convertTo === 'function') {
+              try {
+                const converted = mat.convertTo(expectedType);
+                if (converted && this.isValidMat(converted)) {
+                  return converted as MatLike;
+                }
+                this.releaseMat(converted);
+              } catch (convertError) {
+                // Continue with original Mat if conversion fails
+              }
             }
-            this.releaseMat(converted);
           }
+        } catch (typeError) {
+          // type() function exists but fails - continue with original Mat
         }
       }
 
       return input;
     } catch (error) {
       warnOnce('Failed to ensure morphology Mat compatibility', error);
-      return null;
+      return input; // Return original Mat if all else fails
     }
+  }
+
+  /**
+   * Check if object has basic Mat interface for incomplete opencv4nodejs bindings
+   */
+  private hasBasicMatInterface(obj: any): boolean {
+    if (!obj || typeof obj !== 'object') {
+      return false;
+    }
+
+    // Check essential properties
+    if (typeof obj.rows !== 'number' || typeof obj.cols !== 'number') {
+      return false;
+    }
+
+    // For morphology, we need at least one of these methods
+    const morphologyMethods = ['morphologyEx'];
+    const hasAnyMorphMethod = morphologyMethods.some(method => typeof obj[method] === 'function');
+    
+    return hasAnyMorphMethod;
   }
 
 

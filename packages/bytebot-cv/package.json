@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@nestjs/common": "10.3.10",
-    "@u4/opencv4nodejs": "7.1.2",
+    "opencv4nodejs": "5.6.0",
     "canvas": "2.11.2",
     "fuzzysearch": "1.0.3",
     "lodash": "4.17.21",

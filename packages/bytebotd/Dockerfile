@@ -3,8 +3,8 @@
 # -----------------------------------------------------------------------------
 
 # Base image
-# Use Ubuntu 24.04 LTS base for OpenCV 4.8.0 support
-FROM public.ecr.aws/ubuntu/ubuntu:24.04
+# Use urielch/opencv-nodejs as base - has @u4/opencv4nodejs precompiled
+FROM urielch/opencv-nodejs:latest AS base
 
 
 # -----------------------------------------------------------------------------
@@ -14,9 +14,11 @@ FROM public.ecr.aws/ubuntu/ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
-# Disable OpenCV auto-build to use system packages instead
-ENV OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
-    OPENCV4NODEJS_SKIP_TRACKING=1
+# Set environment to use globally installed @u4/opencv4nodejs and ignore Node.js engine checks
+ENV NODE_PATH=/usr/lib/node_modules \
+    OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
+    OPENCV4NODEJS_SKIP_TRACKING=1 \
+    NPM_CONFIG_IGNORE_ENGINES=true
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
@@ -28,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     xvfb x11vnc xauth x11-xserver-utils \
     x11-apps sudo software-properties-common \
     # Desktop environment 
-    xfce4 xfce4-goodies dbus wmctrl \
+    xfce4 xfce4-goodies dbus dbus-x11 wmctrl \
     bluez bluetooth \
     # Display manager with autologin capability
     lightdm \
@@ -43,6 +45,8 @@ RUN apt-get update && apt-get install -y \
     libxtst-dev \
     libgif-dev \
     libcairo2-dev \
+    # Sharp dependencies for ARM64 native compilation
+    libvips-dev \
     # Remove unneeded dependencies
     && apt-get remove -y light-locker xfce4-screensaver xfce4-power-manager || true \
     # Clean up to reduce image size
@@ -55,11 +59,11 @@ RUN mkdir -p /run/dbus && \
 # -----------------------------------------------------------------------------
 # 3. Additional software installation
 # -----------------------------------------------------------------------------
-# Install Firefox
+# Install Firefox and additional software
 RUN apt-get update && apt-get install -y \
-    # Install necessary for adding PPA
+    # Install necessary packages
     software-properties-common apt-transport-https wget gnupg \
-    # Install Additional Graphics Libraries (Ubuntu 24.04 compatible)
+    # Install Additional Graphics Libraries (Debian compatible)
     mesa-utils \
     libgl1-mesa-dri \
     libglx-mesa0 \
@@ -71,9 +75,9 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu \
     fonts-liberation \
     fonts-freefont-ttf \
-    && add-apt-repository -y ppa:mozillateam/ppa \
-    && apt-get update \
-    && apt-get install -y firefox-esr thunderbird \
+    # Install Firefox and Thunderbird from Debian repositories
+    firefox-esr \
+    thunderbird \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     # Set Firefox as default browser system-wide
     && update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/bin/firefox-esr 200 \
@@ -157,7 +161,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Ubuntu 24.04 comes with pip 24.0 which is sufficient - no upgrade needed
+# Debian comes with pip which is sufficient - no upgrade needed
 
 # -----------------------------------------------------------------------------
 # 4. VNC and remote access setup
@@ -166,7 +170,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
     && git clone https://github.com/novnc/websockify.git /opt/websockify \
     && cd /opt/websockify \
-    && pip3 install --break-system-packages .
+    && pip3 install .
 
 # -----------------------------------------------------------------------------
 # 5. Application setup (bytebotd)
@@ -204,44 +208,57 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     pkg-config \
     libgtk-3-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libopenexr-dev \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
-    # Install system OpenCV packages instead of building from source
-    libopencv-dev \
-    libopencv-contrib-dev \
-    libopencv-imgproc-dev \
-    libopencv-imgcodecs-dev \
-    libopencv-objdetect-dev \
-    libopencv-ml-dev \
-    libopencv-photo-dev \
-    libopencv-video-dev \
-    libopencv-calib3d-dev \
-    libopencv-features2d-dev \
-    libopencv-highgui-dev \
+    # Complete Canvas/Cairo dependencies
+    libcairo2-dev \
+    libpango1.0-dev \
+    libpangocairo-1.0-0 \
+    libglib2.0-dev \
+    libfontconfig1-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    libpixman-1-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
-    ln -sf /usr/lib/${multiarch} /usr/lib/opencv
+# Set workspace dependencies
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
-    && /usr/bin/npm install --prefix ../shared \
-    && multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
-    && OPENCV_LIB_DIR=/usr/lib/${multiarch} \
-       OPENCV_INCLUDE_DIR=/usr/include/opencv4 \
-       OPENCV_BIN_DIR=/usr/bin \
-       /usr/bin/npm install --prefix ../bytebot-cv \
-    && /usr/bin/npm rebuild --build-from-source --prefix ../bytebot-cv canvas \
-    && /usr/bin/npm install --prefix . --build-from-source
+    && /usr/bin/npm install --prefix ../shared
 
+# Install bytebot-cv dependencies directly (avoiding workspace dependencies)
+RUN cd ../bytebot-cv \
+    && echo "Installing bytebot-cv dependencies..." \
+    && echo "Removing @u4/opencv4nodejs from package.json (using global install)..." \
+    && npm remove @u4/opencv4nodejs 2>/dev/null || true \
+    && echo "Installing only bytebot-cv direct dependencies..." \
+    && /usr/bin/npm install --no-workspaces --include=dev --ignore-engines --ignore-scripts \
+    && echo "✓ bytebot-cv dependencies installed successfully" \
+    && echo "Note: @u4/opencv4nodejs will be resolved via NODE_PATH at runtime"
+
+# Install bytebotd dependencies (no local @u4/opencv4nodejs needed due to NODE_PATH)  
+# Exclude Sharp initially to avoid ARM64 issues
+RUN /usr/bin/npm install --build-from-source --ignore-optional
+
+# Remove Sharp from dependencies temporarily and install manually
+RUN npm uninstall sharp 2>/dev/null || true && \
+    rm -rf node_modules/sharp && \
+    npm cache clean --force
+
+# Install Sharp with Node.js 18.12.1 compatible version
+RUN npm config set target_arch arm64 && \
+    npm config set target_platform linux && \
+    npm config set build_from_source true && \
+    npm install --no-save --build-from-source sharp@0.32.6 && \
+    # Verify Sharp installation
+    node -e "const sharp = require('sharp'); console.log('Sharp version:', sharp.versions);"
+
+# Build packages with TypeScript
 WORKDIR /bytebot/packages/bytebot-cv
-RUN /usr/bin/npm run build
+RUN rm -rf dist && /usr/bin/npm run build
+
+# Rebuild Canvas for Node.js 20.x compatibility (after bytebot-cv build)
+RUN echo "Rebuilding Canvas for Node.js 20.x compatibility..." && \
+    /usr/bin/npm rebuild canvas --build-from-source
 
 WORKDIR /bytebot/packages/bytebotd
 RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
@@ -251,6 +268,31 @@ RUN node -e "const fs=require('fs'); const path=require('path'); const file=path
 RUN /usr/bin/npm run build
 
 WORKDIR /compile
+
+# Upgrade CMake to version 3.20+ required by libnut-core
+# Download and install CMake binary directly since Kitware APT repo doesn't support Debian bullseye
+RUN ARCH=$(dpkg --print-architecture) && \
+    CMAKE_VERSION="3.29.8" && \
+    if [ "$ARCH" = "amd64" ]; then \
+        CMAKE_ARCH="x86_64"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        CMAKE_ARCH="aarch64"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    # Download CMake binary
+    wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${CMAKE_ARCH}.tar.gz -O /tmp/cmake.tar.gz && \
+    # Extract to /opt/cmake
+    mkdir -p /opt/cmake && \
+    tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1 && \
+    # Create symlinks to system PATH
+    ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake && \
+    ln -sf /opt/cmake/bin/cpack /usr/local/bin/cpack && \
+    ln -sf /opt/cmake/bin/ctest /usr/local/bin/ctest && \
+    # Verify CMake version
+    cmake --version && \
+    # Clean up
+    rm -f /tmp/cmake.tar.gz
 
 RUN git clone https://github.com/ZachJW34/libnut-core.git && \
     cd libnut-core && \

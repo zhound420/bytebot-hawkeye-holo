@@ -76,9 +76,7 @@ export class TemplateMatcherService {
           });
         }
 
-        if (scale !== 1.0) {
-          scaledTemplate.delete();
-        }
+        // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
       }
 
       // Sort by confidence and limit results
@@ -126,13 +124,8 @@ export class TemplateMatcherService {
         matchOptions
       );
 
-      // Cleanup preprocessed images
-      if (preprocessScreenshot && processedScreenshot !== screenshot) {
-        processedScreenshot.delete();
-      }
-      if (preprocessTemplate && processedTemplate !== template) {
-        processedTemplate.delete();
-      }
+      // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
+      // No manual cleanup needed with .delete()
 
       return results;
 

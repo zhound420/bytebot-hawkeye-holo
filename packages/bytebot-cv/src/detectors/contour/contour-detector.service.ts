@@ -104,10 +104,8 @@ export class ContourDetectorService {
         });
       }
 
-      // Cleanup
-      if (gray !== image) gray.delete();
-      blurred.delete();
-      edges.delete();
+      // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
+      // No manual cleanup needed with .delete()
 
       // Sort by confidence and area
       results.sort((a, b) => (b.confidence * Math.log(b.area)) - (a.confidence * Math.log(a.area)));

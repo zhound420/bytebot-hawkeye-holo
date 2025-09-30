@@ -1601,17 +1601,12 @@ export class ElementDetectorService {
 
     const candidate = mat as any;
 
+    // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
+    // No manual cleanup needed with .delete() or .release()
     try {
-      if (typeof candidate.delete === 'function') {
-        candidate.delete();
-        return;
-      }
-
-      if (typeof candidate.release === 'function') {
-        candidate.release();
-      }
+      // Placeholder for future cleanup if needed
     } catch (error) {
-      warnOnce('Mat release failed', error);
+      warnOnce('Mat cleanup skipped', error);
     }
   }
 
@@ -2095,9 +2090,7 @@ export class ElementDetectorService {
       );
       return this.safeMatClone(mat, 'applyClahePreprocessing:error') ?? mat;
     } finally {
-      if (claheInstance && typeof claheInstance.delete === 'function') {
-        claheInstance.delete();
-      }
+      // Note: CLAHE instances are garbage collected automatically in @u4/opencv4nodejs v7.1.2
       if (workingNeedsRelease && workingMat && workingMat !== output) {
         this.releaseMat(workingMat);
       }

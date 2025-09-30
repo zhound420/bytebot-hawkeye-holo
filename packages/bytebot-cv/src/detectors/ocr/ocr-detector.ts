@@ -190,9 +190,10 @@ const safeFilter2D = (mat: any, kernel: any, label: string): any => {
   if (filter2DSupported === false) {
     return mat;
   }
-  const ddepth = -1;
   if (typeof cv.filter2D === 'function') {
     try {
+      // Use CV_8U as ddepth for 8-bit unsigned integer output
+      const ddepth = cv.CV_8U || -1;
       const result = cv.filter2D(mat, ddepth, kernel);
       filter2DSupported = true;
       return result;

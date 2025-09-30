@@ -133,9 +133,8 @@ export class FeatureMatcherService {
       const boundingRect = cv.boundingRect(transformedCorners);
       const confidence = goodMatches.length / Math.max(keypoints1.length, keypoints2.length);
 
-      // Cleanup
-      if (grayScreenshot !== screenshot) grayScreenshot.delete();
-      if (grayTemplate !== template) grayTemplate.delete();
+      // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
+      // No manual cleanup needed with .delete()
 
       return [{
         x: boundingRect.x,
@@ -180,7 +179,7 @@ export class FeatureMatcherService {
         ? keypoints.reduce((sum, kp) => sum + kp.response, 0) / keypoints.length
         : 0;
 
-      if (gray !== image) gray.delete();
+      // Note: In @u4/opencv4nodejs v7.1.2, Mat objects are garbage collected automatically
 
       return {
         keypointCount: keypoints.length,

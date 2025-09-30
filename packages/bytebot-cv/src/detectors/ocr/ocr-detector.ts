@@ -614,6 +614,8 @@ const attemptDefinitions = (whitelist: string): OCRAttemptConfig[] => {
 
   const MORPH_RECT = cv.MORPH_RECT ?? 0;
   const MORPH_CLOSE = cv.MORPH_CLOSE ?? 3;
+  const MORPH_OPEN = cv.MORPH_OPEN ?? 2;
+  const MORPH_GRADIENT = cv.MORPH_GRADIENT ?? 4;
   const ADAPTIVE_GAUSSIAN = cv.ADAPTIVE_THRESH_GAUSSIAN_C ?? 1;
   const ADAPTIVE_MEAN = cv.ADAPTIVE_THRESH_MEAN_C ?? 0;
   const THRESH_BINARY = cv.THRESH_BINARY ?? 0;
@@ -776,6 +778,65 @@ const attemptDefinitions = (whitelist: string): OCRAttemptConfig[] => {
         user_defined_dpi: '300',
       },
       minConfidence: 55,
+      minWordCount: 1,
+    },
+    {
+      name: 'morphology_gradient_psm6',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.4);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'morphology_gradient_psm6 cvtColor BGR2GRAY failed',
+        );
+        // Apply morphological gradient to enhance text edges
+        const kernel = createMorphRectKernel(2, 2);
+        const gradient = morph(gray, MORPH_GRADIENT, kernel);
+        const thresh = adaptiveThreshold(
+          gradient,
+          255,
+          ADAPTIVE_GAUSSIAN,
+          THRESH_BINARY,
+          11,
+          2,
+        );
+        return { image: thresh, scale: 1.4 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '6',
+        tessedit_char_whitelist: whitelist,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      },
+      minConfidence: 60,
+      minWordCount: 1,
+    },
+    {
+      name: 'ui_buttons_enhanced_psm8',
+      preprocess: (input) => {
+        const scaled = scaleMat(input, 1.6);
+        const gray = safeCvtColor(
+          scaled,
+          COLOR_BGR2GRAY,
+          'ui_buttons_enhanced_psm8 cvtColor BGR2GRAY failed',
+        );
+        // Apply opening to remove noise, then closing to fill gaps
+        const smallKernel = createMorphRectKernel(2, 2);
+        const opened = morph(gray, MORPH_OPEN, smallKernel);
+        const kernel = createMorphRectKernel(4, 2);
+        const closed = morph(opened, MORPH_CLOSE, kernel);
+        // Apply CLAHE for contrast enhancement
+        const clahe = createClahe(3, 8, 8);
+        const enhanced = applyClahe(clahe, closed);
+        return { image: enhanced, scale: 1.6 };
+      },
+      tessParams: {
+        tessedit_pageseg_mode: '8',
+        tessedit_char_whitelist: whitelist,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '320',
+      },
+      minConfidence: 65,
       minWordCount: 1,
     },
   ];

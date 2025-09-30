@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { UniversalUIElement } from '../interfaces/universal-element.interface';
 import { decodeImageBuffer } from '../utils/cv-decode';
 import { getOpenCvModule, hasOpenCv, logOpenCvWarning } from '../utils/opencv-loader';
+import { EnhancedVisualDetectorService } from './enhanced-visual-detector.service';
 
 // Lazy-load OpenCV so environments without the native bindings degrade gracefully.
 type CvModule = typeof import('@u4/opencv4nodejs');

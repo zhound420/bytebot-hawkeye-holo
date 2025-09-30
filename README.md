@@ -49,8 +49,10 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Coordinate telemetry & accuracy** | Telemetry pipeline with `BYTEBOT_COORDINATE_METRICS` and `BYTEBOT_COORDINATE_DEBUG`, an attempt towards accuracy.(COORDINATE_ACCURACY_IMPROVEMENTS.md). | No automated accuracy measurement or debug dataset. |
 | **Universal coordinate mapping** | Shared lookup in `config/universal-coordinates.yaml` bundled in repo and `@bytebot/shared`, auto-discovered without extra configuration. | Requires custom configuration for consistent coordinate frames. |
 | **Universal element detection** | CV pipeline merges visual heuristics, OCR enrichments, and semantic roles to emit consistent `UniversalUIElement` metadata for buttons, inputs, and clickable controls. | LLM prompts must infer UI semantics from raw OCR spans and manually chosen click targets. |
+| **Enhanced OpenCV 4.6.0+ pipeline** | Multi-method detection with template matching, feature detection (ORB/AKAZE), contour analysis, and advanced OCR preprocessing with morphological operations and CLAHE enhancement. | Basic screenshot analysis without advanced computer vision techniques. |
+| **Real-time CV activity monitoring** | Live tracking of active computer vision methods with performance metrics, success rates, and UI indicators showing which CV methods are processing. API endpoints and SSE streams for real-time visibility. | No visibility into which detection methods are active or their performance characteristics. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
-| **Active Model desktop telemetry** | The desktop dashboard’s Active Model card (under `/desktop`) continuously surfaces the agent’s current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
+| **Active Model desktop telemetry** | The desktop dashboard's Active Model card (under `/desktop`) continuously surfaces the agent's current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
 
 Flip individual systems off by setting the corresponding environment variables—`BYTEBOT_UNIVERSAL_TEACHING`, `BYTEBOT_ADAPTIVE_CALIBRATION`, `BYTEBOT_ZOOM_REFINEMENT`, or `BYTEBOT_COORDINATE_METRICS`—to `false` (default `true`). Enable deep-dive logs with `BYTEBOT_COORDINATE_DEBUG=true` when troubleshooting. Visit the `/desktop` route (see the screenshot above) to monitor the Active Model card while long-running tasks execute.
 
@@ -78,19 +80,57 @@ To help you interpret the drawer’s live readouts, Hawkeye surfaces several lea
 
 Together, these metrics give you continuous feedback on how Hawkeye’s coordinate calibration improves over time and whether additional guardrails are necessary for stubborn workflows.
 
-### Universal UI Element Detector & Semantic Analyzer
+### Enhanced Computer Vision Pipeline (OpenCV 4.6.0+)
 
-Hawkeye now surfaces a **universal element detection service** that outputs structured `UniversalUIElement` objects. The pipeline fuses:
+Hawkeye leverages a **comprehensive OpenCV 4.6.0 computer vision pipeline** that dramatically improves UI automation accuracy through multiple detection methods:
 
-- **Visual pattern detection** (`VisualPatternDetectorService`) tuned for desktop buttons and text inputs using OpenCV edge, CLAHE, and sharpen filters.
-- **OCR enrichment** through `ElementDetectorService.detectElementsUniversal`, which pairs every candidate with text, semantic roles (`submit`, `cancel`, `search`, …), confidence, click targets, and human-friendly descriptions.
-- **Text-based semantics** (`TextSemanticAnalyzerService`) so downstream agents reason about intent rather than raw strings.
+#### **Multi-Method Element Detection**
+- **Template Matching** (`TemplateMatcherService`) - Multi-scale template matching with confidence scoring for pixel-perfect UI element matching
+- **Feature Detection** (`FeatureMatcherService`) - ORB and AKAZE feature matching with homography-based element localization, robust to UI variations
+- **Contour Analysis** (`ContourDetectorService`) - Shape-based detection for buttons, input fields, and icons using advanced morphological operations
+- **Enhanced OCR Pipeline** - Upgraded Tesseract preprocessing with morphological gradients, bilateral filtering, and CLAHE contrast enhancement
 
-Import `BytebotCvModule` in any Nest workspace to inject these services or call `detectElementsUniversal` directly from the agent `computer_detect_elements` tool. This drastically shortens the reasoning chain LLMs need before issuing `computer_click_element`.
+#### **Intelligent Detection Orchestration**
+The `EnhancedVisualDetectorService` combines all CV methods intelligently:
+```typescript
+// Comprehensive detection using all available methods
+const result = await enhancedDetector.detectElements(screenshot, template, {
+  useTemplateMatching: true,   // For exact UI matches
+  useFeatureMatching: true,    // For robust element detection
+  useContourDetection: true,   // For shape-based detection
+  useOCR: true,               // For text-based elements
+  combineResults: true        // Merge overlapping detections
+});
+```
 
-### OCR Preprocessing Improvements
+#### **Real-Time CV Activity Monitoring**
+- **Live Method Tracking** - `CVActivityIndicatorService` tracks which CV methods are actively processing
+- **Performance Metrics** - Real-time success rates, processing times, and execution statistics
+- **UI Integration** - Server-Sent Events and REST endpoints for displaying active CV methods in the web interface
+- **Debug Telemetry** - Comprehensive method execution history for optimization
 
-The CV stack now relies on OpenCV’s CLAHE implementation when available (with graceful fallbacks for distro-specific builds) and a safer sharpening pipeline. Capability checks run at startup, so missing features are logged once instead of spamming runtime warnings—and the OCR feed enjoys higher contrast inputs across platforms.
+#### **API Endpoints for CV Visibility**
+```bash
+GET /cv-activity/status     # Current active methods snapshot
+GET /cv-activity/active     # Quick active/inactive check
+SSE /cv-activity/stream     # Real-time updates via Server-Sent Events
+GET /cv-activity/performance # Method performance statistics
+```
+
+#### **Universal Element Detection Pipeline**
+The enhanced system outputs structured `UniversalUIElement` objects by fusing:
+
+- **Visual pattern detection** (`VisualPatternDetectorService`) with OpenCV edge detection, CLAHE, and morphological operations
+- **OCR enrichment** through `ElementDetectorService.detectElementsUniversal` with advanced preprocessing techniques
+- **Semantic analysis** (`TextSemanticAnalyzerService`) for intent-based reasoning over raw UI text
+- **Multi-method fusion** that combines template, feature, contour, and OCR detections for maximum reliability
+
+#### **OpenCV 4.6.0 Capability Matrix**
+✅ **Active Methods**: Template matching, Feature detection (ORB/AKAZE), Morphological operations, CLAHE, Gaussian blur, Bilateral filtering, Canny edge detection, Contour analysis, Adaptive thresholding
+
+✅ **Preprocessing Pipeline**: Multi-scale image processing, Noise reduction, Contrast enhancement, Edge enhancement, Shape analysis
+
+✅ **UI Automation Features**: Button detection, Input field identification, Icon recognition, Text extraction, Clickable element mapping
 
 ### Keyboard & Shortcut Reliability
 
@@ -125,6 +165,8 @@ If the UI reports `ECONNREFUSED` to `9991`, ensure the agent container is health
 - `BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true` enables the multi-zoom screenshot refinement.
 - `BYTEBOT_SMART_FOCUS=true` and `BYTEBOT_SMART_FOCUS_MODEL=<litellm-alias>` route Smart Focus through the proxy model you configure in the LiteLLM config.
 - `BYTEBOT_COORDINATE_METRICS=true` (plus optional `BYTEBOT_COORDINATE_DEBUG=true`) records the click accuracy telemetry that distinguishes the fork.
+- `BYTEBOT_CV_ENHANCED_DETECTION=true` enables the comprehensive OpenCV 4.6.0+ pipeline with template, feature, and contour detection.
+- `BYTEBOT_CV_ACTIVITY_TRACKING=true` activates real-time CV method monitoring and performance metrics for UI visibility.
 
 ```bash
 cat <<'EOF' > docker/.env
@@ -139,6 +181,10 @@ BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true
 BYTEBOT_SMART_FOCUS=true
 BYTEBOT_SMART_FOCUS_MODEL=gpt-4o-mini
 BYTEBOT_COORDINATE_METRICS=true
+
+# Enhanced Computer Vision (OpenCV 4.6.0+)
+BYTEBOT_CV_ENHANCED_DETECTION=true
+BYTEBOT_CV_ACTIVITY_TRACKING=true
 EOF
 
 # Build images locally (default)

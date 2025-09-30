@@ -88,14 +88,16 @@ RUN NODE_VERSION=$(node --version | sed 's/v//') \
     fi \
     && echo "✓ Node.js version $NODE_VERSION meets requirements"
 
-# Create symlinks for supervisord compatibility and verify permissions
-RUN echo "Checking Node.js binary permissions before symlink:" \
+# Create symlinks for supervisord compatibility and fix permissions/ownership
+# Cache buster: 2025-09-30-20:50
+RUN echo "Checking Node.js binary permissions before fixing:" \
     && ls -la "$NVM_DIR/versions/node/v20.19.5/bin/node" \
+    && chown root:root "$NVM_DIR/versions/node/v20.19.5/bin/node" "$NVM_DIR/versions/node/v20.19.5/bin/npm" \
     && chmod +x "$NVM_DIR/versions/node/v20.19.5/bin/node" "$NVM_DIR/versions/node/v20.19.5/bin/npm" \
     && ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/node" /usr/bin/node \
     && ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/npm" /usr/bin/npm \
     && echo "✓ Node.js symlinks created: $(ls -la /usr/bin/node /usr/bin/npm)" \
-    && echo "✓ Target permissions: $(ls -la $NVM_DIR/versions/node/v20.19.5/bin/node)"
+    && echo "✓ Target ownership/permissions fixed: $(ls -la $NVM_DIR/versions/node/v20.19.5/bin/node)"
 
 # -----------------------------------------------------------------------------
 # 3. Additional software installation
@@ -409,6 +411,13 @@ ENV BYTEBOT_GRID_OVERLAY=true \
 
 RUN mkdir -p /home/user/.config /home/user/.local/share /home/user/.cache \
     && chown -R user:user /home/user/.config /home/user/.local /home/user/.cache
+
+# Final Node.js ownership fix (must be last to ensure supervisord can execute)
+# Cache buster: 2025-09-30-20:58
+RUN echo "Final Node.js ownership fix..." \
+    && chown -R root:root "$NVM_DIR/versions/node/v20.19.5/bin/" \
+    && chmod +x "$NVM_DIR/versions/node/v20.19.5/bin/node" "$NVM_DIR/versions/node/v20.19.5/bin/npm" \
+    && echo "✓ Final ownership: $(ls -la $NVM_DIR/versions/node/v20.19.5/bin/)"
 
 WORKDIR /home/user
 

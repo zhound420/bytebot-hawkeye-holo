@@ -754,7 +754,12 @@ export class ElementDetectorService {
           }
         },
         factory: () => ({
-          morphologyEx: (src: MatLike, morphType: number, kernel: any) => (src as any).morphologyEx(morphType, kernel),
+          morphologyEx: (src: MatLike, morphType: number, kernel: any) => {
+            const srcMat = src as any;
+            const dst = new cv.Mat(srcMat.rows, srcMat.cols, srcMat.type);
+            srcMat.morphologyEx(dst, morphType, kernel);
+            return dst;
+          },
         }),
       },
       {

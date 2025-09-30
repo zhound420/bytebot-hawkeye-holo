@@ -88,10 +88,14 @@ RUN NODE_VERSION=$(node --version | sed 's/v//') \
     fi \
     && echo "✓ Node.js version $NODE_VERSION meets requirements"
 
-# Create symlinks for supervisord compatibility
-RUN ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/node" /usr/bin/node \
+# Create symlinks for supervisord compatibility and verify permissions
+RUN echo "Checking Node.js binary permissions before symlink:" \
+    && ls -la "$NVM_DIR/versions/node/v20.19.5/bin/node" \
+    && chmod +x "$NVM_DIR/versions/node/v20.19.5/bin/node" "$NVM_DIR/versions/node/v20.19.5/bin/npm" \
+    && ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/node" /usr/bin/node \
     && ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/npm" /usr/bin/npm \
-    && echo "✓ Node.js symlinks created: $(ls -la /usr/bin/node /usr/bin/npm)"
+    && echo "✓ Node.js symlinks created: $(ls -la /usr/bin/node /usr/bin/npm)" \
+    && echo "✓ Target permissions: $(ls -la $NVM_DIR/versions/node/v20.19.5/bin/node)"
 
 # -----------------------------------------------------------------------------
 # 3. Additional software installation

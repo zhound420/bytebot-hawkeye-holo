@@ -18,11 +18,18 @@ export interface BoundingBox {
 }
 
 export interface ElementMetadata {
-  detectionMethod: 'ocr' | 'template' | 'edge' | 'accessibility' | 'hybrid';
+  detectionMethod: 'ocr' | 'template' | 'edge' | 'accessibility' | 'hybrid' | 'template-matching' | 'feature-matching' | 'contour-detection' | 'ocr-detection';
   similarity?: number;
   ocrConfidence?: number;
   templateMatch?: number;
   ocrAttempt?: string;
+  // Enhanced CV metadata
+  originalResult?: any;
+  shape?: string;
+  area?: number;
+  aspectRatio?: number;
+  keypointCount?: number;
+  combinedFromMethods?: string[];
 }
 
 export type ElementType =

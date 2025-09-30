@@ -1,6 +1,6 @@
 import { Controller, Get, Sse } from '@nestjs/common';
 import { Observable, interval, map } from 'rxjs';
-import { CVActivityIndicatorService } from '../../../bytebot-cv/src/services/cv-activity-indicator.service';
+import { CVActivityIndicatorService } from '@bytebot/cv/services/cv-activity-indicator.service';
 
 @Controller('cv-activity')
 export class CVActivityController {

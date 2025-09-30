@@ -199,7 +199,7 @@ export class EnhancedVisualDetectorService {
       maxArea: 10000,
       minAspectRatio: 0.2,
       maxAspectRatio: 8.0,
-      shapeTypes: ['rectangle', 'circle'] as const
+      shapeTypes: ['rectangle', 'circle'] as ('rectangle' | 'circle' | 'triangle' | 'polygon')[]
     };
 
     return this.detectElements(screenshot, null, {
@@ -313,7 +313,7 @@ export class EnhancedVisualDetectorService {
       text: result.text || '',
       description: `Element detected by ${method}`,
       metadata: {
-        detectionMethod: method,
+        detectionMethod: method as 'template-matching' | 'feature-matching' | 'ocr-detection',
         originalResult: result
       }
     }));
@@ -335,7 +335,7 @@ export class EnhancedVisualDetectorService {
       text: '',
       description: `${result.shape} element (area: ${result.area})`,
       metadata: {
-        detectionMethod: 'contour-detection',
+        detectionMethod: 'contour-detection' as const,
         shape: result.shape,
         area: result.area,
         aspectRatio: result.aspectRatio
@@ -387,7 +387,7 @@ export class EnhancedVisualDetectorService {
       const allMethods = overlapping.map(el => el.metadata?.detectionMethod).filter(Boolean);
       bestElement.metadata = {
         ...bestElement.metadata,
-        detectionMethod: allMethods.join(', '),
+        detectionMethod: 'hybrid' as const, // Use hybrid for combined detections
         combinedFromMethods: allMethods
       };
 

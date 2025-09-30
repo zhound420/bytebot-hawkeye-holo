@@ -36,6 +36,9 @@ import {
   DetectedElement,
   BoundingBox,
   ClickTarget,
+  EnhancedVisualDetectorService,
+  CVActivityIndicatorService,
+  getOpenCvModule,
 } from '@bytebot/cv';
 import {
   ComputerClickElementInput,
@@ -123,6 +126,8 @@ export class AgentProcessor {
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
     private readonly elementDetector: ElementDetectorService,
+    private readonly enhancedVisualDetector: EnhancedVisualDetectorService,
+    private readonly cvActivityService: CVActivityIndicatorService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -697,19 +702,24 @@ export class AgentProcessor {
         ? this.normalizeRegion(params.region)
         : undefined;
 
-      const detectionConfig = {
-        enableOCR: true,
-        enableTemplateMatching: false,
-        enableEdgeDetection: true,
-        confidenceThreshold: 0.5,
-        ...(searchRegion ? { searchRegion } : {}),
-      };
+      // Use enhanced CV detection with activity tracking
+      const screenshot = this.decodeScreenshotBuffer(screenshotBuffer);
 
-      const elements = await this.elementDetector.detectElements(
-        screenshotBuffer,
-        detectionConfig,
+      const enhancedResult = await this.enhancedVisualDetector.detectElements(
+        screenshot,
+        null, // No template for general detection
+        {
+          useTemplateMatching: false,
+          useFeatureMatching: false,
+          useContourDetection: true,
+          useOCR: true,
+          confidenceThreshold: 0.5,
+          maxResults: 20,
+          ocrRegion: searchRegion,
+        }
       );
 
+      const elements = enhancedResult.elements;
       this.cacheDetectedElements(elements);
 
       if (params.includeAll) {
@@ -894,6 +904,14 @@ export class AgentProcessor {
         taskId: this.currentTaskId,
       });
     }
+  }
+
+  private decodeScreenshotBuffer(buffer: Buffer): any {
+    const cv = getOpenCvModule();
+    if (!cv) {
+      throw new Error('OpenCV not available for enhanced detection');
+    }
+    return cv.imdecode(buffer);
   }
 
   private getElementFromCache(elementId: string): DetectedElement | null {

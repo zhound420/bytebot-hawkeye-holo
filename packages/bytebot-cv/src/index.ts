@@ -10,5 +10,6 @@ export * from './detectors/template/template-matcher.service';
 export * from './detectors/feature/feature-matcher.service';
 export * from './detectors/contour/contour-detector.service';
 export * from './interfaces/universal-element.interface';
+export * from './utils/opencv-loader';
 export * from './bytebot-cv.module';
 export * from './enhanced-cv.module';

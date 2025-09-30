@@ -1,25 +1,18 @@
 import { Controller, Get } from '@nestjs/common';
+import { CVActivityIndicatorService } from '@bytebot/cv/services/cv-activity-indicator.service';
 
 @Controller('cv-activity')
 export class CVActivityController {
-  // Mock CV activity data for now - can be enhanced later with proper service injection
-  private mockActivity = {
-    activeMethods: [],
-    totalActiveCount: 0,
-    methodDetails: {},
-    performance: {
-      averageProcessingTime: 0,
-      totalMethodsExecuted: 0,
-      successRate: 1.0
-    }
-  };
+  constructor(
+    private readonly cvActivityService: CVActivityIndicatorService
+  ) {}
 
   /**
    * Get current CV activity snapshot
    */
   @Get('status')
   getActivityStatus() {
-    return this.mockActivity;
+    return this.cvActivityService.getSnapshot();
   }
 
   /**
@@ -27,20 +20,7 @@ export class CVActivityController {
    */
   @Get('performance')
   getPerformanceStats() {
-    return [
-      {
-        method: 'template-matching',
-        executionCount: 0,
-        averageTime: 0,
-        successRate: 1.0
-      },
-      {
-        method: 'contour-detection',
-        executionCount: 0,
-        averageTime: 0,
-        successRate: 1.0
-      }
-    ];
+    return this.cvActivityService.getMethodPerformance();
   }
 
   /**
@@ -49,8 +29,8 @@ export class CVActivityController {
   @Get('history')
   getMethodHistory() {
     return {
-      history: [], // Empty for now
-      totalExecutions: 0
+      history: this.cvActivityService.getMethodHistory().slice(-20), // Last 20 executions
+      totalExecutions: this.cvActivityService.getMethodHistory().length
     };
   }
 
@@ -61,7 +41,7 @@ export class CVActivityController {
   streamActivity() {
     return {
       timestamp: Date.now(),
-      ...this.mockActivity
+      ...this.cvActivityService.getSnapshot()
     };
   }
 
@@ -71,9 +51,9 @@ export class CVActivityController {
   @Get('active')
   isActive() {
     return {
-      active: false,
-      activeCount: 0,
-      activeMethods: []
+      active: this.cvActivityService.hasActiveMethods(),
+      activeCount: this.cvActivityService.getSnapshot().totalActiveCount,
+      activeMethods: this.cvActivityService.getSnapshot().activeMethods
     };
   }
 }

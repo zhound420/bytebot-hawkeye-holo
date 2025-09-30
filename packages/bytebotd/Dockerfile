@@ -88,6 +88,11 @@ RUN NODE_VERSION=$(node --version | sed 's/v//') \
     fi \
     && echo "✓ Node.js version $NODE_VERSION meets requirements"
 
+# Create symlinks for supervisord compatibility
+RUN ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/node" /usr/bin/node \
+    && ln -sf "$NVM_DIR/versions/node/v20.19.5/bin/npm" /usr/bin/npm \
+    && echo "✓ Node.js symlinks created: $(ls -la /usr/bin/node /usr/bin/npm)"
+
 # -----------------------------------------------------------------------------
 # 3. Additional software installation
 # -----------------------------------------------------------------------------

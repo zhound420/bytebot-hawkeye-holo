@@ -1,19 +1,25 @@
-import { Controller, Get, Sse } from '@nestjs/common';
-import { Observable, interval, map } from 'rxjs';
-import { CVActivityIndicatorService } from '@bytebot/cv/services/cv-activity-indicator.service';
+import { Controller, Get } from '@nestjs/common';
 
 @Controller('cv-activity')
 export class CVActivityController {
-  constructor(
-    private readonly cvActivityService: CVActivityIndicatorService
-  ) {}
+  // Mock CV activity data for now - can be enhanced later with proper service injection
+  private mockActivity = {
+    activeMethods: [],
+    totalActiveCount: 0,
+    methodDetails: {},
+    performance: {
+      averageProcessingTime: 0,
+      totalMethodsExecuted: 0,
+      successRate: 1.0
+    }
+  };
 
   /**
    * Get current CV activity snapshot
    */
   @Get('status')
   getActivityStatus() {
-    return this.cvActivityService.getSnapshot();
+    return this.mockActivity;
   }
 
   /**
@@ -21,7 +27,20 @@ export class CVActivityController {
    */
   @Get('performance')
   getPerformanceStats() {
-    return this.cvActivityService.getMethodPerformance();
+    return [
+      {
+        method: 'template-matching',
+        executionCount: 0,
+        averageTime: 0,
+        successRate: 1.0
+      },
+      {
+        method: 'contour-detection',
+        executionCount: 0,
+        averageTime: 0,
+        successRate: 1.0
+      }
+    ];
   }
 
   /**
@@ -30,27 +49,20 @@ export class CVActivityController {
   @Get('history')
   getMethodHistory() {
     return {
-      history: this.cvActivityService.getMethodHistory().slice(-20), // Last 20 executions
-      totalExecutions: this.cvActivityService.getMethodHistory().length
+      history: [], // Empty for now
+      totalExecutions: 0
     };
   }
 
   /**
-   * Server-Sent Events endpoint for real-time CV activity updates
+   * Simple polling endpoint for CV activity updates (replaces SSE for compatibility)
    */
-  @Sse('stream')
-  streamActivity(): Observable<any> {
-    return interval(1000).pipe(
-      map(() => {
-        const snapshot = this.cvActivityService.getSnapshot();
-        return {
-          data: {
-            timestamp: Date.now(),
-            ...snapshot
-          }
-        };
-      })
-    );
+  @Get('stream')
+  streamActivity() {
+    return {
+      timestamp: Date.now(),
+      ...this.mockActivity
+    };
   }
 
   /**
@@ -59,9 +71,9 @@ export class CVActivityController {
   @Get('active')
   isActive() {
     return {
-      active: this.cvActivityService.hasActiveMethods(),
-      activeCount: this.cvActivityService.getSnapshot().totalActiveCount,
-      activeMethods: this.cvActivityService.getSnapshot().activeMethods
+      active: false,
+      activeCount: 0,
+      activeMethods: []
     };
   }
 }

@@ -57,6 +57,38 @@ RUN mkdir -p /run/dbus && \
     dbus-uuidgen --ensure=/etc/machine-id
 
 # -----------------------------------------------------------------------------
+# 2.5. Install Node.js EARLY (before compiling any native modules)
+# -----------------------------------------------------------------------------
+# Install Node.js 20.x using direct binary installation to bypass package conflicts
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+
+# Use NVM to install and use Node.js 20.x
+ENV NVM_DIR=/root/.nvm
+RUN . "$NVM_DIR/nvm.sh" && nvm install 20.19.5 && nvm use 20.19.5 && nvm alias default 20.19.5
+
+# Set PATH to prioritize NVM Node.js installation
+ENV PATH="$NVM_DIR/versions/node/v20.19.5/bin:$PATH"
+
+# Verify Node.js installation and version
+RUN echo "=== Node.js Installation Verification ===" \
+    && which node && which npm \
+    && node --version \
+    && npm --version \
+    && echo "Node.js location: $(which node)" \
+    && echo "npm location: $(which npm)" \
+    && echo "Node.js version: $(node --version)" \
+    && echo "npm version: $(npm --version)"
+
+# Verify Node.js version meets requirements (should be 20.x)
+RUN NODE_VERSION=$(node --version | sed 's/v//') \
+    && echo "Checking Node.js version: $NODE_VERSION" \
+    && if ! node -e "const ver=process.version.slice(1).split('.').map(Number); if(ver[0]<20){process.exit(1)}"; then \
+        echo "ERROR: Node.js version $NODE_VERSION is not 20.x or higher"; \
+        exit 1; \
+    fi \
+    && echo "✓ Node.js version $NODE_VERSION meets requirements"
+
+# -----------------------------------------------------------------------------
 # 3. Additional software installation
 # -----------------------------------------------------------------------------
 # Install Firefox and additional software
@@ -155,12 +187,6 @@ RUN ARCH=$(dpkg --print-architecture) && \
         echo "VSCode is not available for $ARCH architecture."; \
     fi
 
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get update \
-    && apt-get install -y nodejs \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Debian comes with pip which is sufficient - no upgrade needed
 
 # -----------------------------------------------------------------------------
@@ -223,7 +249,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 # Set workspace dependencies
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
-    && /usr/bin/npm install --prefix ../shared
+    && npm install --prefix ../shared
+
+# Clear npm cache to avoid stale builds
+RUN npm cache clean --force
 
 # Install bytebot-cv dependencies directly (avoiding workspace dependencies)
 RUN cd ../bytebot-cv \
@@ -231,41 +260,50 @@ RUN cd ../bytebot-cv \
     && echo "Removing @u4/opencv4nodejs from package.json (using global install)..." \
     && npm remove @u4/opencv4nodejs 2>/dev/null || true \
     && echo "Installing only bytebot-cv direct dependencies..." \
-    && /usr/bin/npm install --no-workspaces --include=dev --ignore-engines --ignore-scripts \
+    && npm install --no-workspaces --include=dev --ignore-engines --ignore-scripts \
     && echo "✓ bytebot-cv dependencies installed successfully" \
     && echo "Note: @u4/opencv4nodejs will be resolved via NODE_PATH at runtime"
 
+# Rebuild Canvas for Node.js 20.x compatibility in bytebot-cv
+RUN cd ../bytebot-cv \
+    && echo "Rebuilding Canvas for Node.js 20.x compatibility in bytebot-cv..." \
+    && rm -rf node_modules/canvas/build 2>/dev/null || true \
+    && npm rebuild canvas --build-from-source \
+    && echo "✓ Canvas rebuilt successfully in bytebot-cv" \
+    && node -e "const canvas = require('canvas'); console.log('Canvas version in bytebot-cv:', canvas.version || 'available');"
+
 # Install bytebotd dependencies (no local @u4/opencv4nodejs needed due to NODE_PATH)  
 # Exclude Sharp initially to avoid ARM64 issues
-RUN /usr/bin/npm install --build-from-source --ignore-optional
+RUN npm install --build-from-source --ignore-optional
 
 # Remove Sharp from dependencies temporarily and install manually
 RUN npm uninstall sharp 2>/dev/null || true && \
     rm -rf node_modules/sharp && \
     npm cache clean --force
 
-# Install Sharp with Node.js 18.12.1 compatible version
-RUN npm config set target_arch arm64 && \
-    npm config set target_platform linux && \
-    npm config set build_from_source true && \
-    npm install --no-save --build-from-source sharp@0.32.6 && \
+# Install Sharp with modern auto-detection (no npm config needed)
+RUN npm install --no-save sharp@^0.33.5 && \
     # Verify Sharp installation
-    node -e "const sharp = require('sharp'); console.log('Sharp version:', sharp.versions);"
+    node -e "const sharp = require('sharp'); console.log('Sharp version:', sharp.versions || 'available');"
+
 
 # Build packages with TypeScript
 WORKDIR /bytebot/packages/bytebot-cv
-RUN rm -rf dist && /usr/bin/npm run build
-
-# Rebuild Canvas for Node.js 20.x compatibility (after bytebot-cv build)
-RUN echo "Rebuilding Canvas for Node.js 20.x compatibility..." && \
-    /usr/bin/npm rebuild canvas --build-from-source
+RUN rm -rf dist && npm run build
 
 WORKDIR /bytebot/packages/bytebotd
-RUN /usr/bin/npm rebuild uiohook-napi --build-from-source
+RUN npm rebuild uiohook-napi --build-from-source
 
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='workspace:*'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');"
 
-RUN /usr/bin/npm run build
+RUN npm run build
+
+# Final verification step - ensure bytebot-cv can load canvas successfully
+RUN echo "=== Final Canvas Module Verification ===" \
+    && cd /bytebot/packages/bytebot-cv \
+    && echo "Testing canvas in bytebot-cv..." \
+    && node -e "try { const canvas = require('canvas'); console.log('✓ Canvas loaded successfully in bytebot-cv:', canvas.version || 'version unknown'); } catch(e) { console.error('✗ Canvas failed to load in bytebot-cv:', e.message); process.exit(1); }" \
+    && echo "✓ Canvas module verification passed!"
 
 WORKDIR /compile
 

@@ -4,7 +4,7 @@ import { decodeImageBuffer } from '../utils/cv-decode';
 import { getOpenCvModule, hasOpenCv, logOpenCvWarning } from '../utils/opencv-loader';
 
 // Lazy-load OpenCV so environments without the native bindings degrade gracefully.
-type CvModule = typeof import('opencv4nodejs');
+type CvModule = typeof import('@u4/opencv4nodejs');
 type RectLike = { x: number; y: number; width: number; height: number };
 
 type MatLike = any;

@@ -1,2 +1,0 @@
-bytebot-bytebot-llm-proxy                latest      a9f1e6c1603d   About a minute ago   3.17GB
-bytebot-ui                               local       accf02b2892e   4 minutes ago        2.07GB

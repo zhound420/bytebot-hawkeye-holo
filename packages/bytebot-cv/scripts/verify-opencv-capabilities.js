@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Comprehensive OpenCV capabilities verification script
- * This script verifies that opencv4nodejs is properly installed and functional
+ * This script verifies that @u4/opencv4nodejs is properly installed and functional
  */
 
 const fs = require('fs');
@@ -22,12 +22,12 @@ function verifyOpenCvInstallation() {
   
   try {
     // Test basic module loading
-    const cv = require('opencv4nodejs');
+    const cv = require('@u4/opencv4nodejs');
     if (!cv) {
-      return logResult('Module Loading', false, 'opencv4nodejs module is null or undefined');
+      return logResult('Module Loading', false, '@u4/opencv4nodejs module is null or undefined');
     }
     
-    logResult('Module Loading', true, 'opencv4nodejs loaded successfully');
+    logResult('Module Loading', true, '@u4/opencv4nodejs loaded successfully');
     
     // Test version information
     if (cv.version) {
@@ -46,7 +46,7 @@ function verifyOpenCvInstallation() {
     return true;
     
   } catch (error) {
-    return logResult('Module Loading', false, `Failed to load opencv4nodejs: ${error.message}`);
+    return logResult('Module Loading', false, `Failed to load @u4/opencv4nodejs: ${error.message}`);
   }
 }
 
@@ -54,7 +54,7 @@ function verifyBasicOperations() {
   logSection('Basic Operations Verification');
   
   try {
-    const cv = require('opencv4nodejs');
+    const cv = require('@u4/opencv4nodejs');
     
     // Test Mat creation
     const testMat = new cv.Mat(100, 100, cv.CV_8UC3);
@@ -91,7 +91,7 @@ function verifyAdvancedFeatures() {
   logSection('Advanced Features Verification');
   
   try {
-    const cv = require('opencv4nodejs');
+    const cv = require('@u4/opencv4nodejs');
     
     // Test feature detection (if available)
     let featureTests = 0;
@@ -263,16 +263,16 @@ function generateReport(results) {
   
   if (successRate === 100) {
     console.log('🎉 All OpenCV capabilities verified successfully!');
-    console.log('✓ opencv4nodejs is ready for production use');
+    console.log('✓ @u4/opencv4nodejs is ready for production use');
   } else if (successRate >= 75) {
     console.log('⚠️  Most OpenCV capabilities are working');
-    console.log('✓ opencv4nodejs should work for basic operations');
+    console.log('✓ @u4/opencv4nodejs should work for basic operations');
   } else {
     console.log('❌ OpenCV verification failed');
-    console.log('✗ opencv4nodejs may not work correctly');
+    console.log('✗ @u4/opencv4nodejs may not work correctly');
     console.log('\nTroubleshooting steps:');
     console.log('1. Ensure OpenCV system packages are installed');
-    console.log('2. Check that opencv4nodejs was compiled correctly');
+    console.log('2. Check that @u4/opencv4nodejs was compiled correctly');
     console.log('3. Verify environment variables are set properly');
     console.log('4. Review Docker build logs for compilation errors');
   }

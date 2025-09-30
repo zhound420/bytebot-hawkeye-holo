@@ -5,14 +5,14 @@ const baseDir = process.argv[2] || process.cwd();
 
 function resolveModuleRoot() {
   try {
-    const packagePath = require.resolve('opencv4nodejs/package.json', { paths: [baseDir] });
+    const packagePath = require.resolve('@u4/opencv4nodejs/package.json', { paths: [baseDir] });
     return path.dirname(packagePath);
   } catch (error) {
-    const fallback = path.join(baseDir, 'node_modules/opencv4nodejs');
+    const fallback = path.join(baseDir, 'node_modules/@u4/opencv4nodejs');
     if (fs.existsSync(fallback)) {
       return fallback;
     }
-    console.warn(`opencv4nodejs not found from base directory: ${baseDir}; skipping tracking strip.`);
+    console.warn(`@u4/opencv4nodejs not found from base directory: ${baseDir}; skipping tracking strip.`);
     return null;
   }
 }

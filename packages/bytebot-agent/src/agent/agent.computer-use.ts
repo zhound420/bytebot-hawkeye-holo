@@ -584,9 +584,6 @@ export async function handleComputerToolUse(
 
 async function moveMouse(input: { coordinates: Coordinates }): Promise<void> {
   const { coordinates } = input;
-  console.log(
-    `Moving mouse to coordinates: [${coordinates.x}, ${coordinates.y}]`,
-  );
 
   try {
     await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
@@ -608,9 +605,6 @@ async function traceMouse(input: {
   holdKeys?: string[];
 }): Promise<void> {
   const { path, holdKeys } = input;
-  console.log(
-    `Tracing mouse to path: ${path} ${holdKeys ? `with holdKeys: ${holdKeys}` : ''}`,
-  );
 
   try {
     await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
@@ -752,9 +746,6 @@ async function clickMouse(input: {
     typeof input.clickCount === 'number' && input.clickCount > 0
       ? Math.floor(input.clickCount)
       : 1;
-  console.log(
-    `Clicking mouse ${button} ${normalizedClickCount} times ${coordinates ? `at coordinates: [${coordinates.x}, ${coordinates.y}] ` : ''} ${holdKeys ? `with holdKeys: ${holdKeys}` : ''}`,
-  );
 
   try {
     const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
@@ -1077,9 +1068,6 @@ async function pressMouse(input: {
   press: Press;
 }): Promise<void> {
   const { coordinates, button, press } = input;
-  console.log(
-    `Pressing mouse ${button} ${press} ${coordinates ? `at coordinates: [${coordinates.x}, ${coordinates.y}]` : ''}`,
-  );
 
   try {
     await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
@@ -1104,9 +1092,6 @@ async function dragMouse(input: {
   holdKeys?: string[];
 }): Promise<void> {
   const { path, button, holdKeys } = input;
-  console.log(
-    `Dragging mouse to path: ${path} ${holdKeys ? `with holdKeys: ${holdKeys}` : ''}`,
-  );
 
   try {
     await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {

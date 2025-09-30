@@ -15,10 +15,10 @@ let hasOpenCV = false;
 // Try to load OpenCV with multiple fallback paths
 function loadOpenCV() {
   const possiblePaths = [
-    'opencv4nodejs',
-    '../node_modules/opencv4nodejs',
-    './node_modules/opencv4nodejs',
-    '../../node_modules/opencv4nodejs'
+    '@u4/opencv4nodejs',
+    '../node_modules/@u4/opencv4nodejs',
+    './node_modules/@u4/opencv4nodejs',
+    '../../node_modules/@u4/opencv4nodejs'
   ];
 
   for (const modulePath of possiblePaths) {

@@ -1,1 +1,0 @@
-./deploy-enhanced-cv-integration.sh: line 75: docker-compose: command not found

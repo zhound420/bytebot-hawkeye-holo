@@ -670,7 +670,7 @@ export class AgentProcessor {
     } else {
       content.push({
         type: MessageContentType.Text,
-        text: `Click element failed: ${clickResult.error}`,
+        text: `Click element failed: ${'error' in clickResult ? clickResult.error : 'Unknown error'}`,
       });
     }
 

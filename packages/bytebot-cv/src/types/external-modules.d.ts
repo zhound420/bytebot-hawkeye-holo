@@ -1,4 +1,4 @@
-declare module 'opencv4nodejs' {
+declare module '@u4/opencv4nodejs' {
   type BoundingFunction = { boundingRect(): Rect };
 
   interface MatInstance {

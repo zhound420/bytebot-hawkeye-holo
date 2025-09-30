@@ -39,10 +39,9 @@
     "@nestjs/websockets": "^11.1.1",
     "@prisma/client": "^6.16.1",
     "@thallesp/nestjs-better-auth": "^1.0.0",
-    "tesseract.js": "^5.0.4",
+    "tesseract.js": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
-    "opencv4nodejs": "5.6.0",
     "openai": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -98,12 +97,8 @@
       "zod": "^4.0.5"
     }
   },
-  "opencv4nodejs": {
-    "disableAutoBuild": 1,
-    "autoBuildFlags": "",
-    "prebuild": "download"
-  },
   "engines": {
-    "node": "20"
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
   }
 }

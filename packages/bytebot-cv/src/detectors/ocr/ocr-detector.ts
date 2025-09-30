@@ -915,7 +915,7 @@ export class OCRDetector {
       return null;
     }
     try {
-      return decodeImageBuffer(cv as typeof import('opencv4nodejs'), buffer, {
+      return decodeImageBuffer(cv as typeof import('@u4/opencv4nodejs'), buffer, {
         source: 'OCRDetector.advancedDecode',
         warnOnce,
       });

@@ -259,57 +259,22 @@ function ensureState(): LoadState {
     return cachedState;
   }
 
-  // Check if start-prod.js already found opencv4nodejs and set environment hint
-  const envModulePath = process.env.OPENCV_MODULE_PATH;
-  
-  // Try loading @u4/opencv4nodejs (maintained fork) from multiple possible locations
-  const possiblePaths = [
-    '@u4/opencv4nodejs',  // Standard require for maintained fork
-    'opencv4nodejs',  // Fallback to old package if still present
-    '../../../bytebot-cv/node_modules/@u4/opencv4nodejs',  // From agent to cv package
-    '../../bytebot-cv/node_modules/@u4/opencv4nodejs',     // Alternative relative path
-    './node_modules/@u4/opencv4nodejs',                    // Local node_modules
-    '../node_modules/@u4/opencv4nodejs',                   // Parent node_modules
-    '../../../bytebot-cv/node_modules/opencv4nodejs',  // Fallback to old package
-    '../../bytebot-cv/node_modules/opencv4nodejs',     // Alternative relative path (old)
-    './node_modules/opencv4nodejs',                    // Local node_modules (old)
-    '../node_modules/opencv4nodejs',                   // Parent node_modules (old)
-    // Additional paths for compiled dist directory context
-    '../../../../node_modules/@u4/opencv4nodejs',          // From dist to root node_modules
-    '../../../node_modules/@u4/opencv4nodejs',             // From dist to package node_modules
-    '../../node_modules/@u4/opencv4nodejs',                // From dist subdirectory
-    '../../../packages/bytebot-cv/node_modules/@u4/opencv4nodejs',  // From dist to cv package
-    '../../../../packages/bytebot-cv/node_modules/@u4/opencv4nodejs', // Alternative dist to cv
-    '../../../../node_modules/opencv4nodejs',          // From dist to root node_modules (old)
-    '../../../node_modules/opencv4nodejs',             // From dist to package node_modules (old)
-    '../../node_modules/opencv4nodejs',                // From dist subdirectory (old)
-    '../../../packages/bytebot-cv/node_modules/opencv4nodejs',  // From dist to cv package (old)
-    '../../../../packages/bytebot-cv/node_modules/opencv4nodejs', // Alternative dist to cv (old)
-  ];
-
-  // If start-prod.js found a working path, try that first
-  if (envModulePath) {
-    possiblePaths.unshift(envModulePath);
-  }
-
   let lastError: unknown = null;
   
-  for (const modulePath of possiblePaths) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const module = require(modulePath) as CvModule;
-      if (module) {
-        applyOpenCvPolyfills(module);
-        cachedState = { module, errorMessage: null };
-        return cachedState;
-      }
-    } catch (error) {
-      lastError = error;
-      continue;
+  try {
+    // Try the standardized @u4/opencv4nodejs package
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const module = require('@u4/opencv4nodejs') as CvModule;
+    if (module) {
+      applyOpenCvPolyfills(module);
+      cachedState = { module, errorMessage: null };
+      return cachedState;
     }
+  } catch (error) {
+    lastError = error;
   }
 
-  // If we get here, all attempts failed
+  // If we get here, loading failed
   cachedState = { module: null, errorMessage: formatLoadError(lastError) };
   return cachedState;
 }

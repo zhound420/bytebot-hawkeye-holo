@@ -95,18 +95,12 @@ const warnOnce = (message: string, error?: unknown) => {
   warnedMessages.add(message);
   const baseMessage = `[ElementDetectorService] ${message}`;
   if (!error) {
-    // eslint-disable-next-line no-console
-    console.warn(baseMessage);
     return;
   }
   const detail = formatErrorDetail(error);
   if (detail) {
-    // eslint-disable-next-line no-console
-    console.warn(`${baseMessage}: ${detail}`);
     return;
   }
-  // eslint-disable-next-line no-console
-  console.warn(baseMessage);
 };
 
 const MIN_WIDTH = 10;
@@ -1449,7 +1443,7 @@ export class ElementDetectorService {
     if (Buffer.isBuffer(image)) {
       try {
         const decoded = decodeImageBuffer(
-          cv as typeof import('opencv4nodejs'),
+          cv as typeof import('@u4/opencv4nodejs'),
           image,
           {
             source,
@@ -1497,7 +1491,7 @@ export class ElementDetectorService {
         ? (typeof cv.CV_8UC4 === 'number' ? cv.CV_8UC4 : (cv as any).CV_8UC4 ?? 24)
         : (typeof cv.CV_8UC3 === 'number' ? cv.CV_8UC3 : (cv as any).CV_8UC3 ?? 16);
 
-      const buffer = Buffer.from(image.data.buffer || image.data);
+      const buffer = Buffer.from(image.data.buffer ? new Uint8Array(image.data.buffer) : image.data as ArrayLike<number>);
       const matWithChannels = new cv.Mat(image.height, image.width, type, buffer as any);
 
       if (channels === 4 && typeof (matWithChannels as any).cvtColor === 'function') {

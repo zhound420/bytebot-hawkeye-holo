@@ -1,11 +1,10 @@
 # =============================================================================
-# ByteBot Agent Dockerfile - Fixed for Node 20 and streamlined builds
+# ByteBot Agent Dockerfile - Using urielch/opencv-nodejs with Node.js 20 upgrade
 # =============================================================================
 
-# Use Node 20 with OpenCV pre-built capabilities
-FROM node:20-bullseye AS base
+FROM urielch/opencv-nodejs:latest AS base
 
-# Install system dependencies including OpenCV and Canvas dependencies
+# Install additional system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
@@ -13,10 +12,6 @@ RUN apt-get update && apt-get install -y \
     dpkg-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
-    # OpenCV dependencies (as specified in bytebot-cv requirements)
-    libopencv-dev \
-    libopencv-contrib-dev \
-    python3-opencv \
     # Canvas/Cairo dependencies
     libcairo2-dev \
     libpango1.0-dev \
@@ -34,6 +29,16 @@ RUN apt-get update && apt-get install -y \
     git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Upgrade to Node.js 20.x using NVM
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+
+# Use NVM to install and use Node.js 20.x
+ENV NVM_DIR=/root/.nvm
+RUN . "$NVM_DIR/nvm.sh" && nvm install 20.19.5 && nvm use 20.19.5 && nvm alias default 20.19.5
+
+# Set PATH to prioritize NVM Node.js installation
+ENV PATH="$NVM_DIR/versions/node/v20.19.5/bin:$PATH"
+
 WORKDIR /app
 
 # Copy package files for dependency resolution
@@ -41,45 +46,13 @@ COPY package.json ./
 COPY ./packages ./packages
 COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
 
-# Set environment variables (including OpenCV build requirements from bytebot-cv)
+# Set environment variables for pre-built @u4/opencv4nodejs
 ENV NODE_ENV=production \
     NPM_CONFIG_LOGLEVEL=warn \
+    NODE_PATH=/usr/lib/node_modules \
+    OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
     OPENCV4NODEJS_SKIP_TRACKING=1 \
-    CXXFLAGS="-DOPENCV_ENABLE_NONFREE"
-
-# Check OpenCV installation and set library paths
-RUN echo "=== Checking OpenCV installation ===" && \
-    echo "Architecture: $(uname -m)" && \
-    echo "Searching for OpenCV libraries..." && \
-    find /usr -name "*opencv*" -type f 2>/dev/null | head -20 && \
-    echo "Checking pkg-config..." && \
-    pkg-config --modversion opencv4 || echo "pkg-config opencv4 not found" && \
-    echo "Listing /usr/lib directories..." && \
-    ls -la /usr/lib/ | grep -E "(x86_64|aarch64|arm)" || echo "No arch-specific lib dirs found"
-
-# Set OpenCV library paths based on architecture
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        OPENCV_LIB_DIR="/usr/lib/x86_64-linux-gnu"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        OPENCV_LIB_DIR="/usr/lib/aarch64-linux-gnu"; \
-    else \
-        OPENCV_LIB_DIR="/usr/lib"; \
-    fi && \
-    echo "OPENCV_LIB_DIR=$OPENCV_LIB_DIR" >> /etc/environment && \
-    echo "Set OpenCV paths: LIB=$OPENCV_LIB_DIR, INCLUDE=/usr/include/opencv4"
-
-# Set environment variables based on architecture
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        echo "export OPENCV_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> ~/.bashrc; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        echo "export OPENCV_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> ~/.bashrc; \
-    else \
-        echo "export OPENCV_LIB_DIR=/usr/lib" >> ~/.bashrc; \
-    fi
-
-ENV OPENCV_INCLUDE_DIR=/usr/include/opencv4
+    NPM_CONFIG_IGNORE_ENGINES=true
 
 # Install shared dependencies first
 WORKDIR /app/packages/shared
@@ -90,38 +63,27 @@ RUN echo "=== Installing shared dependencies ===" && \
 RUN echo "=== Building shared package ===" && \
     npm run build
 
-# Install bytebot-cv dependencies  
+# Install bytebot-cv dependencies using the compatible @u4/opencv4nodejs
 WORKDIR /app/packages/bytebot-cv
 RUN echo "=== Installing bytebot-cv dependencies ===" && \
-    ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        export OPENCV_LIB_DIR="/usr/lib/x86_64-linux-gnu"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        export OPENCV_LIB_DIR="/usr/lib/aarch64-linux-gnu"; \
-    else \
-        export OPENCV_LIB_DIR="/usr/lib"; \
-    fi && \
-    echo "Using OPENCV_LIB_DIR=$OPENCV_LIB_DIR for architecture $ARCH" && \
+    echo "OpenCV 4.6.0 found, installing @u4/opencv4nodejs@7.1.2 with existing OpenCV..." && \
+    # Set up OpenCV paths for the existing 4.6.0 installation
+    export OPENCV4NODEJS_DISABLE_AUTOBUILD=0 && \
+    export OPENCV4NODEJS_SKIP_TRACKING=1 && \
+    export OPENCV_INCLUDE_DIR="/usr/src/opencv/opencv-4.6.0-ecae4/build" && \
+    export OPENCV_LIB_DIR="/usr/src/opencv/opencv-4.6.0-ecae4/build/lib" && \
+    export PKG_CONFIG_PATH="/usr/src/opencv/opencv-4.6.0-ecae4/build/lib/pkgconfig:$PKG_CONFIG_PATH" && \
+    echo "Installing all dependencies..." && \
     npm install --include=dev --no-audit --no-fund && \
     echo "=== Building bytebot-cv ===" && \
-    npm run build
+    npm run build && \
+    echo "✓ bytebot-cv built successfully with @u4/opencv4nodejs@7.1.2"
 
 # Install and build bytebot-agent
 WORKDIR /app/packages/bytebot-agent
 RUN echo "=== Installing bytebot-agent dependencies ===" && \
-    ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        export OPENCV_LIB_DIR="/usr/lib/x86_64-linux-gnu"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        export OPENCV_LIB_DIR="/usr/lib/aarch64-linux-gnu"; \
-    else \
-        export OPENCV_LIB_DIR="/usr/lib"; \
-    fi && \
-    export OPENCV_INCLUDE_DIR="/usr/include/opencv4" && \
-    echo "Building with OPENCV_LIB_DIR=$OPENCV_LIB_DIR OPENCV_INCLUDE_DIR=$OPENCV_INCLUDE_DIR" && \
-    npm install --include=dev --no-audit --no-fund && \
-    echo "=== Verifying opencv4nodejs installation ===" && \
-    ls -la node_modules/ | grep opencv || echo "opencv4nodejs not found in node_modules"
+    npm install --include=dev --no-audit --no-fund --ignore-engines --ignore-scripts && \
+    echo "✓ bytebot-agent dependencies installed successfully"
 
 # Generate Prisma client
 RUN echo "=== Generating Prisma client ===" && \

@@ -2,10 +2,10 @@ const fs = require('fs');
 const path = require('path');
 
 const rootDir = path.join(__dirname, '..');
-const moduleRoot = path.join(rootDir, 'node_modules', 'opencv4nodejs');
+const moduleRoot = path.join(rootDir, 'node_modules', '@u4', 'opencv4nodejs');
 const bindingPath = path.join(moduleRoot, 'binding.gyp');
 const siftHeaderPath = path.join(moduleRoot, 'cc', 'xfeatures2d', 'SIFTDetector.h');
-const claheSourceDir = path.join(rootDir, 'opencv4nodejs');
+const claheSourceDir = path.join(rootDir, '@u4/opencv4nodejs');
 const claheHeaderTarget = path.join(moduleRoot, 'cc', 'imgproc', 'CLAHE.h');
 const claheSourceTarget = path.join(moduleRoot, 'cc', 'imgproc', 'CLAHE.cc');
 const opencvModulePath = path.join(moduleRoot, 'cc', 'opencv4nodejs.cc');

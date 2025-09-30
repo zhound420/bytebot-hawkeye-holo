@@ -205,13 +205,22 @@ const safeFilter2D = (mat: any, kernel: any, label: string): any => {
   }
   if (typeof mat.filter2D === 'function') {
     try {
-      const result = mat.filter2D(kernel);
+      // Try with ddepth parameter first (newer API)
+      const ddepth = cv.CV_8U !== undefined ? cv.CV_8U : -1;
+      const result = mat.filter2D(ddepth, kernel);
       filter2DSupported = true;
       return result;
     } catch (error) {
-      warnOnce(label, error);
-      filter2DSupported = false;
-      return mat;
+      try {
+        // Fallback to single parameter (older API)
+        const result = mat.filter2D(kernel);
+        filter2DSupported = true;
+        return result;
+      } catch (fallbackError) {
+        warnOnce(label, error);
+        filter2DSupported = false;
+        return mat;
+      }
     }
   }
   return mat;

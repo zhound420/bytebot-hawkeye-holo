@@ -46,10 +46,10 @@ COPY package.json ./
 COPY ./packages ./packages
 COPY ./config/universal-coordinates.yaml ./config/universal-coordinates.yaml
 
-# Set environment variables for pre-built @u4/opencv4nodejs
+# Set environment variables for @u4/opencv4nodejs
 ENV NODE_ENV=production \
     NPM_CONFIG_LOGLEVEL=warn \
-    NODE_PATH=/usr/lib/node_modules \
+    NODE_PATH=/app/packages/bytebot-cv/node_modules:/usr/lib/node_modules \
     OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
     OPENCV4NODEJS_SKIP_TRACKING=1 \
     NPM_CONFIG_IGNORE_ENGINES=true

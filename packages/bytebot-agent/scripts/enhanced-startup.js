@@ -111,7 +111,8 @@ async function checkDatabaseState() {
   
   try {
     // Check if database has any tables
-    const result = execSync(`npx prisma db execute --stdin <<< "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"`, {
+    const sqlFile = path.join(__dirname, 'check-tables.sql');
+    const result = execSync(`npx prisma db execute --file "${sqlFile}"`, {
       stdio: 'pipe',
       timeout: 10000
     });
@@ -155,7 +156,8 @@ async function resetDatabase() {
   
   try {
     // Drop all tables and recreate schema
-    execSync(`npx prisma db execute --stdin <<< "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`, {
+    const resetSqlFile = path.join(__dirname, 'reset-schema.sql');
+    execSync(`npx prisma db execute --file "${resetSqlFile}"`, {
       stdio: 'inherit',
       timeout: 30000
     });
@@ -394,7 +396,29 @@ function verifyOpenCvBindings() {
   console.log('[startup] Verifying OpenCV bindings...');
   
   try {
-    const cv = require('opencv4nodejs');
+    // Try different module paths for OpenCV
+    let cv;
+    const possiblePaths = [
+      '@u4/opencv4nodejs',
+      'opencv4nodejs',
+      '/app/packages/bytebot-cv/node_modules/@u4/opencv4nodejs',
+      '/usr/lib/node_modules/@u4/opencv4nodejs'
+    ];
+
+    for (const modulePath of possiblePaths) {
+      try {
+        cv = require(modulePath);
+        console.log(`[startup] ✓ Found OpenCV at: ${modulePath}`);
+        break;
+      } catch (err) {
+        console.log(`[startup] ⚠ OpenCV not found at: ${modulePath}`);
+        continue;
+      }
+    }
+
+    if (!cv) {
+      throw new Error('opencv4nodejs module not found in any expected location');
+    }
     
     if (!cv || typeof cv.Mat !== 'function') {
       throw new Error('opencv4nodejs module loaded but cv.Mat is not available');

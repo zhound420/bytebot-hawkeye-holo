@@ -190,8 +190,8 @@ export class OmniParserClientService {
       const [centerX, centerY] = element.center;
 
       // Infer element type from caption if available
-      let elementType = 'unknown';
-      let role = 'interactive';
+      let elementType: 'button' | 'text_input' | 'clickable' | 'menu_item' = 'clickable';
+      let semanticRole = 'interactive';
 
       if (element.caption) {
         const caption = element.caption.toLowerCase();
@@ -201,57 +201,45 @@ export class OmniParserClientService {
           caption.includes('click')
         ) {
           elementType = 'button';
-          role = 'button';
+          semanticRole = 'button';
         } else if (
           caption.includes('input') ||
           caption.includes('text field') ||
           caption.includes('textbox')
         ) {
-          elementType = 'input';
-          role = 'textbox';
-        } else if (
-          caption.includes('link') ||
-          caption.includes('hyperlink')
-        ) {
-          elementType = 'link';
-          role = 'link';
-        } else if (
-          caption.includes('icon') ||
-          caption.includes('image')
-        ) {
-          elementType = 'icon';
-          role = 'img';
+          elementType = 'text_input';
+          semanticRole = 'textbox';
         } else if (
           caption.includes('menu') ||
           caption.includes('dropdown')
         ) {
-          elementType = 'menu';
-          role = 'menu';
+          elementType = 'menu_item';
+          semanticRole = 'menu';
         }
       }
+
+      // Create description from caption or element type
+      const description = element.caption
+        ? `${elementType}: ${element.caption}`
+        : `${elementType} element detected by OmniParser`;
 
       return {
         id: `omniparser_${index}`,
         type: elementType,
-        role,
         bounds: {
           x,
           y,
           width,
           height,
         },
-        center: {
+        clickPoint: {
           x: centerX,
           y: centerY,
         },
         confidence: element.confidence,
-        text: element.caption || '',
-        label: element.caption || '',
-        metadata: {
-          source: 'omniparser',
-          omniparser_type: element.type,
-          omniparser_caption: element.caption,
-        },
+        text: element.caption || undefined,
+        semanticRole,
+        description,
       };
     });
   }

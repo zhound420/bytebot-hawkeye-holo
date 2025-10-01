@@ -37,6 +37,38 @@
 
 ---
 
+## 🚀 Quick Start (Platform-Optimized)
+
+**One-command setup that automatically detects your platform and optimizes for best performance:**
+
+```bash
+# 1. Clone and navigate
+git clone https://github.com/zhound420/bytebot-hawkeye-cv.git
+cd bytebot-hawkeye-cv
+
+# 2. Setup (auto-detects Apple Silicon vs x86_64/NVIDIA)
+./scripts/setup-omniparser.sh
+
+# 3. Start stack
+./scripts/start-stack.sh
+```
+
+### What Happens Automatically
+
+**On Apple Silicon (M1-M4):**
+- Sets up native OmniParser with MPS GPU (~1-2s/frame)
+- Configures Docker to connect to native service
+- **Best performance: GPU-accelerated**
+
+**On x86_64 + NVIDIA GPU:**
+- Uses Docker container with CUDA (~0.6s/frame)
+- Auto-detects and uses GPU
+- **Production-ready setup**
+
+**On x86_64 CPU-only:**
+- Uses Docker container with CPU (~8-15s/frame)
+- Works everywhere, slower performance
+
 ## Hawkeye Fork Enhancements
 
 Hawkeye layers precision tooling on top of upstream Bytebot so the agent can land clicks with far greater reliability:

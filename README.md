@@ -69,6 +69,8 @@ cd bytebot-hawkeye-cv
 - Uses Docker container with CPU (~8-15s/frame)
 - Works everywhere, slower performance
 
+> **GPU not detected?** See [GPU Setup Guide](docs/GPU_SETUP.md) for troubleshooting and explicit GPU configuration.
+
 ## Hawkeye Fork Enhancements
 
 Hawkeye layers precision tooling on top of upstream Bytebot so the agent can land clicks with far greater reliability:

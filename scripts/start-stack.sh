@@ -57,7 +57,8 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
 
         # Start all services except OmniParser container
-        docker compose -f $COMPOSE_FILE up -d \
+        # --no-deps prevents starting dependent services (bytebot-omniparser)
+        docker compose -f $COMPOSE_FILE up -d --no-deps \
             bytebot-desktop \
             bytebot-agent \
             bytebot-ui \
@@ -117,7 +118,8 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
                 fi
 
                 # Start stack without container
-                docker compose -f $COMPOSE_FILE up -d \
+                # --no-deps prevents starting dependent services (bytebot-omniparser)
+                docker compose -f $COMPOSE_FILE up -d --no-deps \
                     bytebot-desktop \
                     bytebot-agent \
                     bytebot-ui \

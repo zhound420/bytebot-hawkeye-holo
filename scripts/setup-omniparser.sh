@@ -52,29 +52,27 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     cd ../..
 
-    # Update docker/.env to point to native OmniParser
-    if [[ -f "docker/.env" ]]; then
+    # Update docker/.env.defaults to point to native OmniParser
+    if [[ -f "docker/.env.defaults" ]]; then
         echo ""
         echo -e "${BLUE}Configuring Docker to use native OmniParser...${NC}"
 
         # Create backup
-        cp docker/.env docker/.env.backup
+        cp docker/.env.defaults docker/.env.defaults.backup
 
         # Update URL to point to host
-        if grep -q "OMNIPARSER_URL=" docker/.env; then
-            sed -i.bak 's|OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' docker/.env
-            rm docker/.env.bak
-        else
-            echo "OMNIPARSER_URL=http://host.docker.internal:9989" >> docker/.env
+        if grep -q "OMNIPARSER_URL=" docker/.env.defaults; then
+            sed -i.bak 's|OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         fi
 
         # Set device to mps
-        if grep -q "OMNIPARSER_DEVICE=" docker/.env; then
-            sed -i.bak 's|OMNIPARSER_DEVICE=.*|OMNIPARSER_DEVICE=mps|' docker/.env
-            rm docker/.env.bak
+        if grep -q "OMNIPARSER_DEVICE=" docker/.env.defaults; then
+            sed -i.bak 's|OMNIPARSER_DEVICE=.*|OMNIPARSER_DEVICE=mps|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         fi
 
-        echo -e "${GREEN}✓ Docker configuration updated${NC}"
+        echo -e "${GREEN}✓ Docker configuration updated (docker/.env.defaults)${NC}"
     fi
 
     echo ""
@@ -109,27 +107,27 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
         DOCKER_COMPOSE_EXTRA=""
     fi
 
-    # Update docker/.env
-    if [[ -f "docker/.env" ]]; then
+    # Update docker/.env.defaults
+    if [[ -f "docker/.env.defaults" ]]; then
         echo ""
         echo -e "${BLUE}Configuring Docker for container-based OmniParser...${NC}"
 
         # Create backup
-        cp docker/.env docker/.env.backup
+        cp docker/.env.defaults docker/.env.defaults.backup
 
         # Update URL to point to container
-        if grep -q "OMNIPARSER_URL=" docker/.env; then
-            sed -i.bak 's|OMNIPARSER_URL=.*|OMNIPARSER_URL=http://bytebot-omniparser:9989|' docker/.env
-            rm docker/.env.bak
+        if grep -q "OMNIPARSER_URL=" docker/.env.defaults; then
+            sed -i.bak 's|OMNIPARSER_URL=.*|OMNIPARSER_URL=http://bytebot-omniparser:9989|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         fi
 
         # Set device to auto
-        if grep -q "OMNIPARSER_DEVICE=" docker/.env; then
-            sed -i.bak 's|OMNIPARSER_DEVICE=.*|OMNIPARSER_DEVICE=auto|' docker/.env
-            rm docker/.env.bak
+        if grep -q "OMNIPARSER_DEVICE=" docker/.env.defaults; then
+            sed -i.bak 's|OMNIPARSER_DEVICE=.*|OMNIPARSER_DEVICE=auto|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         fi
 
-        echo -e "${GREEN}✓ Docker configuration updated${NC}"
+        echo -e "${GREEN}✓ Docker configuration updated (docker/.env.defaults)${NC}"
     fi
 
     echo ""

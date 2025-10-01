@@ -46,11 +46,11 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Native OmniParser detected on port 9989${NC}"
 
-        # Update .env to use native OmniParser
-        if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env 2>/dev/null; then
-            echo -e "${BLUE}Updating .env to use native OmniParser...${NC}"
-            sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
-            rm .env.bak
+        # Update .env.defaults to use native OmniParser
+        if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
+            echo -e "${BLUE}Updating configuration to use native OmniParser...${NC}"
+            sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
+            rm .env.defaults.bak
         fi
 
         echo ""
@@ -110,10 +110,10 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
                 sleep 3
                 cd docker
 
-                # Update .env and restart
-                if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env 2>/dev/null; then
-                    sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
-                    rm .env.bak
+                # Update .env.defaults and restart
+                if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
+                    sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
+                    rm .env.defaults.bak
                 fi
 
                 # Start stack without container

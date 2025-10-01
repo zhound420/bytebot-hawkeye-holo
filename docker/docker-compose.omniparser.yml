@@ -1,0 +1,61 @@
+# OmniParser service extension for Bytebot Hawkeye
+# Usage: docker compose -f docker-compose.yml -f docker-compose.omniparser.yml up -d
+
+services:
+  bytebot-omniparser:
+    build:
+      context: ../packages/bytebot-omniparser
+      dockerfile: Dockerfile
+    container_name: bytebot-omniparser
+    restart: unless-stopped
+    ports:
+      - "9989:9989"
+    environment:
+      - OMNIPARSER_HOST=0.0.0.0
+      - OMNIPARSER_PORT=9989
+      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-cuda}  # cuda, mps, or cpu
+      - OMNIPARSER_MIN_CONFIDENCE=0.3
+      - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
+    volumes:
+      # Optional: mount weights to persist across rebuilds
+      - omniparser_weights:/app/weights
+    networks:
+      - bytebot-network
+    # GPU support for NVIDIA
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Update bytebot-desktop to use OmniParser
+  bytebot-desktop:
+    environment:
+      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
+      - OMNIPARSER_URL=http://bytebot-omniparser:9989
+      - OMNIPARSER_TIMEOUT=30000
+    depends_on:
+      bytebot-omniparser:
+        condition: service_healthy
+
+  # Update bytebot-agent to use OmniParser
+  bytebot-agent:
+    environment:
+      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
+      - OMNIPARSER_URL=http://bytebot-omniparser:9989
+      - OMNIPARSER_TIMEOUT=30000
+    depends_on:
+      bytebot-omniparser:
+        condition: service_healthy
+
+volumes:
+  omniparser_weights:
+    driver: local

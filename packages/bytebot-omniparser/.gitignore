@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Models
+weights/
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# OmniParser clone
+OmniParser/
+
+# Environment
+.env
+.venv
+conda-env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

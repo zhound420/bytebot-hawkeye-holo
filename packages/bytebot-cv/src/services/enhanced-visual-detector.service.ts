@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TemplateMatcherService } from '../detectors/template/template-matcher.service';
 import { FeatureMatcherService } from '../detectors/feature/feature-matcher.service';
 import { ContourDetectorService } from '../detectors/contour/contour-detector.service';
 import { OCRDetector } from '../detectors/ocr/ocr-detector';
 import { CVActivityIndicatorService } from './cv-activity-indicator.service';
+import { OmniParserClientService } from './omniparser-client.service';
 import { getOpenCvModule, hasOpenCv } from '../utils/opencv-loader';
 import { DetectedElement, BoundingBox } from '../types';
 
@@ -14,6 +15,7 @@ export interface EnhancedDetectionOptions {
   useFeatureMatching?: boolean;
   useContourDetection?: boolean;
   useOCR?: boolean;
+  useOmniParser?: boolean;
 
   // Template matching options
   templateThreshold?: number;
@@ -31,6 +33,10 @@ export interface EnhancedDetectionOptions {
   // OCR options
   ocrRegion?: BoundingBox;
 
+  // OmniParser options
+  omniParserCaptions?: boolean;
+  omniParserConfidence?: number;
+
   // General options
   confidenceThreshold?: number;
   maxResults?: number;
@@ -46,6 +52,7 @@ export interface EnhancedDetectionResult {
     featureMatchingTime?: number;
     contourDetectionTime?: number;
     ocrTime?: number;
+    omniParserTime?: number;
   };
   confidence: number;
 }
@@ -60,9 +67,20 @@ export class EnhancedVisualDetectorService {
     private readonly featureMatcher: FeatureMatcherService,
     private readonly contourDetector: ContourDetectorService,
     private readonly cvActivity: CVActivityIndicatorService,
+    @Optional() private readonly omniParserClient?: OmniParserClientService,
   ) {
     this.ocrDetector = new OCRDetector();
     this.logger.log('Enhanced Visual Detector Service initialized');
+
+    if (this.omniParserClient) {
+      this.omniParserClient.isAvailable().then((available) => {
+        if (available) {
+          this.logger.log('✓ OmniParser integration enabled');
+        } else {
+          this.logger.warn('OmniParser client registered but service unavailable');
+        }
+      });
+    }
   }
 
   /**
@@ -89,6 +107,7 @@ export class EnhancedVisualDetectorService {
       useFeatureMatching = true,
       useContourDetection = true,
       useOCR = false, // OCR is expensive, opt-in
+      useOmniParser = false, // OmniParser requires Python service, opt-in
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
@@ -140,6 +159,18 @@ export class EnhancedVisualDetectorService {
         if (ocrResults.length > 0) {
           methodsUsed.push('ocr');
           allElements.push(...ocrResults);
+        }
+      }
+
+      // OmniParser Detection (Semantic UI element detection)
+      if (useOmniParser && this.omniParserClient) {
+        const omniParserStart = Date.now();
+        const omniParserResults = await this.runOmniParserDetection(screenshot, options);
+        performance.omniParserTime = Date.now() - omniParserStart;
+
+        if (omniParserResults.length > 0) {
+          methodsUsed.push('omniparser');
+          allElements.push(...omniParserResults);
         }
       }
 
@@ -295,6 +326,81 @@ export class EnhancedVisualDetectorService {
       this.logger.warn('OCR detection failed:', error.message);
       return [];
     });
+  }
+
+  private async runOmniParserDetection(screenshot: any, options: EnhancedDetectionOptions) {
+    return this.cvActivity.executeWithTracking(
+      'omniparser',
+      async () => {
+        if (!this.omniParserClient) {
+          throw new Error('OmniParser client not available');
+        }
+
+        // Check if service is available
+        const available = await this.omniParserClient.isAvailable();
+        if (!available) {
+          throw new Error('OmniParser service is not responding');
+        }
+
+        // Convert Mat to Buffer
+        const encoded = cv.imencode('.png', screenshot);
+
+        // Call OmniParser service
+        const response = await this.omniParserClient.parseScreenshot(encoded, {
+          includeCaptions: options.omniParserCaptions ?? true,
+          minConfidence: options.omniParserConfidence ?? 0.3,
+        });
+
+        // Convert to DetectedElement format
+        return response.elements.map((element, index) => ({
+          id: `omniparser_${Date.now()}_${index}`,
+          type: this.inferElementTypeFromCaption(element.caption),
+          coordinates: {
+            x: element.bbox[0],
+            y: element.bbox[1],
+            width: element.bbox[2],
+            height: element.bbox[3],
+            centerX: element.center[0],
+            centerY: element.center[1],
+          },
+          confidence: element.confidence,
+          text: element.caption || '',
+          description: element.caption ? `${element.caption} (AI detected)` : 'Interactive element',
+          metadata: {
+            detectionMethod: 'omniparser' as const,
+            omniparser_type: element.type,
+            semantic_caption: element.caption,
+          }
+        }));
+      },
+      {
+        captions: options.omniParserCaptions ?? true,
+        confidence_threshold: options.omniParserConfidence ?? 0.3,
+      }
+    ).catch(error => {
+      this.logger.warn('OmniParser detection failed:', error.message);
+      return [];
+    });
+  }
+
+  private inferElementTypeFromCaption(caption?: string): 'button' | 'input' | 'link' | 'text' | 'icon' {
+    if (!caption) return 'button';
+
+    const lowerCaption = caption.toLowerCase();
+
+    if (lowerCaption.includes('button') || lowerCaption.includes('btn')) {
+      return 'button';
+    } else if (lowerCaption.includes('input') || lowerCaption.includes('field') || lowerCaption.includes('textbox')) {
+      return 'input';
+    } else if (lowerCaption.includes('link') || lowerCaption.includes('hyperlink')) {
+      return 'link';
+    } else if (lowerCaption.includes('text') || lowerCaption.includes('label')) {
+      return 'text';
+    } else if (lowerCaption.includes('icon') || lowerCaption.includes('image')) {
+      return 'icon';
+    }
+
+    return 'button'; // Default
   }
 
   private convertToDetectedElements(results: any[], method: string): DetectedElement[] {

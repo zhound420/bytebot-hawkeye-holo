@@ -4,6 +4,7 @@ import { FeatureMatcherService } from './detectors/feature/feature-matcher.servi
 import { ContourDetectorService } from './detectors/contour/contour-detector.service';
 import { EnhancedVisualDetectorService } from './services/enhanced-visual-detector.service';
 import { CVActivityIndicatorService } from './services/cv-activity-indicator.service';
+import { OmniParserClientService } from './services/omniparser-client.service';
 
 @Module({
   providers: [
@@ -11,6 +12,7 @@ import { CVActivityIndicatorService } from './services/cv-activity-indicator.ser
     TemplateMatcherService,
     FeatureMatcherService,
     ContourDetectorService,
+    OmniParserClientService,
     EnhancedVisualDetectorService,
   ],
   exports: [
@@ -18,6 +20,7 @@ import { CVActivityIndicatorService } from './services/cv-activity-indicator.ser
     TemplateMatcherService,
     FeatureMatcherService,
     ContourDetectorService,
+    OmniParserClientService,
     EnhancedVisualDetectorService,
   ],
 })

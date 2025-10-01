@@ -1,0 +1,26 @@
+name: omniparser
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pillow
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::pytorch-cuda=12.1  # For NVIDIA GPUs
+  - pip:
+      - fastapi==0.115.0
+      - uvicorn[standard]==0.32.0
+      - python-multipart==0.0.12
+      - huggingface-hub==0.26.2
+      - ultralytics==8.3.0
+      - transformers==4.46.0
+      - opencv-python==4.10.0.84
+      - Pillow==10.4.0
+      - einops==0.8.0
+      - timm==1.0.11
+      - pydantic==2.9.0
+      - pydantic-settings==2.6.0

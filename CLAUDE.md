@@ -7,10 +7,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Bytebot Hawkeye is a precision-enhanced fork of the open-source AI Desktop Agent platform. It consists of these main packages:
 
 1. **bytebot-agent** - NestJS service that orchestrates AI tasks, computer use, and precision targeting
-2. **bytebot-ui** - Next.js frontend with desktop dashboard and task management
-3. **bytebotd** - Desktop daemon providing computer control with enhanced coordinate accuracy
-4. **bytebot-cv** - Computer vision package with OpenCV bindings for element detection
-5. **shared** - Common TypeScript types, utilities, and universal coordinate mappings
+2. **bytebot-agent-cc** - Claude Code integration variant with `@anthropic-ai/claude-code` SDK
+3. **bytebot-ui** - Next.js frontend with desktop dashboard and task management
+4. **bytebotd** - Desktop daemon providing computer control with enhanced coordinate accuracy
+5. **bytebot-cv** - Computer vision package with OpenCV bindings for element detection
+6. **bytebot-omniparser** - Python FastAPI service for semantic UI detection via OmniParser v2.0
+7. **bytebot-llm-proxy** - LiteLLM proxy service for multi-provider model routing
+8. **shared** - Common TypeScript types, utilities, and universal coordinate mappings
+
+### Package Dependencies
+
+All packages depend on `shared` and must build it first. The build order is:
+1. `shared` (base types and utilities)
+2. `bytebot-cv` (CV capabilities)
+3. `bytebot-agent`, `bytebot-agent-cc`, `bytebotd` (services that consume shared + cv)
+4. `bytebot-ui` (frontend that consumes shared)
 
 ## Key Hawkeye Enhancements
 
@@ -41,11 +52,24 @@ npm run prisma:dev         # Run migrations + generate client
 npm run test               # Jest unit tests
 npm run test:watch         # Jest watch mode
 npm run test:e2e           # End-to-end tests
+npm run test -- <file>     # Run single test file
 
 # Production
 npm run build              # Build with shared dependencies
 npm run start:prod         # Production server
 npm run lint               # ESLint with --fix
+```
+
+### bytebot-agent-cc (Claude Code Integration)
+```bash
+cd packages/bytebot-agent-cc
+
+# Same commands as bytebot-agent
+# Includes @anthropic-ai/claude-code SDK integration
+npm run start:dev          # Watch mode
+npm run prisma:dev         # Migrations
+npm run test               # Jest tests
+npm run build              # Build
 ```
 
 ### bytebot-ui (Next.js frontend)
@@ -78,9 +102,46 @@ npm run build              # TypeScript compilation
 npm run dev                # Watch mode
 npm run verify             # Check OpenCV capabilities
 npm run patch              # Patch OpenCV bindings
+
+# Note: postinstall automatically runs:
+# - patch-opencv-binding.js
+# - strip-opencv-tracking.js
+# - verify-opencv-capabilities.js
+```
+
+### bytebot-llm-proxy (LiteLLM Proxy)
+```bash
+cd packages/bytebot-llm-proxy
+
+# Configuration in litellm-config.yaml
+# Provides unified API routing for OpenAI, Anthropic, Gemini, OpenRouter, LMStudio
+# Environment variables: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
+```
+
+### bytebot-omniparser (Python Service)
+```bash
+cd packages/bytebot-omniparser
+
+# Setup (one-time)
+bash scripts/setup.sh       # Creates conda env, downloads models (~850MB)
+
+# Development
+conda activate omniparser   # or: source venv/bin/activate
+python src/server.py        # Starts FastAPI service on port 9989
+
+# Testing
+curl http://localhost:9989/health
+curl http://localhost:9989/models/status
+
+# Note: Requires GPU (CUDA/MPS) or CPU fallback
+# Models: YOLOv8 icon detection + Florence-2 captioning
 ```
 
 ## Docker Development
+
+All stacks now include OmniParser v2.0 for semantic UI detection by default.
+
+> **Note**: To disable OmniParser (e.g., on systems without GPU), set `BYTEBOT_CV_USE_OMNIPARSER=false` in `docker/.env`
 
 ### Full Stack (Standard)
 ```bash
@@ -93,10 +154,17 @@ docker compose -f docker/docker-compose.yml up -d --build
 docker compose -f docker/docker-compose.proxy.yml up -d --build
 ```
 
+### Optional Extension Stack (Legacy)
+```bash
+# Use docker-compose.omniparser.yml as an extension overlay
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.omniparser.yml up -d --build
+```
+
 ### Service Ports
 - bytebot-ui: 9992 (web interface)
 - bytebot-agent: 9991 (API server)
 - bytebotd: 9990 (desktop daemon + noVNC)
+- bytebot-omniparser: 9989 (OmniParser service)
 - PostgreSQL: 5432
 
 ## Database
@@ -144,12 +212,40 @@ BYTEBOT_ADAPTIVE_CALIBRATION=true
 
 ## Computer Vision Pipeline
 
-The bytebot-cv package provides:
-- OpenCV 4.6.x - 4.8.x bindings via `@u4/opencv4nodejs` v7.1.2
-- CLAHE contrast enhancement with graceful fallbacks
-- Morphological operations for UI element detection
-- OCR via Tesseract.js with preprocessing
-- Element detection services for buttons, inputs, and clickable controls
+The bytebot-cv package provides five detection methods:
+- **Template Matching** - Multi-scale OpenCV template matching
+- **Feature Detection** - ORB/AKAZE feature-based matching
+- **Contour Detection** - Morphological shape analysis
+- **OCR** - Tesseract.js text extraction with preprocessing
+- **OmniParser** (NEW) - Semantic UI detection via YOLOv8 + Florence-2
+
+### CV Services Architecture
+Core detection services in `packages/bytebot-cv/src/`:
+- `services/enhanced-visual-detector.service.ts` - Multi-method orchestrator (5 methods)
+- `services/omniparser-client.service.ts` - OmniParser REST client
+- `services/element-detector.service.ts` - Universal element detection
+- `services/visual-pattern-detector.service.ts` - Pattern recognition
+- `services/text-semantic-analyzer.service.ts` - OCR text analysis
+- `services/cv-activity-indicator.service.ts` - Real-time CV activity tracking
+- `detectors/template/template-matcher.service.ts` - Template matching
+- `detectors/feature/feature-matcher.service.ts` - ORB/AKAZE feature detection
+- `detectors/contour/contour-detector.service.ts` - Shape-based detection
+
+### OmniParser Integration
+OmniParser v2.0 provides semantic UI element detection:
+- **YOLOv8 Icon Detection** - ~50MB model, fine-tuned for UI elements
+- **Florence-2 Captioning** - ~800MB model, generates functional descriptions
+- **Performance** - ~0.6s/frame on A100, ~1-2s on consumer GPUs
+- **Accuracy** - 39.6% on ScreenSpot Pro benchmark
+- **License** - AGPL (icon detection), MIT (captioning)
+
+Configuration:
+```bash
+BYTEBOT_CV_USE_OMNIPARSER=true
+OMNIPARSER_URL=http://localhost:9989
+OMNIPARSER_DEVICE=cuda  # cuda, mps (Apple Silicon), or cpu
+OMNIPARSER_MIN_CONFIDENCE=0.3
+```
 
 ## Testing
 
@@ -160,9 +256,48 @@ All NestJS packages use Jest:
 
 ## Key Technical Notes
 
-- Node.js ≥20.0.0 required for all packages
+- Node.js ≥20.0.0 required for all packages (Python 3.12 for bytebot-omniparser)
 - TypeScript strict mode enabled
 - Monorepo structure requires building shared package first
 - OpenCV capabilities checked at startup with compatibility matrix
 - Universal coordinates stored in `config/universal-coordinates.yaml`
 - Desktop accuracy metrics available at `/desktop` UI route
+- OmniParser requires 8-10GB VRAM (NVIDIA GPU, Apple Silicon M1-M4, or CPU fallback)
+
+## Module Architecture
+
+### bytebot-agent Main Modules
+Key NestJS modules in `packages/bytebot-agent/src/`:
+- `agent/agent.module.ts` - Core agent orchestration
+- `tasks/tasks.module.ts` - Task management
+- `messages/messages.module.ts` - Message handling
+- `anthropic/anthropic.module.ts` - Claude API integration
+- `openai/openai.module.ts` - OpenAI API integration
+- `google/google.module.ts` - Gemini API integration
+- `proxy/proxy.module.ts` - LiteLLM proxy integration
+- `settings/settings.module.ts` - Configuration management
+- `prisma/prisma.module.ts` - Database ORM
+- `computer-vision/cv-activity.controller.ts` - CV telemetry endpoints
+
+### bytebotd Main Modules
+Key NestJS modules in `packages/bytebotd/src/`:
+- `computer-use/computer-use.module.ts` - Desktop control (screenshot, click, type)
+- `input-tracking/input-tracking.module.ts` - Mouse/keyboard tracking
+- `nut/nut.module.ts` - Keyboard shortcut handling via nut-js
+- `mcp/bytebot-mcp.module.ts` - Model Context Protocol integration
+
+## Smart Focus System
+
+Hawkeye's signature precision feature. See `docs/SMART_FOCUS_SYSTEM.md` for full details.
+
+Three-stage workflow:
+1. **Coarse** - Overview with `BYTEBOT_OVERVIEW_GRID` (default: 200px)
+2. **Focus** - Zoom into region with `BYTEBOT_FOCUSED_GRID` (default: 25px)
+3. **Click** - Final coordinate selection
+
+Configuration via environment variables:
+- `BYTEBOT_SMART_FOCUS` - Enable/disable (default: true)
+- `BYTEBOT_SMART_FOCUS_MODEL` - Model for focus reasoning (e.g., gpt-4o-mini)
+- `BYTEBOT_OVERVIEW_GRID` - Coarse grid size
+- `BYTEBOT_REGION_GRID` - Region grid size
+- `BYTEBOT_FOCUSED_GRID` - Fine grid size

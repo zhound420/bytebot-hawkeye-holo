@@ -35,6 +35,13 @@ services:
       - BYTEBOT_CLICK_VERIFY_RADIUS=12
       - BYTEBOT_CLICK_VERIFY_THRESHOLD=4.0
       - BYTEBOT_CLICK_RETRY_MAX=1
+      # OmniParser integration
+      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
+      - OMNIPARSER_URL=http://bytebot-omniparser:9989
+      - OMNIPARSER_TIMEOUT=30000
+    depends_on:
+      bytebot-omniparser:
+        condition: service_healthy
     networks:
       - bytebot-network
 
@@ -76,8 +83,15 @@ services:
       - BYTEBOT_CLICK_VERIFY=true
       - BYTEBOT_POST_ACTION_SCREENSHOT=true
       - BYTEBOT_INCLUDE_FULL_AFTER_VERIFY=true
+      # OmniParser integration
+      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
+      - OMNIPARSER_URL=http://bytebot-omniparser:9989
+      - OMNIPARSER_TIMEOUT=30000
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
+      bytebot-omniparser:
+        condition: service_healthy
     networks:
       - bytebot-network
 
@@ -104,9 +118,44 @@ services:
     networks:
       - bytebot-network
 
+  bytebot-omniparser:
+    build:
+      context: ../packages/bytebot-omniparser
+      dockerfile: Dockerfile
+    container_name: bytebot-omniparser
+    restart: unless-stopped
+    ports:
+      - "9989:9989"
+    environment:
+      - OMNIPARSER_HOST=0.0.0.0
+      - OMNIPARSER_PORT=9989
+      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-cuda}  # cuda, mps, or cpu
+      - OMNIPARSER_MIN_CONFIDENCE=${OMNIPARSER_MIN_CONFIDENCE:-0.3}
+      - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
+    volumes:
+      # Optional: mount weights to persist across rebuilds
+      - omniparser_weights:/app/weights
+    networks:
+      - bytebot-network
+    # GPU support for NVIDIA (comment out if not using NVIDIA GPU)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 networks:
   bytebot-network:
     driver: bridge
 
 volumes:
   postgres_data:
+  omniparser_weights:

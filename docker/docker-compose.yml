@@ -129,7 +129,11 @@ services:
     environment:
       - OMNIPARSER_HOST=0.0.0.0
       - OMNIPARSER_PORT=9989
-      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-cuda}  # cuda, mps, or cpu
+      # Device auto-detection: 'auto' detects cuda/cpu in container
+      # On Apple Silicon: Docker uses CPU (MPS not available in containers)
+      # On NVIDIA: Docker uses CUDA if nvidia-docker runtime available
+      # Override with: cpu, cuda
+      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-auto}
       - OMNIPARSER_MIN_CONFIDENCE=${OMNIPARSER_MIN_CONFIDENCE:-0.3}
       - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
     volumes:
@@ -137,7 +141,9 @@ services:
       - omniparser_weights:/app/weights
     networks:
       - bytebot-network
-    # GPU support for NVIDIA (comment out if not using NVIDIA GPU)
+    # GPU support for NVIDIA (x86_64/amd64 only)
+    # Note: Apple Silicon Macs cannot use GPU in Docker (MPS unavailable)
+    # For native MPS on Apple Silicon, run OmniParser outside Docker
     deploy:
       resources:
         reservations:

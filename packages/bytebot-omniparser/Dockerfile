@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Get build platform for architecture-specific optimizations
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -14,6 +18,19 @@ WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install PyTorch based on target platform
+# arm64 (Apple Silicon in Docker): CPU-only since MPS doesn't pass through
+# amd64 (x86_64): Full CUDA support
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+        echo "Building for ARM64 - installing CPU-only PyTorch"; \
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        echo "Building for AMD64 - installing CUDA-enabled PyTorch"; \
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu118; \
+    fi
+
+# Install remaining requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

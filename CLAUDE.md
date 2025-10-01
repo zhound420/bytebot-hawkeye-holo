@@ -167,6 +167,48 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.omniparser.
 - bytebot-omniparser: 9989 (OmniParser service)
 - PostgreSQL: 5432
 
+## OmniParser Platform Support
+
+OmniParser v2.0 provides semantic UI detection using YOLOv8 + Florence-2 models. Performance varies by platform:
+
+### Docker (Multi-Architecture)
+
+| Platform | Device | Performance | Notes |
+|----------|--------|-------------|-------|
+| x86_64 (Intel/AMD) + NVIDIA GPU | CUDA | ~0.6s/frame ⚡ | **Recommended for production** |
+| x86_64 (Intel/AMD) CPU-only | CPU | ~8-15s/frame | Works but slow |
+| ARM64 (Apple Silicon) in Docker | CPU | ~8-15s/frame ⚠️ | **MPS not available in containers** |
+
+**Auto-detection**: Set `OMNIPARSER_DEVICE=auto` (default) to automatically use the best available device.
+
+### Native Execution (Apple Silicon)
+
+For GPU acceleration on Apple Silicon (M1-M4), run OmniParser **natively outside Docker**:
+
+- **Performance**: ~1-2s/frame with MPS (Metal Performance Shaders)
+- **Setup Guide**: See `packages/bytebot-omniparser/NATIVE_MACOS.md`
+- **Architecture**: Run OmniParser natively, connect from Docker via `host.docker.internal:9989`
+
+**Why native?** Docker Desktop on macOS doesn't pass through MPS/Metal GPU access to containers.
+
+### Configuration
+
+```bash
+# docker/.env
+OMNIPARSER_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
+# OMNIPARSER_DEVICE=cpu   # Force CPU (slower but works everywhere)
+# OMNIPARSER_DEVICE=cuda  # Force NVIDIA GPU (x86_64 only)
+```
+
+### Disabling OmniParser
+
+To disable OmniParser and use only classical CV methods:
+
+```bash
+# docker/.env
+BYTEBOT_CV_USE_OMNIPARSER=false
+```
+
 ## Database
 
 Uses PostgreSQL with Prisma ORM:

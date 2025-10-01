@@ -45,6 +45,14 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     # Check if native OmniParser is running
     if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Native OmniParser detected on port 9989${NC}"
+
+        # Update .env to use native OmniParser
+        if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env 2>/dev/null; then
+            echo -e "${BLUE}Updating .env to use native OmniParser...${NC}"
+            sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+            rm .env.bak
+        fi
+
         echo ""
         echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
 
@@ -59,15 +67,86 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     else
         echo -e "${YELLOW}⚠ Native OmniParser not running${NC}"
         echo ""
-        echo "For best performance (~1-2s/frame), start native OmniParser first:"
-        echo -e "  ${BLUE}./scripts/start-omniparser.sh${NC}"
-        echo ""
-        echo "Or continue with Docker container (slower, ~8-15s/frame)"
-        read -p "Continue with Docker container? [y/N] " -n 1 -r
-        echo ""
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Cancelled."
-            exit 0
+
+        # Check if it's been set up
+        if [[ ! -d "../packages/bytebot-omniparser/venv" ]] && [[ ! -d "../packages/bytebot-omniparser/weights/icon_detect" ]]; then
+            echo -e "${YELLOW}OmniParser not set up for native execution${NC}"
+            echo ""
+            echo "Options:"
+            echo "  1) Set up native OmniParser (recommended, ~1-2s/frame with M4 GPU)"
+            echo "  2) Use Docker container (slower, ~8-15s/frame with CPU)"
+            echo ""
+            read -p "Choose option [1/2]: " -n 1 -r
+            echo ""
+
+            if [[ $REPLY == "1" ]]; then
+                echo -e "${BLUE}Running setup...${NC}"
+                cd ..
+                ./scripts/setup-omniparser.sh
+                echo ""
+                echo "Setup complete! Now start OmniParser:"
+                echo -e "  ${BLUE}./scripts/start-omniparser.sh${NC}"
+                echo ""
+                echo "Then run this script again:"
+                echo -e "  ${BLUE}./scripts/start-stack.sh${NC}"
+                exit 0
+            fi
+        else
+            echo "Native OmniParser is set up but not running."
+            echo ""
+            echo "Options:"
+            echo "  1) Start native OmniParser now (recommended, ~1-2s/frame)"
+            echo "  2) Use Docker container instead (slower, ~8-15s/frame)"
+            echo ""
+            read -p "Choose option [1/2]: " -n 1 -r
+            echo ""
+
+            if [[ $REPLY == "1" ]]; then
+                echo -e "${BLUE}Starting native OmniParser...${NC}"
+                cd ..
+                ./scripts/start-omniparser.sh
+                echo ""
+                echo "Waiting for OmniParser to be ready..."
+                sleep 3
+                cd docker
+
+                # Update .env and restart
+                if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env 2>/dev/null; then
+                    sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+                    rm .env.bak
+                fi
+
+                # Start stack without container
+                docker compose -f $COMPOSE_FILE up -d \
+                    bytebot-desktop \
+                    bytebot-agent \
+                    bytebot-ui \
+                    postgres \
+                    $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
+
+                # Exit here so we don't run the code below
+                echo ""
+                echo -e "${BLUE}Service Status:${NC}"
+                services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990" "OmniParser:9989")
+                for service_port in "${services[@]}"; do
+                    IFS=: read -r service port <<< "$service_port"
+                    if nc -z localhost $port 2>/dev/null; then
+                        echo -e "  ${GREEN}✓${NC} $service (port $port)"
+                    else
+                        echo -e "  ${YELLOW}...${NC} $service (port $port) - starting..."
+                    fi
+                done
+                echo ""
+                echo -e "${GREEN}Stack starting with native OmniParser (M4 GPU)!${NC}"
+                echo ""
+                echo "Services:"
+                echo "  • UI:       http://localhost:9992"
+                echo "  • Agent:    http://localhost:9991"
+                echo "  • Desktop:  http://localhost:9990"
+                echo "  • OmniParser: http://localhost:9989 (native MPS)"
+                echo ""
+                exit 0
+            fi
         fi
 
         echo -e "${BLUE}Starting full Docker stack (includes OmniParser container)...${NC}"

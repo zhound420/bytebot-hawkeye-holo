@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UniversalUIElement } from '../types/element.types';
+import { UniversalUIElement } from '../interfaces/universal-element.interface';
 
 /**
  * OmniParser detection result from the Python service

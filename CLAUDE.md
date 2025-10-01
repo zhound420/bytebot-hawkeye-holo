@@ -28,9 +28,48 @@ All packages depend on `shared` and must build it first. The build order is:
 This fork adds precision tooling on top of upstream Bytebot:
 - **Smart Focus System**: 3-stage coarse→focus→click workflow with tunable grids
 - **Progressive zoom capture**: Deterministic zoom ladder with coordinate reconciliation
-- **Universal element detection**: CV pipeline with visual pattern detection + OCR enrichment
+- **Universal element detection**: CV pipeline with visual pattern detection + OCR enrichment + OmniParser v2.0
 - **Coordinate telemetry**: Accuracy metrics and adaptive calibration
 - **Grid overlay guidance**: Always-on coordinate grids with debug overlays
+
+## Quick Start (Platform-Optimized)
+
+**One-command setup that automatically detects your platform and optimizes for best performance:**
+
+```bash
+# 1. Setup (auto-detects Apple Silicon vs x86_64/NVIDIA)
+./scripts/setup-omniparser.sh
+
+# 2. Start stack
+./scripts/start-stack.sh
+```
+
+### What Happens Automatically
+
+**On Apple Silicon (M1-M4):**
+- Sets up native OmniParser with MPS GPU (~1-2s/frame)
+- Configures Docker to connect to native service
+- Best performance: GPU-accelerated
+
+**On x86_64 + NVIDIA GPU:**
+- Uses Docker container with CUDA (~0.6s/frame)
+- Auto-detects and uses GPU
+- Production-ready setup
+
+**On x86_64 CPU-only:**
+- Uses Docker container with CPU (~8-15s/frame)
+- Works everywhere, slower performance
+
+### Manual Control
+
+```bash
+# Apple Silicon only: Start/stop native OmniParser
+./scripts/start-omniparser.sh  # Start with MPS GPU
+./scripts/stop-omniparser.sh   # Stop
+
+# Stop entire stack
+./scripts/stop-stack.sh
+```
 
 ## Development Commands
 

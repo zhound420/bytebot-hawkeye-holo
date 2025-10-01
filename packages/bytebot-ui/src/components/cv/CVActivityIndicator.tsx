@@ -44,11 +44,9 @@ interface CVActivityIndicatorProps {
 
 export function CVActivityIndicator({ className, compact = false }: CVActivityIndicatorProps) {
   const [activity, setActivity] = useState<CVActivitySnapshot | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    let intervalId: NodeJS.Timeout;
 
     const fetchActivity = async () => {
       try {
@@ -63,22 +61,17 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
 
         if (mounted) {
           setActivity(data);
-          setIsLoading(false);
         }
       } catch (error) {
         console.debug("CV activity fetch failed:", error);
-        if (mounted) {
-          setIsLoading(false);
-        }
       }
     };
 
     // Initial fetch
-    setIsLoading(true);
     fetchActivity();
 
     // Poll every 500ms for real-time updates
-    intervalId = setInterval(fetchActivity, 500);
+    const intervalId = setInterval(fetchActivity, 500);
 
     return () => {
       mounted = false;

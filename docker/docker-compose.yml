@@ -141,16 +141,10 @@ services:
       - omniparser_weights:/app/weights
     networks:
       - bytebot-network
-    # GPU support for NVIDIA (x86_64/amd64 only)
-    # Note: Apple Silicon Macs cannot use GPU in Docker (MPS unavailable)
-    # For native MPS on Apple Silicon, run OmniParser outside Docker
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # GPU support: Automatically uses NVIDIA GPU if nvidia-container-toolkit is installed
+    # No explicit configuration needed - Docker will detect and use GPU if available
+    # Apple Silicon: MPS not available in Docker, runs on CPU (for GPU use native setup)
+    # To explicitly reserve GPU, use: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
       interval: 30s

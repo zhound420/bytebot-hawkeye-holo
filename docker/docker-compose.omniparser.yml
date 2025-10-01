@@ -13,7 +13,7 @@ services:
     environment:
       - OMNIPARSER_HOST=0.0.0.0
       - OMNIPARSER_PORT=9989
-      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-cuda}  # cuda, mps, or cpu
+      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-auto}  # auto, cuda, mps, or cpu
       - OMNIPARSER_MIN_CONFIDENCE=0.3
       - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
     volumes:
@@ -21,14 +21,8 @@ services:
       - omniparser_weights:/app/weights
     networks:
       - bytebot-network
-    # GPU support for NVIDIA
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # GPU support: Automatically detected (no config needed for most users)
+    # For explicit NVIDIA GPU reservation, add docker-compose.gpu.yml
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
       interval: 30s

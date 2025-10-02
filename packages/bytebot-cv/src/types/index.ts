@@ -18,7 +18,7 @@ export interface BoundingBox {
 }
 
 export interface ElementMetadata {
-  detectionMethod: 'ocr' | 'template' | 'edge' | 'accessibility' | 'hybrid' | 'template-matching' | 'feature-matching' | 'contour-detection' | 'ocr-detection';
+  detectionMethod: 'ocr' | 'template' | 'edge' | 'accessibility' | 'hybrid' | 'template-matching' | 'feature-matching' | 'contour-detection' | 'ocr-detection' | 'omniparser';
   similarity?: number;
   ocrConfidence?: number;
   templateMatch?: number;
@@ -30,6 +30,9 @@ export interface ElementMetadata {
   aspectRatio?: number;
   keypointCount?: number;
   combinedFromMethods?: string[];
+  // OmniParser metadata
+  semantic_caption?: string;
+  omniparser_type?: string;
 }
 
 export type ElementType =

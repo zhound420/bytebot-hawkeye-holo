@@ -2950,13 +2950,21 @@ export class ElementDetectorService {
     const desc = description.toLowerCase();
     let score = 0;
 
+    // Check if this is a semantic detection (OmniParser or hybrid with OmniParser)
+    const isSemanticDetection =
+      element.metadata?.detectionMethod === 'omniparser' ||
+      (element.metadata?.detectionMethod === 'hybrid' &&
+        Array.isArray(element.metadata?.combinedFromMethods) &&
+        element.metadata.combinedFromMethods.includes('omniparser'));
+
     if (element.text) {
       const elementText = element.text.toLowerCase();
-      if (elementText.includes(desc) || desc.includes(elementText)) {
-        score += 0.8;
-      } else {
-        score += this.fuzzyMatch(elementText, desc) * 0.6;
-      }
+      const baseScore = elementText.includes(desc) || desc.includes(elementText)
+        ? 0.8
+        : this.fuzzyMatch(elementText, desc) * 0.6;
+
+      // Boost semantic detections by 20% (AI-generated captions are more contextually accurate)
+      score += isSemanticDetection ? baseScore * 1.2 : baseScore;
     }
 
     if (desc.includes('button') && element.type === 'button') score += 0.3;

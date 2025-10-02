@@ -106,7 +106,7 @@ export class EnhancedVisualDetectorService {
       useTemplateMatching = true,
       useFeatureMatching = true,
       useContourDetection = true,
-      useOCR = false, // OCR is expensive, opt-in
+      useOCR = false, // OCR is expensive and slower than OmniParser, opt-in only
       useOmniParser = false, // OmniParser requires Python service, opt-in
       confidenceThreshold = 0.6,
       maxResults = 20,
@@ -235,7 +235,8 @@ export class EnhancedVisualDetectorService {
 
     return this.detectElements(screenshot, null, {
       useContourDetection: true,
-      useOCR: true, // OCR helps identify button text
+      useOCR: false, // OCR is expensive; use OmniParser for semantic button detection instead
+      useOmniParser: true, // Prefer OmniParser for semantic button detection
       useTemplateMatching: false,
       useFeatureMatching: false,
       ...contourOptions

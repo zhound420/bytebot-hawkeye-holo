@@ -640,6 +640,7 @@ export class AgentProcessor {
         id: element.id,
         type: element.type,
         text: element.text ?? null,
+        semantic_description: element.metadata?.semantic_caption ?? element.description ?? null,
         confidence: Number(element.confidence.toFixed(3)),
         coordinates: element.coordinates,
         detectionMethod: element.metadata.detectionMethod,
@@ -712,7 +713,8 @@ export class AgentProcessor {
           useTemplateMatching: false,
           useFeatureMatching: false,
           useContourDetection: true,
-          useOCR: true,
+          useOCR: false, // OCR is slower than OmniParser; only enable if OmniParser is unavailable
+          useOmniParser: process.env.BYTEBOT_CV_USE_OMNIPARSER === 'true',
           confidenceThreshold: 0.5,
           maxResults: 20,
           ocrRegion: searchRegion,

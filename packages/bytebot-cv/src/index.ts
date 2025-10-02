@@ -5,6 +5,7 @@ export * from './services/visual-pattern-detector.service';
 export * from './services/text-semantic-analyzer.service';
 export * from './services/enhanced-visual-detector.service';
 export * from './services/cv-activity-indicator.service';
+export * from './services/omniparser-client.service';
 export * from './detectors/ocr/ocr-detector';
 export * from './detectors/template/template-matcher.service';
 export * from './detectors/feature/feature-matcher.service';

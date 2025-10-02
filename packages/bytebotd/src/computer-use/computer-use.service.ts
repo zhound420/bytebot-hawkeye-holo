@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
@@ -12,6 +12,7 @@ import { FocusRegionService } from '../nut/focus-region.service';
 import { ProgressBroadcaster } from '../progress/progress-broadcaster';
 import { FOCUS_CONFIG } from '../config/focus-config';
 import { TelemetryService } from '../telemetry/telemetry.service';
+import { OmniParserClientService } from '@bytebot/cv';
 import {
   ComputerAction,
   MoveMouseAction,
@@ -58,7 +59,21 @@ export class ComputerUseService {
     private readonly focusRegion: FocusRegionService,
     private readonly progressBroadcaster: ProgressBroadcaster,
     private readonly telemetryService: TelemetryService,
-  ) {}
+    @Optional() private readonly omniParserClient?: OmniParserClientService,
+  ) {
+    // Check OmniParser availability on startup
+    if (this.omniParserClient) {
+      this.omniParserClient.isAvailable().then((available) => {
+        if (available) {
+          this.logger.log('✓ OmniParser integration enabled');
+        } else {
+          this.logger.warn('⚠ OmniParser client registered but service unavailable');
+        }
+      });
+    } else {
+      this.logger.log('OmniParser integration disabled (BYTEBOT_CV_USE_OMNIPARSER=false or service not available)');
+    }
+  }
 
   // Heuristics and verification toggles
   private readonly preClickSnapEnabled =
@@ -116,16 +131,39 @@ export class ComputerUseService {
     action: 'element_detection';
     screenshot_path: string;
     params: ElementDetectionParams;
+    elements?: any[];
   }> {
     this.logger.log('Preparing element detection request');
 
     const buffer = await this.nutService.screendump();
     const screenshotPath = await this.saveDetectionScreenshot(buffer);
 
+    let elements: any[] | undefined;
+
+    // Call OmniParser if available
+    if (this.omniParserClient) {
+      try {
+        const isAvailable = await this.omniParserClient.isAvailable();
+        if (isAvailable) {
+          this.logger.log('Calling OmniParser for element detection...');
+          const result = await this.omniParserClient.parseScreenshot(buffer);
+          const universalElements = this.omniParserClient.convertToUniversalElements(result.elements);
+          elements = universalElements;
+          this.logger.log(`OmniParser detected ${elements?.length || 0} elements`);
+        } else {
+          this.logger.warn('OmniParser service unavailable, skipping element detection');
+        }
+      } catch (error) {
+        this.logger.error(`OmniParser detection failed: ${error.message}`, error.stack);
+        // Continue without elements - agent can still work with screenshot
+      }
+    }
+
     return {
       action: 'element_detection',
       screenshot_path: screenshotPath,
       params,
+      elements,
     };
   }
 

@@ -8,9 +8,10 @@ import { ProgressBroadcaster } from '../progress/progress-broadcaster';
 import { ZoomScreenshotService } from '../nut/zoom-screenshot.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { TelemetryController } from '../telemetry/telemetry.controller';
+import { EnhancedCVModule } from '@bytebot/cv';
 
 @Module({
-  imports: [NutModule],
+  imports: [NutModule, EnhancedCVModule],
   controllers: [ComputerUseController, TelemetryController],
   providers: [
     ComputerUseService,

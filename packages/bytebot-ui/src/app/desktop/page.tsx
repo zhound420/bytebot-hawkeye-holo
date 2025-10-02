@@ -4,6 +4,7 @@ import React from "react";
 import { Header } from "@/components/layout/Header";
 import { DesktopContainer } from "@/components/ui/desktop-container";
 import { CVActivityIndicator } from "@/components/cv/CVActivityIndicator";
+import { LearningMetrics } from "@/components/learning/LearningMetrics";
 import { fetchTasks } from "@/utils/taskUtils";
 import { Task, TaskStatus } from "@/types";
 import { getTaskModelLabel } from "@/components/tasks/TaskItem";
@@ -84,6 +85,7 @@ export default function DesktopPage() {
               )}
             </div>
             <CVActivityIndicator className="mb-4" />
+            <LearningMetrics className="mb-4" />
             <DesktopContainer viewOnly={false} status="live_view">
               {/* No action buttons for desktop page */}
             </DesktopContainer>

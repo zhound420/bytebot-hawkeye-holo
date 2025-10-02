@@ -1,6 +1,10 @@
 import { TasksService } from '../tasks/tasks.service';
 import { MessagesService } from '../messages/messages.service';
 import { Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { expandFunctionalQuery, scoreSemanticMatch } from './semantic-mapping';
+import { CaptionTrainingDataCollector } from './caption-training-data';
 import {
   Message,
   Role,
@@ -105,6 +109,29 @@ type ClickElementResponse =
       element_text?: string | null;
     };
 
+type VisualDescriptionCacheEntry = {
+  keywords: string[];
+  description: string;
+  timestamp: number;
+  hits: number;
+  confidence: number; // 0.0 - 1.0, starts at 0.5, adjusted by success/failure
+  successCount: number;
+  failureCount: number;
+  lastUsed: number;
+};
+
+type VisualDescriptionCache = {
+  version: string;
+  description: string;
+  cache: Record<string, Record<string, VisualDescriptionCacheEntry>>;
+};
+
+type CacheUsageTracking = {
+  elementDescription: string;
+  applicationName: string;
+  usedCachedKeywords: boolean;
+};
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -120,6 +147,25 @@ export class AgentProcessor {
   private readonly taskIterationCount = new Map<string, number>();
   private readonly taskLastActionTime = new Map<string, Date>();
   private readonly MAX_ITERATIONS_WITHOUT_ACTION = 5; // Trigger intervention after 5 iterations without meaningful action
+
+  // Visual description cache for LLM-assisted element identification
+  private visualDescriptionCache: VisualDescriptionCache = {
+    version: '1.0.0',
+    description: 'Visual description cache for UI elements',
+    cache: {}
+  };
+  private readonly visualDescriptionCachePath = path.join(__dirname, '../config/visual-descriptions.cache.json');
+  private readonly CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+  private readonly MIN_CONFIDENCE_THRESHOLD = 0.3; // Invalidate entries below this
+  private readonly CONFIDENCE_BOOST_SUCCESS = 0.05; // Increase on successful click
+  private readonly CONFIDENCE_PENALTY_FAILURE = 0.1; // Decrease on failed click
+  private currentApplicationContext: string = 'desktop'; // Track current application context
+
+  // Track which cache entries were used for each element (for feedback loop)
+  private readonly elementCacheUsage = new Map<string, CacheUsageTracking>();
+
+  // Training data collector for caption fine-tuning
+  private readonly captionTrainingCollector: CaptionTrainingDataCollector;
 
   constructor(
     private readonly tasksService: TasksService,
@@ -140,6 +186,8 @@ export class AgentProcessor {
       google: this.googleService,
       proxy: this.proxyService,
     };
+    this.loadVisualDescriptionCache();
+    this.captionTrainingCollector = new CaptionTrainingDataCollector();
     this.logger.log('AgentProcessor initialized');
   }
 
@@ -155,6 +203,366 @@ export class AgentProcessor {
    */
   getCurrentTaskId(): string | null {
     return this.currentTaskId;
+  }
+
+  /**
+   * Load visual description cache from disk
+   */
+  private loadVisualDescriptionCache(): void {
+    try {
+      if (fs.existsSync(this.visualDescriptionCachePath)) {
+        const data = fs.readFileSync(this.visualDescriptionCachePath, 'utf-8');
+        const loaded = JSON.parse(data);
+
+        // Migrate old cache entries to include confidence scores
+        for (const app in loaded.cache) {
+          for (const element in loaded.cache[app]) {
+            const entry = loaded.cache[app][element];
+            if (!entry.confidence) {
+              entry.confidence = 0.5; // Default confidence
+              entry.successCount = entry.successCount || 0;
+              entry.failureCount = entry.failureCount || 0;
+              entry.lastUsed = entry.lastUsed || entry.timestamp;
+            }
+          }
+        }
+
+        this.visualDescriptionCache = loaded;
+        this.logger.debug('Visual description cache loaded successfully');
+      }
+    } catch (error) {
+      this.logger.warn('Failed to load visual description cache:', error);
+    }
+  }
+
+  /**
+   * Save visual description cache to disk
+   */
+  private saveVisualDescriptionCache(): void {
+    try {
+      const dir = path.dirname(this.visualDescriptionCachePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(
+        this.visualDescriptionCachePath,
+        JSON.stringify(this.visualDescriptionCache, null, 2),
+        'utf-8'
+      );
+      this.logger.debug('Visual description cache saved successfully');
+    } catch (error) {
+      this.logger.warn('Failed to save visual description cache:', error);
+    }
+  }
+
+  /**
+   * Get visual description from primary model for unknown UI elements
+   * This is a fallback when all CV methods fail to find an element
+   */
+  private async getVisualDescriptionFromLLM(
+    elementDescription: string,
+    applicationName: string
+  ): Promise<string[]> {
+    const cacheKey = `${applicationName}:${elementDescription}`.toLowerCase();
+
+    // Check cache first
+    if (!this.visualDescriptionCache.cache[applicationName]) {
+      this.visualDescriptionCache.cache[applicationName] = {};
+    }
+
+    const cached = this.visualDescriptionCache.cache[applicationName][elementDescription];
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+      // Check if confidence is above threshold
+      if (cached.confidence < this.MIN_CONFIDENCE_THRESHOLD) {
+        this.logger.debug(
+          `Cached entry for "${cacheKey}" has low confidence (${cached.confidence.toFixed(2)}), invalidating and re-querying`
+        );
+        delete this.visualDescriptionCache.cache[applicationName][elementDescription];
+        this.saveVisualDescriptionCache();
+        // Fall through to query model again
+      } else {
+        cached.hits++;
+        cached.lastUsed = Date.now();
+        this.saveVisualDescriptionCache();
+        this.logger.debug(
+          `Using cached visual description for "${cacheKey}" (${cached.hits} hits, confidence: ${cached.confidence.toFixed(2)})`
+        );
+        return cached.keywords;
+      }
+    }
+
+    // Ask primary model for visual description
+    this.logger.debug(`Asking primary model for visual description of "${elementDescription}" in ${applicationName}`);
+
+    const prompt = `Describe the "${elementDescription}" in ${applicationName}. Include:
+1. Visual shape/icon type (puzzle, gear, square, grid, etc.)
+2. Common names or labels that might appear on or near it
+3. What it's used for (brief function description)
+4. Location (sidebar, toolbar, etc.)
+
+Focus on words that would appear in UI element descriptions. Be specific and use common UI terminology. Keep response to 2-3 sentences max.`;
+
+    try {
+      // Use the current task's model to get visual description
+      const task = await this.tasksService.findById(this.currentTaskId);
+      if (!task) {
+        throw new Error('No active task found');
+      }
+
+      const model = task.model as unknown as BytebotAgentModel;
+      const service = this.services[model.provider];
+      if (!service) {
+        throw new Error(`Service ${model.provider} not available`);
+      }
+
+      // Make a single-turn stateless call with minimal system prompt
+      const simpleSystemPrompt = 'You are a helpful assistant that describes UI elements visually.';
+      const response = await service.generateMessage(
+        simpleSystemPrompt,
+        [
+          {
+            id: `visual_desc_${Date.now()}`,
+            role: Role.USER,
+            content: [
+              {
+                type: MessageContentType.Text,
+                text: prompt
+              }
+            ],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            taskId: this.currentTaskId,
+            summaryId: null
+          }
+        ],
+        model.name,
+        false, // No streaming needed
+        this.abortController?.signal
+      );
+
+      // Extract text content from response
+      const textContent = response.contentBlocks.find(
+        (block) => block.type === MessageContentType.Text
+      ) as TextContentBlock | undefined;
+
+      if (!textContent) {
+        throw new Error('No text response from model');
+      }
+
+      const description = textContent.text;
+
+      // Extract keywords from description
+      const keywords = this.extractVisualKeywords(description);
+
+      // Cache the result with initial confidence of 0.5
+      const now = Date.now();
+      this.visualDescriptionCache.cache[applicationName][elementDescription] = {
+        keywords,
+        description,
+        timestamp: now,
+        hits: 1,
+        confidence: 0.5, // Start at neutral confidence
+        successCount: 0,
+        failureCount: 0,
+        lastUsed: now
+      };
+
+      this.saveVisualDescriptionCache();
+
+      this.logger.debug(
+        `Got visual description keywords: ${keywords.join(', ')} (initial confidence: 0.5)`
+      );
+      return keywords;
+    } catch (error) {
+      this.logger.warn(`Failed to get visual description from LLM: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Extract visual keywords from model's description
+   * Prioritizes nouns and functional terms over adjectives
+   */
+  private extractVisualKeywords(description: string): string[] {
+    const keywords: string[] = [];
+    const text = description.toLowerCase();
+
+    // High priority: Shapes and UI element types (nouns)
+    const shapes = ['puzzle', 'gear', 'magnifying', 'glass', 'hamburger', 'menu', 'arrow', 'circle', 'square', 'triangle', 'star', 'heart', 'bell', 'folder', 'file', 'document', 'search', 'settings', 'cog', 'wrench', 'tool', 'plus', 'minus', 'cross', 'check', 'checkmark', 'grid', 'list', 'icon', 'button'];
+    for (const shape of shapes) {
+      if (text.includes(shape)) {
+        keywords.push(shape);
+      }
+    }
+
+    // High priority: Functional terms (what it does)
+    const functions = ['extension', 'extensions', 'plugin', 'addon', 'setting', 'search', 'find', 'open', 'close', 'save', 'edit', 'view', 'run', 'debug', 'terminal', 'explorer', 'source'];
+    for (const func of functions) {
+      if (text.includes(func)) {
+        keywords.push(func);
+      }
+    }
+
+    // Medium priority: Locations (but less specific for matching)
+    const locations = ['left', 'right', 'top', 'bottom', 'sidebar', 'toolbar', 'statusbar', 'header', 'footer'];
+    for (const location of locations) {
+      if (text.includes(location)) {
+        keywords.push(location);
+      }
+    }
+
+    // Lower priority: Colors (less useful for matching)
+    // Only add if explicitly mentioned in specific context
+    if (text.includes('colored') || text.includes('color:')) {
+      const colors = ['blue', 'red', 'green', 'yellow', 'orange', 'purple', 'pink', 'grey', 'gray'];
+      for (const color of colors) {
+        if (text.includes(color)) {
+          keywords.push(color);
+        }
+      }
+    }
+
+    // Extract important nouns (3-12 characters, likely UI terms)
+    // Avoid common words
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'have', 'has', 'are', 'was', 'were', 'been', 'being', 'its', "it's", 'typically', 'usually', 'often', 'may', 'can', 'will', 'would', 'should']);
+    const words = text.match(/\b[a-z]{3,12}\b/g) || [];
+    for (const word of words) {
+      if (!stopWords.has(word) && !keywords.includes(word)) {
+        // Add word if it appears more than once (likely important)
+        const occurrences = (text.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+        if (occurrences > 1) {
+          keywords.push(word);
+        }
+      }
+    }
+
+    return [...new Set(keywords)]; // Remove duplicates
+  }
+
+  /**
+   * Set application context for visual descriptions
+   */
+  public setApplicationContext(applicationName: string): void {
+    this.currentApplicationContext = applicationName.toLowerCase();
+    this.logger.debug(`Application context set to: ${this.currentApplicationContext}`);
+  }
+
+  /**
+   * Get the visual description cache (for UI/API exposure)
+   */
+  public getVisualDescriptionCache(): VisualDescriptionCache {
+    return this.visualDescriptionCache;
+  }
+
+  /**
+   * Reinforce cache entry confidence after successful click
+   */
+  private reinforceCacheEntry(elementId: string): void {
+    const tracking = this.elementCacheUsage.get(elementId);
+    if (!tracking || !tracking.usedCachedKeywords) {
+      return; // Only reinforce if we actually used cached keywords
+    }
+
+    const { applicationName, elementDescription } = tracking;
+    const entry = this.visualDescriptionCache.cache[applicationName]?.[elementDescription];
+
+    if (!entry) {
+      return;
+    }
+
+    // Increase confidence and success count
+    const oldConfidence = entry.confidence;
+    entry.confidence = Math.min(1.0, entry.confidence + this.CONFIDENCE_BOOST_SUCCESS);
+    entry.successCount++;
+
+    this.saveVisualDescriptionCache();
+
+    this.logger.debug(
+      `✓ Reinforced cache entry for "${elementDescription}" in ${applicationName}: ` +
+      `confidence ${oldConfidence.toFixed(2)} → ${entry.confidence.toFixed(2)} ` +
+      `(${entry.successCount} successes, ${entry.failureCount} failures)`
+    );
+
+    // Record successful click feedback for training data
+    // Find the visual caption from element cache
+    const cachedElement = this.elementCache.get(elementId);
+    if (cachedElement) {
+      const visualCaption = cachedElement.element.metadata?.semantic_caption || cachedElement.element.text || '';
+      if (visualCaption) {
+        this.captionTrainingCollector.recordClickFeedback(
+          visualCaption,
+          elementDescription,
+          true, // success
+          { application: applicationName }
+        );
+
+        this.logger.debug(
+          `📊 Recorded successful click feedback for training data`
+        );
+      }
+    }
+
+    // Clean up tracking
+    this.elementCacheUsage.delete(elementId);
+  }
+
+  /**
+   * Downgrade cache entry confidence after failed click
+   */
+  private downgradeCacheEntry(elementId: string): void {
+    const tracking = this.elementCacheUsage.get(elementId);
+    if (!tracking || !tracking.usedCachedKeywords) {
+      return; // Only downgrade if we actually used cached keywords
+    }
+
+    const { applicationName, elementDescription } = tracking;
+    const entry = this.visualDescriptionCache.cache[applicationName]?.[elementDescription];
+
+    if (!entry) {
+      return;
+    }
+
+    // Decrease confidence and increment failure count
+    const oldConfidence = entry.confidence;
+    entry.confidence = Math.max(0.0, entry.confidence - this.CONFIDENCE_PENALTY_FAILURE);
+    entry.failureCount++;
+
+    // Record failed click feedback for training data
+    const cachedElement = this.elementCache.get(elementId);
+    if (cachedElement) {
+      const visualCaption = cachedElement.element.metadata?.semantic_caption || cachedElement.element.text || '';
+      if (visualCaption) {
+        this.captionTrainingCollector.recordClickFeedback(
+          visualCaption,
+          elementDescription,
+          false, // failure
+          { application: applicationName }
+        );
+
+        this.logger.debug(
+          `📊 Recorded failed click feedback for training data`
+        );
+      }
+    }
+
+    // If confidence dropped below threshold, delete the entry
+    if (entry.confidence < this.MIN_CONFIDENCE_THRESHOLD) {
+      this.logger.debug(
+        `✗ Cache entry for "${elementDescription}" in ${applicationName} dropped below threshold, invalidating`
+      );
+      delete this.visualDescriptionCache.cache[applicationName][elementDescription];
+    } else {
+      this.logger.debug(
+        `✗ Downgraded cache entry for "${elementDescription}" in ${applicationName}: ` +
+        `confidence ${oldConfidence.toFixed(2)} → ${entry.confidence.toFixed(2)} ` +
+        `(${entry.successCount} successes, ${entry.failureCount} failures)`
+      );
+    }
+
+    this.saveVisualDescriptionCache();
+
+    // Clean up tracking
+    this.elementCacheUsage.delete(elementId);
   }
 
   @OnEvent('task.takeover')
@@ -761,7 +1169,8 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       // Use enhanced CV detection with activity tracking
       const screenshot = this.decodeScreenshotBuffer(screenshotBuffer);
 
-      const enhancedResult = await this.enhancedVisualDetector.detectElements(
+      // First attempt: OmniParser + Contour detection
+      let enhancedResult = await this.enhancedVisualDetector.detectElements(
         screenshot,
         null, // No template for general detection
         {
@@ -776,6 +1185,29 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         }
       );
 
+      // If searching for a specific element and no matches found, try fallback detection methods
+      if (!params.includeAll && enhancedResult.elements.length === 0 && params.description) {
+        this.logger.debug(
+          `No elements found for "${params.description}" with primary methods, trying fallback with template matching + OCR`
+        );
+
+        // Retry with all methods enabled (template matching + OCR fallback)
+        enhancedResult = await this.enhancedVisualDetector.detectElements(
+          screenshot,
+          null,
+          {
+            useTemplateMatching: true, // Enable template matching as fallback
+            useFeatureMatching: true,  // Enable feature matching for robustness
+            useContourDetection: true,
+            useOCR: true, // Enable OCR as last resort for text-based elements
+            useOmniParser: false, // Already tried OmniParser
+            confidenceThreshold: 0.4, // Lower threshold for fallback
+            maxResults: 20,
+            ocrRegion: searchRegion,
+          }
+        );
+      }
+
       const elements = enhancedResult.elements;
       this.cacheDetectedElements(elements);
 
@@ -789,11 +1221,145 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         };
       }
 
-      const matchingElement =
+      let matchingElement =
         await this.elementDetector.findElementByDescription(
           elements,
           params.description,
         );
+
+      // If no match found, try semantic matching with visual synonym expansion
+      if (!matchingElement && elements.length > 0) {
+        this.logger.debug(
+          `No exact match for "${params.description}", trying semantic matching with visual synonym expansion`
+        );
+
+        // Expand functional query to include visual synonyms
+        // Example: "extensions icon" → ["extensions", "icon", "puzzle", "piece", "addons", "plugins"]
+        const expandedKeywords = expandFunctionalQuery(
+          params.description,
+          this.currentApplicationContext
+        );
+
+        this.logger.debug(
+          `Expanded query keywords: ${expandedKeywords.join(', ')}`
+        );
+
+        // Find element with highest semantic match score
+        let bestMatch: any = null;
+        let bestScore = 0;
+
+        for (const element of elements) {
+          const elementText =
+            element.metadata?.semantic_caption ||
+            element.text ||
+            element.description ||
+            '';
+
+          // Use semantic scoring that considers visual↔functional mappings
+          const score = scoreSemanticMatch(
+            elementText,
+            params.description,
+            this.currentApplicationContext
+          );
+
+          if (score > bestScore && score >= 0.4) {
+            // Lower threshold (40%) because semantic expansion is more precise
+            bestMatch = element;
+            bestScore = score;
+          }
+        }
+
+        if (bestMatch) {
+          this.logger.debug(
+            `Found semantic match with ${Math.round(bestScore * 100)}% confidence: "${bestMatch.metadata?.semantic_caption || bestMatch.text}"`
+          );
+          matchingElement = bestMatch;
+        }
+      }
+
+      // If still no match found, ask primary model for visual description
+      // This is the final fallback before returning empty result
+      if (!matchingElement && params.description && elements.length > 0) {
+        this.logger.debug(
+          `No match found after all CV methods, asking primary model for visual description`
+        );
+
+        try {
+          const enrichedKeywords = await this.getVisualDescriptionFromLLM(
+            params.description,
+            this.currentApplicationContext
+          );
+
+          if (enrichedKeywords.length > 0) {
+            this.logger.debug(
+              `Retrying element matching with enriched keywords: ${enrichedKeywords.join(', ')}`
+            );
+
+            // Try matching again with enriched keywords
+            for (const element of elements) {
+              const elementText = (
+                element.metadata?.semantic_caption ||
+                element.text ||
+                element.description ||
+                ''
+              ).toLowerCase();
+
+              // Check if any enriched keyword matches
+              const matchCount = enrichedKeywords.filter(kw =>
+                elementText.includes(kw.toLowerCase())
+              ).length;
+
+              if (matchCount > 0) {
+                const score = matchCount / enrichedKeywords.length;
+                this.logger.debug(
+                  `Found match using LLM-enriched keywords with ${Math.round(score * 100)}% overlap: "${element.metadata?.semantic_caption || element.text}"`
+                );
+                matchingElement = element;
+
+                // Track that this element was found using cached keywords for feedback loop
+                this.elementCacheUsage.set(element.id, {
+                  elementDescription: params.description,
+                  applicationName: this.currentApplicationContext,
+                  usedCachedKeywords: true
+                });
+
+                // Record this as training data for caption fine-tuning
+                // The LLM provided better keywords than the visual caption alone
+                const visualCaption = element.metadata?.semantic_caption || element.text || '';
+                const cachedEntry = this.visualDescriptionCache.cache[this.currentApplicationContext]?.[params.description];
+
+                if (visualCaption && cachedEntry) {
+                  this.captionTrainingCollector.recordLLMCorrection(
+                    visualCaption,
+                    params.description,
+                    cachedEntry.description,
+                    enrichedKeywords,
+                    {
+                      application: this.currentApplicationContext,
+                      coordinates: {
+                        x: element.coordinates.x,
+                        y: element.coordinates.y,
+                        width: element.coordinates.width,
+                        height: element.coordinates.height
+                      }
+                    }
+                  );
+
+                  this.logger.debug(
+                    `📊 Recorded training data: visual="${visualCaption}" → functional="${params.description}"`
+                  );
+                }
+
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          this.logger.warn(`Visual description fallback failed: ${error.message}`);
+          // Continue without LLM assistance
+        }
+      }
+
       const matchingElements = matchingElement ? [matchingElement] : [];
 
       return {
@@ -865,6 +1431,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       });
 
       if (result.success) {
+        // Reinforce cache entry on successful click
+        this.reinforceCacheEntry(params.element_id);
+
         return {
           success: true,
           element_id: params.element_id,
@@ -884,6 +1453,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         });
 
         if (fallbackResult.success) {
+          // Still reinforce even if fallback worked (element was detected, just coords were slightly off)
+          this.reinforceCacheEntry(params.element_id);
+
           return {
             success: true,
             element_id: params.element_id,
@@ -894,6 +1466,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           };
         }
       }
+
+      // Downgrade cache entry on failed click
+      this.downgradeCacheEntry(params.element_id);
 
       return {
         success: false,
@@ -906,6 +1481,10 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Element click failed: ${message}`);
+
+      // Downgrade cache entry on error (if element was tracked)
+      this.downgradeCacheEntry(params.element_id);
+
       return {
         success: false,
         element_id: params.element_id,

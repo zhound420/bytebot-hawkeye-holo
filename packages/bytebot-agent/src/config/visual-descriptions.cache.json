@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "description": "Visual description cache with reinforcement learning for UI elements",
+  "cache": {
+    "vscode": {
+      "extensions icon": {
+        "keywords": ["puzzle", "piece", "sidebar", "left"],
+        "description": "Puzzle piece icon in the left sidebar",
+        "timestamp": 0,
+        "hits": 0,
+        "confidence": 0.5,
+        "successCount": 0,
+        "failureCount": 0,
+        "lastUsed": 0
+      }
+    }
+  }
+}

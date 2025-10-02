@@ -142,20 +142,23 @@ export default function TaskPage() {
         <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           {/* Main container */}
           <div className="flex flex-1 flex-col gap-3">
-            <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 dark:border-border/60 dark:bg-muted">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Active Model
-              </span>
-              <span className="text-sm font-semibold text-foreground">
-                {modelIdentifier || "Model unavailable"}
-              </span>
-              {modelNameDetails && (
-                <span className="text-xs text-muted-foreground">
-                  Identifier: {modelNameDetails}
+            {/* Top row: Active Model and OmniParser side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 dark:border-border/60 dark:bg-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Active Model
                 </span>
-              )}
+                <span className="text-sm font-semibold text-foreground">
+                  {modelIdentifier || "Model unavailable"}
+                </span>
+                {modelNameDetails && (
+                  <span className="text-xs text-muted-foreground">
+                    Identifier: {modelNameDetails}
+                  </span>
+                )}
+              </div>
+              <CVActivityIndicator />
             </div>
-            <CVActivityIndicator />
             <DesktopContainer
               className="max-h-[calc(100vh-12rem)]"
               screenshot={taskInactive ? currentScreenshot : null}

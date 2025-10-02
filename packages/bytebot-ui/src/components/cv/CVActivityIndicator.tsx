@@ -99,10 +99,11 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
     };
   }, []);
 
-  // Show if: active methods OR recent history OR device info available
+  // Show if: active methods OR recent history OR device/model info available
   const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;
   const hasDeviceInfo = activity?.omniparserDevice !== undefined;
-  const shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo);
+  const hasModelInfo = activity?.omniparserModels !== undefined;
+  const shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo);
 
   if (!shouldShow) {
     return null;

@@ -1,11 +1,28 @@
-services:
-   bytebot-desktop:
-     volumes:
-       - ./progress-data:/app/progress
-     # Building locally with OpenCV 4.8.0 from Ubuntu 24.04
+# Docker Compose Override - Force x86_64 Architecture
+# This ensures consistent builds across Mac (Apple Silicon), Linux, and Windows
+# by forcing all containers to use x86_64 architecture.
+#
+# On Apple Silicon Macs: Uses Rosetta 2 emulation (~20% slower but stable)
+# On x86_64 systems: Native performance, no emulation
+#
+# Benefits:
+# - Consistent OpenCV binaries across all platforms
+# - No platform-specific build issues
+# - Pre-built packages work reliably
+# - Faster builds (no cross-compilation)
 
-   bytebot-agent:
-     # Building locally with OpenCV 4.8.0 from Ubuntu 24.04
-     volumes:
-       - ./progress-data:/app/progress
-     # Enhanced OpenCV 4.8.0 capabilities with ML and morphology support
+services:
+  bytebot-agent:
+    platform: linux/amd64
+
+  bytebot-desktop:
+    platform: linux/amd64
+
+  bytebot-ui:
+    platform: linux/amd64
+
+  bytebot-omniparser:
+    platform: linux/amd64
+
+  bytebot-llm-proxy:
+    platform: linux/amd64

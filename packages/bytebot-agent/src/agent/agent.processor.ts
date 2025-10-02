@@ -42,6 +42,8 @@ import {
   ClickTarget,
   EnhancedVisualDetectorService,
   CVActivityIndicatorService,
+  DetectionHistoryEntry,
+  ClickHistoryEntry,
   getOpenCvModule,
 } from '@bytebot/cv';
 import {
@@ -1370,6 +1372,23 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       this.cacheDetectedElements(elements);
 
       if (params.includeAll) {
+        // Record detection for telemetry (includeAll mode)
+        const detectionEntry: DetectionHistoryEntry = {
+          timestamp: new Date(),
+          description: params.description || '(all elements)',
+          elementsFound: elements.length,
+          primaryMethod: elements[0]?.metadata?.detectionMethod || 'unknown',
+          cached: !!cachedElements,
+          duration: 0,
+          elements: elements.slice(0, 10).map(el => ({
+            id: el.id,
+            semanticDescription: el.metadata?.semantic_caption || el.text,
+            confidence: el.confidence,
+            coordinates: { x: el.coordinates.x, y: el.coordinates.y },
+          })),
+        };
+        this.cvActivityService.recordDetection(detectionEntry);
+
         return {
           elements,
           count: elements.length,
@@ -1544,6 +1563,23 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           .map(el => ({ element: el, score: 0 }));
       }
 
+      // Record detection for telemetry
+      const detectionEntry: DetectionHistoryEntry = {
+        timestamp: new Date(),
+        description: params.description || '',
+        elementsFound: elements.length,
+        primaryMethod: elements[0]?.metadata?.detectionMethod || 'unknown',
+        cached: !!cachedElements,
+        duration: 0, // Duration tracking would require adding timing logic
+        elements: elements.slice(0, 10).map(el => ({
+          id: el.id,
+          semanticDescription: el.metadata?.semantic_caption || el.text,
+          confidence: el.confidence,
+          coordinates: { x: el.coordinates.x, y: el.coordinates.y },
+        })),
+      };
+      this.cvActivityService.recordDetection(detectionEntry);
+
       return {
         elements: matchingElements,
         count: matchingElements.length,
@@ -1580,6 +1616,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           });
 
           if (fallbackResult.success) {
+            // Record fallback click (element not cached)
+            const fallbackClickEntry: ClickHistoryEntry = {
+              timestamp: new Date(),
+              elementId: params.element_id,
+              coordinates: params.fallback_coordinates,
+              success: true,
+              detectionMethod: 'fallback_coordinates',
+            };
+            this.cvActivityService.recordClick(fallbackClickEntry);
+
             return {
               success: true,
               element_id: params.element_id,
@@ -1587,6 +1633,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
               detection_method: 'fallback_coordinates',
             };
           }
+
+          // Record failed fallback click
+          const failedFallbackEntry: ClickHistoryEntry = {
+            timestamp: new Date(),
+            elementId: params.element_id,
+            coordinates: params.fallback_coordinates,
+            success: false,
+            detectionMethod: 'fallback_coordinates',
+          };
+          this.cvActivityService.recordClick(failedFallbackEntry);
 
           return {
             success: false,
@@ -1617,6 +1673,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         // Reinforce cache entry on successful click
         this.reinforceCacheEntry(params.element_id);
 
+        // Record click for telemetry
+        const clickEntry: ClickHistoryEntry = {
+          timestamp: new Date(),
+          elementId: params.element_id,
+          coordinates: clickTarget.coordinates,
+          success: true,
+          detectionMethod: element.metadata.detectionMethod || 'unknown',
+        };
+        this.cvActivityService.recordClick(clickEntry);
+
         return {
           success: true,
           element_id: params.element_id,
@@ -1639,6 +1705,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           // Still reinforce even if fallback worked (element was detected, just coords were slightly off)
           this.reinforceCacheEntry(params.element_id);
 
+          // Record fallback click success for telemetry
+          const fallbackClickEntry: ClickHistoryEntry = {
+            timestamp: new Date(),
+            elementId: params.element_id,
+            coordinates: params.fallback_coordinates,
+            success: true,
+            detectionMethod: `${element.metadata.detectionMethod}_fallback`,
+          };
+          this.cvActivityService.recordClick(fallbackClickEntry);
+
           return {
             success: true,
             element_id: params.element_id,
@@ -1652,6 +1728,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // Downgrade cache entry on failed click
       this.downgradeCacheEntry(params.element_id);
+
+      // Record failed click for telemetry
+      const failedClickEntry: ClickHistoryEntry = {
+        timestamp: new Date(),
+        elementId: params.element_id,
+        coordinates: clickTarget.coordinates,
+        success: false,
+        detectionMethod: element.metadata.detectionMethod || 'unknown',
+      };
+      this.cvActivityService.recordClick(failedClickEntry);
 
       return {
         success: false,

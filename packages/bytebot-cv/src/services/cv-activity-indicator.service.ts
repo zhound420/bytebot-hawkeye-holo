@@ -10,6 +10,52 @@ export interface CVMethodActivity {
   metadata?: Record<string, any>;
 }
 
+export interface DetectionHistoryEntry {
+  timestamp: Date;
+  description: string;
+  elementsFound: number;
+  primaryMethod: string;
+  cached: boolean;
+  duration: number;
+  elements: Array<{
+    id: string;
+    semanticDescription?: string;
+    confidence: number;
+    coordinates: { x: number; y: number };
+  }>;
+}
+
+export interface ClickHistoryEntry {
+  timestamp: Date;
+  elementId: string;
+  coordinates: { x: number; y: number };
+  success: boolean;
+  detectionMethod: string;
+}
+
+export interface CVDetectionSummary {
+  detections: {
+    total: number;
+    cached: number;
+    cacheHitRate: number;
+  };
+  methods: {
+    omniparser: number;
+    ocr: number;
+    template: number;
+    feature: number;
+    contour: number;
+  };
+  clicks: {
+    total: number;
+    successful: number;
+    failed: number;
+    successRate: number;
+  };
+  recentDetections: DetectionHistoryEntry[];
+  recentClicks: ClickHistoryEntry[];
+}
+
 export interface CVActivitySnapshot {
   activeMethods: string[];
   totalActiveCount: number;
@@ -32,6 +78,12 @@ export class CVActivityIndicatorService extends EventEmitter {
   private activeMethods = new Map<string, CVMethodActivity>();
   private methodHistory: CVMethodActivity[] = [];
   private readonly maxHistorySize = 100;
+
+  // Detection and click tracking
+  private detectionHistory: DetectionHistoryEntry[] = [];
+  private clickHistory: ClickHistoryEntry[] = [];
+  private readonly maxDetectionHistorySize = 50;
+  private readonly maxClickHistorySize = 50;
 
   constructor(
     @Optional() private readonly omniParserClient?: OmniParserClientService,
@@ -323,5 +375,87 @@ export class CVActivityIndicatorService extends EventEmitter {
       this.stopMethod(activityId, false, { error: error.message });
       throw error;
     }
+  }
+
+  /**
+   * Record a detection event for telemetry
+   */
+  recordDetection(entry: DetectionHistoryEntry): void {
+    this.detectionHistory.unshift(entry);
+    if (this.detectionHistory.length > this.maxDetectionHistorySize) {
+      this.detectionHistory = this.detectionHistory.slice(0, this.maxDetectionHistorySize);
+    }
+    this.logger.debug(`Recorded detection: ${entry.description} (${entry.elementsFound} elements, method: ${entry.primaryMethod}, cached: ${entry.cached})`);
+  }
+
+  /**
+   * Record a click event for telemetry
+   */
+  recordClick(entry: ClickHistoryEntry): void {
+    this.clickHistory.unshift(entry);
+    if (this.clickHistory.length > this.maxClickHistorySize) {
+      this.clickHistory = this.clickHistory.slice(0, this.maxClickHistorySize);
+    }
+    this.logger.debug(`Recorded click: element ${entry.elementId} at (${entry.coordinates.x}, ${entry.coordinates.y}), success: ${entry.success}`);
+  }
+
+  /**
+   * Get comprehensive detection and click summary for telemetry dashboard
+   */
+  getDetectionSummary(): CVDetectionSummary {
+    // Calculate detection stats
+    const totalDetections = this.detectionHistory.length;
+    const cachedDetections = this.detectionHistory.filter(d => d.cached).length;
+    const cacheHitRate = totalDetections > 0 ? cachedDetections / totalDetections : 0;
+
+    // Count methods used
+    const methodCounts = {
+      omniparser: 0,
+      ocr: 0,
+      template: 0,
+      feature: 0,
+      contour: 0,
+    };
+
+    this.detectionHistory.forEach(detection => {
+      const method = detection.primaryMethod.toLowerCase();
+      if (method.includes('omniparser')) methodCounts.omniparser++;
+      else if (method.includes('ocr')) methodCounts.ocr++;
+      else if (method.includes('template')) methodCounts.template++;
+      else if (method.includes('feature')) methodCounts.feature++;
+      else if (method.includes('contour')) methodCounts.contour++;
+    });
+
+    // Calculate click stats
+    const totalClicks = this.clickHistory.length;
+    const successfulClicks = this.clickHistory.filter(c => c.success).length;
+    const failedClicks = totalClicks - successfulClicks;
+    const clickSuccessRate = totalClicks > 0 ? successfulClicks / totalClicks : 0;
+
+    return {
+      detections: {
+        total: totalDetections,
+        cached: cachedDetections,
+        cacheHitRate,
+      },
+      methods: methodCounts,
+      clicks: {
+        total: totalClicks,
+        successful: successfulClicks,
+        failed: failedClicks,
+        successRate: clickSuccessRate,
+      },
+      recentDetections: this.detectionHistory.slice(0, 20),
+      recentClicks: this.clickHistory.slice(0, 20),
+    };
+  }
+
+  /**
+   * Clear detection and click history (for testing/debugging)
+   */
+  clearDetectionHistory(): void {
+    this.detectionHistory = [];
+    this.clickHistory = [];
+    this.logger.debug('CV detection and click history cleared');
   }
 }

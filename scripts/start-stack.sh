@@ -46,11 +46,23 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Native OmniParser detected on port 9989${NC}"
 
-        # Update .env.defaults to use native OmniParser
+        # Update .env.defaults (system defaults) to use native OmniParser
         if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
-            echo -e "${BLUE}Updating configuration to use native OmniParser...${NC}"
+            echo -e "${BLUE}Updating system configuration to use native OmniParser...${NC}"
             sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
+        fi
+
+        # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
+        if [ -f ".env" ]; then
+            echo -e "${BLUE}Syncing OmniParser settings to .env...${NC}"
+            # Update or add OMNIPARSER_URL in .env
+            if grep -q "^OMNIPARSER_URL=" .env; then
+                sed -i.bak 's|^OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+                rm .env.bak
+            else
+                echo "OMNIPARSER_URL=http://host.docker.internal:9989" >> .env
+            fi
         fi
 
         echo ""
@@ -92,10 +104,21 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
             cd docker
         fi
 
-        # Update .env.defaults to use native OmniParser
+        # Update .env.defaults (system defaults) to use native OmniParser
         if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
             sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
+        fi
+
+        # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
+        if [ -f ".env" ]; then
+            # Update or add OMNIPARSER_URL in .env
+            if grep -q "^OMNIPARSER_URL=" .env; then
+                sed -i.bak 's|^OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+                rm .env.bak
+            else
+                echo "OMNIPARSER_URL=http://host.docker.internal:9989" >> .env
+            fi
         fi
 
         # Start stack without container

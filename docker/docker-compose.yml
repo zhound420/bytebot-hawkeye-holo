@@ -37,8 +37,8 @@ services:
       - BYTEBOT_CLICK_RETRY_MAX=1
       # OmniParser integration
       - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=http://bytebot-omniparser:9989
-      - OMNIPARSER_TIMEOUT=30000
+      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
+      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
     depends_on:
       bytebot-omniparser:
         condition: service_healthy
@@ -85,8 +85,8 @@ services:
       - BYTEBOT_INCLUDE_FULL_AFTER_VERIFY=true
       # OmniParser integration
       - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=http://bytebot-omniparser:9989
-      - OMNIPARSER_TIMEOUT=30000
+      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
+      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
     depends_on:
       postgres:
         condition: service_started

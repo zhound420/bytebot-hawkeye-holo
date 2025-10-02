@@ -34,8 +34,8 @@ services:
   bytebot-desktop:
     environment:
       - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=http://bytebot-omniparser:9989
-      - OMNIPARSER_TIMEOUT=30000
+      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
+      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
     depends_on:
       bytebot-omniparser:
         condition: service_healthy
@@ -44,8 +44,8 @@ services:
   bytebot-agent:
     environment:
       - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=http://bytebot-omniparser:9989
-      - OMNIPARSER_TIMEOUT=30000
+      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
+      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
     depends_on:
       bytebot-omniparser:
         condition: service_healthy

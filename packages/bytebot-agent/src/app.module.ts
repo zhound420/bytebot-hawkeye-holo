@@ -14,7 +14,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
 import { SettingsModule } from './settings/settings.module';
-import { EnhancedCVModule } from '@bytebot/cv/enhanced-cv.module';
+import { EnhancedCVModule } from '@bytebot/cv';
 import { CVActivityController } from './computer-vision/cv-activity.controller';
 
 @Module({

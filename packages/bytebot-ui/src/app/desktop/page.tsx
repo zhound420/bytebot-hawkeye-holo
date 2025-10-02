@@ -68,10 +68,10 @@ export default function DesktopPage() {
       <Header />
 
       <main className="m-2 flex-1 overflow-hidden px-2 py-4">
-        <div className="flex h-full items-center justify-center">
-          {/* Main container */}
-          <div className="w-[60%] space-y-4">
-            <div className="mb-4 flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 dark:border-border/60 dark:bg-muted">
+        <div className="flex h-full gap-4">
+          {/* Left sidebar - panels */}
+          <div className="w-[320px] space-y-4 overflow-y-auto">
+            <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 dark:border-border/60 dark:bg-muted">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Active Model
               </span>
@@ -84,8 +84,12 @@ export default function DesktopPage() {
                 </span>
               )}
             </div>
-            <CVActivityIndicator className="mb-4" />
-            <LearningMetrics className="mb-4" />
+            <CVActivityIndicator />
+            <LearningMetrics />
+          </div>
+
+          {/* Center - Desktop view (primary focus) */}
+          <div className="flex-1 overflow-hidden">
             <DesktopContainer viewOnly={false} status="live_view">
               {/* No action buttons for desktop page */}
             </DesktopContainer>

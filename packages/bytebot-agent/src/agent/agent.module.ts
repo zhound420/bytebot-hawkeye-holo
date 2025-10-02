@@ -25,7 +25,7 @@ import { LearningMetricsController } from './learning-metrics.controller';
     GoogleModule,
     ProxyModule,
     BytebotCvModule,
-    EnhancedCVModule,
+    EnhancedCVModule, // @Global() module - NestJS will reuse the same instance
   ],
   controllers: [LearningMetricsController],
   providers: [

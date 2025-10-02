@@ -35,6 +35,23 @@ export interface OmniParserOptions {
 }
 
 /**
+ * OmniParser model status
+ */
+export interface OmniParserModelStatus {
+  icon_detector: {
+    loaded: boolean;
+    type: string; // "YOLOv8"
+    path: string;
+  };
+  caption_model: {
+    loaded: boolean;
+    type: string; // "Florence-2"
+    path: string;
+  };
+  weights_path: string;
+}
+
+/**
  * Client service for OmniParser REST API
  *
  * Integrates with the Python FastAPI service to provide semantic UI element detection
@@ -47,6 +64,7 @@ export class OmniParserClientService {
   private readonly timeout: number;
   private readonly enabled: boolean;
   private isHealthy: boolean = false;
+  private modelStatus: OmniParserModelStatus | null = null;
 
   constructor() {
     this.baseUrl = process.env.OMNIPARSER_URL || 'http://localhost:9989';
@@ -97,6 +115,14 @@ export class OmniParserClientService {
       if (response.ok) {
         const data = await response.json();
         this.isHealthy = data.status === 'healthy' && data.models_loaded;
+
+        // Fetch model status if healthy
+        if (this.isHealthy && !this.modelStatus) {
+          this.fetchModelStatus().catch((err) => {
+            this.logger.warn(`Failed to fetch model status: ${err.message}`);
+          });
+        }
+
         return this.isHealthy;
       }
 
@@ -107,6 +133,39 @@ export class OmniParserClientService {
       this.isHealthy = false;
       return false;
     }
+  }
+
+  /**
+   * Fetch model status from OmniParser service
+   */
+  async fetchModelStatus(): Promise<OmniParserModelStatus | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${this.baseUrl}/models/status`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        this.modelStatus = await response.json();
+        return this.modelStatus;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.debug(`Model status fetch failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get cached model status
+   */
+  getModelStatus(): OmniParserModelStatus | null {
+    return this.modelStatus;
   }
 
   /**

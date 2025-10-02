@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { TemplateMatcherService } from './detectors/template/template-matcher.service';
 import { FeatureMatcherService } from './detectors/feature/feature-matcher.service';
 import { ContourDetectorService } from './detectors/contour/contour-detector.service';
@@ -6,6 +6,7 @@ import { EnhancedVisualDetectorService } from './services/enhanced-visual-detect
 import { CVActivityIndicatorService } from './services/cv-activity-indicator.service';
 import { OmniParserClientService } from './services/omniparser-client.service';
 
+@Global() // Ensure singleton behavior across all modules
 @Module({
   providers: [
     CVActivityIndicatorService,

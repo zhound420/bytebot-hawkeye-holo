@@ -20,6 +20,10 @@ interface CVActivitySnapshot {
     successRate: number;
   };
   omniparserDevice?: string;
+  omniparserModels?: {
+    iconDetector: string;
+    captionModel: string;
+  };
 }
 
 const methodDisplayNames: Record<string, string> = {
@@ -27,7 +31,7 @@ const methodDisplayNames: Record<string, string> = {
   "feature-matching": "Feature Match",
   "contour-detection": "Contour Detect",
   "ocr-detection": "OCR",
-  "omniparser": "OmniParser AI",
+  "omniparser": "OmniParser",
 };
 
 const methodColors: Record<string, string> = {
@@ -95,13 +99,22 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
     };
   }, []);
 
-  if (!activity || activity.totalActiveCount === 0) {
-    return null; // Don't show when inactive
+  // Show if: active methods OR recent history OR device info available
+  const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;
+  const hasDeviceInfo = activity?.omniparserDevice !== undefined;
+  const shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo);
+
+  if (!shouldShow) {
+    return null;
   }
 
   if (compact) {
+    const hasOmniParser = activity.activeMethods.includes("omniparser") || activity.omniparserModels;
+    const deviceBadge = getDeviceBadge(activity.omniparserDevice);
+    const models = activity.omniparserModels;
+
     return (
-      <div className={cn("flex items-center gap-2", className)}>
+      <div className={cn("flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2", className)}>
         <div className="flex items-center gap-1">
           {activity.activeMethods.map((method) => (
             <div
@@ -114,9 +127,23 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
             />
           ))}
         </div>
-        <span className="text-xs text-muted-foreground">
-          CV Active
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-foreground">
+              {hasOmniParser ? "OmniParser" : "CV"} Active
+            </span>
+            {hasOmniParser && activity.omniparserDevice && (
+              <span className={cn("text-xs font-medium", deviceBadge.color)}>
+                {deviceBadge.icon}
+              </span>
+            )}
+          </div>
+          {models && (
+            <span className="text-[10px] text-muted-foreground">
+              {models.iconDetector} + {models.captionModel}
+            </span>
+          )}
+        </div>
       </div>
     );
   }
@@ -127,15 +154,22 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
   return (
     <div className={cn("rounded-lg border border-border bg-card p-3", className)}>
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            CV Detection Active
-          </h3>
-          {hasOmniParser && (
-            <span className={cn("text-xs font-medium flex items-center gap-1", deviceBadge.color)}>
-              <span>{deviceBadge.icon}</span>
-              <span>Local Processing</span>
-            </span>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {hasOmniParser ? "OmniParser Detection" : "CV Detection"}
+            </h3>
+            {hasOmniParser && (
+              <span className={cn("text-xs font-medium flex items-center gap-1", deviceBadge.color)}>
+                <span>{deviceBadge.icon}</span>
+                <span>{deviceBadge.label}</span>
+              </span>
+            )}
+          </div>
+          {activity.omniparserModels && (
+            <div className="text-[10px] text-muted-foreground">
+              {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
+            </div>
           )}
         </div>
         <span className="text-xs text-muted-foreground">

@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { CVActivityIndicatorService } from '@bytebot/cv/services/cv-activity-indicator.service';
+import { CVActivityIndicatorService } from '@bytebot/cv';
 
 @Controller('cv-activity')
 export class CVActivityController {

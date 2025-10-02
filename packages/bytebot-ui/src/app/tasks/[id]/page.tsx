@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { VirtualDesktopStatus } from "@/components/VirtualDesktopStatusHeader";
 import { TelemetryStatus } from "@/components/telemetry/TelemetryStatus";
 import { TaskPromptSummary } from "@/components/tasks/TaskPromptSummary";
+import { CVActivityIndicator } from "@/components/cv/CVActivityIndicator";
 
 export default function TaskPage() {
   const params = useParams();
@@ -154,6 +155,7 @@ export default function TaskPage() {
                 </span>
               )}
             </div>
+            <CVActivityIndicator compact />
             <DesktopContainer
               className="max-h-[calc(100vh-12rem)]"
               screenshot={taskInactive ? currentScreenshot : null}

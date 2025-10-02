@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter } from 'events';
+import { OmniParserClientService } from './omniparser-client.service';
 
 export interface CVMethodActivity {
   method: string;
@@ -19,6 +20,10 @@ export interface CVActivitySnapshot {
     successRate: number;
   };
   omniparserDevice?: string; // Device type for OmniParser (cuda, mps, cpu)
+  omniparserModels?: { // Models used by OmniParser
+    iconDetector: string; // e.g., "YOLOv8"
+    captionModel: string; // e.g., "Florence-2"
+  };
 }
 
 @Injectable()
@@ -28,7 +33,9 @@ export class CVActivityIndicatorService extends EventEmitter {
   private methodHistory: CVMethodActivity[] = [];
   private readonly maxHistorySize = 100;
 
-  constructor() {
+  constructor(
+    @Optional() private readonly omniParserClient?: OmniParserClientService,
+  ) {
     super();
     this.logger.log('CV Activity Indicator Service initialized');
   }
@@ -154,6 +161,20 @@ export class CVActivityIndicatorService extends EventEmitter {
       }
     }
 
+    // Debug logging for persistence issues
+    if (this.methodHistory.length > 0 || this.activeMethods.size > 0) {
+      this.logger.debug(
+        `CV Activity Snapshot: ${this.activeMethods.size} active, ${this.methodHistory.length} in history, device: ${omniparserDevice || 'unknown'}`
+      );
+    }
+
+    // Get OmniParser model info if available
+    const modelStatus = this.omniParserClient?.getModelStatus();
+    const omniparserModels = modelStatus ? {
+      iconDetector: modelStatus.icon_detector.type,
+      captionModel: modelStatus.caption_model.type,
+    } : undefined;
+
     return {
       activeMethods,
       totalActiveCount: activeMethods.length,
@@ -163,7 +184,8 @@ export class CVActivityIndicatorService extends EventEmitter {
         totalMethodsExecuted: this.methodHistory.length,
         successRate
       },
-      omniparserDevice
+      omniparserDevice,
+      omniparserModels
     };
   }
 

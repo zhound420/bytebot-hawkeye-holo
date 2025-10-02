@@ -155,7 +155,7 @@ export default function TaskPage() {
                 </span>
               )}
             </div>
-            <CVActivityIndicator compact />
+            <CVActivityIndicator />
             <DesktopContainer
               className="max-h-[calc(100vh-12rem)]"
               screenshot={taskInactive ? currentScreenshot : null}

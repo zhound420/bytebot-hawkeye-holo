@@ -114,8 +114,9 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Coordinate telemetry & accuracy** | Telemetry pipeline with `BYTEBOT_COORDINATE_METRICS` and `BYTEBOT_COORDINATE_DEBUG`, an attempt towards accuracy.(COORDINATE_ACCURACY_IMPROVEMENTS.md). | No automated accuracy measurement or debug dataset. |
 | **Universal coordinate mapping** | Shared lookup in `config/universal-coordinates.yaml` bundled in repo and `@bytebot/shared`, auto-discovered without extra configuration. | Requires custom configuration for consistent coordinate frames. |
 | **Universal element detection** | CV pipeline merges visual heuristics, OCR enrichments, and semantic roles to emit consistent `UniversalUIElement` metadata for buttons, inputs, and clickable controls. | LLM prompts must infer UI semantics from raw OCR spans and manually chosen click targets. |
-| **Enhanced OpenCV 4.6.0+ pipeline** | Multi-method detection with template matching, feature detection (ORB/AKAZE), contour analysis, and advanced OCR preprocessing with morphological operations and CLAHE enhancement. | Basic screenshot analysis without advanced computer vision techniques. |
-| **Real-time CV activity monitoring** | Live tracking of active computer vision methods with performance metrics, success rates, and UI indicators showing which CV methods are processing. API endpoints and SSE streams for real-time visibility. | No visibility into which detection methods are active or their performance characteristics. |
+| **OmniParser v2.0 semantic detection** | AI-powered semantic UI detection using YOLOv8 icon detection + Florence-2 captioning with GPU acceleration (NVIDIA/Apple Silicon). Includes semantic mapping learning and training data collection for continuous improvement. | No semantic understanding of UI elements; relies on pixel-based analysis only. |
+| **Enhanced OpenCV 4.6.0+ pipeline** | Five-method detection: OmniParser (primary), template matching, feature detection (ORB/AKAZE), contour analysis, and advanced OCR preprocessing with morphological operations and CLAHE enhancement. | Basic screenshot analysis without advanced computer vision techniques. |
+| **Real-time CV activity monitoring** | Live tracking of active CV methods with animated indicators, OmniParser model display (YOLOv8 + Florence-2), GPU detection (NVIDIA GPU/Apple Silicon/CPU), performance metrics, success rates, and dedicated UI panels on Desktop and Task pages with 500ms polling. | No visibility into which detection methods are active or their performance characteristics. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
 | **Active Model desktop telemetry** | The desktop dashboard's Active Model card (under `/desktop`) continuously surfaces the agent's current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
 
@@ -145,50 +146,97 @@ To help you interpret the drawer’s live readouts, Hawkeye surfaces several lea
 
 Together, these metrics give you continuous feedback on how Hawkeye’s coordinate calibration improves over time and whether additional guardrails are necessary for stubborn workflows.
 
-### Enhanced Computer Vision Pipeline (OpenCV 4.6.0+)
+### Enhanced Computer Vision Pipeline (OpenCV 4.6.0+ & OmniParser v2.0)
 
-Hawkeye leverages a **comprehensive OpenCV 4.6.0 computer vision pipeline** that dramatically improves UI automation accuracy through multiple detection methods:
+Hawkeye leverages a **comprehensive computer vision pipeline** that dramatically improves UI automation accuracy through five detection methods:
 
 #### **Multi-Method Element Detection**
+- **OmniParser v2.0** (NEW, Primary) - Semantic UI detection using YOLOv8 icon detection + Florence-2 captioning for functional element understanding
 - **Template Matching** (`TemplateMatcherService`) - Multi-scale template matching with confidence scoring for pixel-perfect UI element matching
 - **Feature Detection** (`FeatureMatcherService`) - ORB and AKAZE feature matching with homography-based element localization, robust to UI variations
 - **Contour Analysis** (`ContourDetectorService`) - Shape-based detection for buttons, input fields, and icons using advanced morphological operations
 - **Enhanced OCR Pipeline** - Upgraded Tesseract preprocessing with morphological gradients, bilateral filtering, and CLAHE contrast enhancement
 
+#### **OmniParser v2.0 Semantic Detection**
+Hawkeye now includes **OmniParser v2.0** as the primary detection method, providing AI-powered semantic understanding of UI elements:
+
+- **YOLOv8 Icon Detection** (~50MB model) - Fine-tuned for UI elements with high-confidence bounding boxes
+- **Florence-2 Captioning** (~800MB model) - Generates functional descriptions like "search button" or "settings menu"
+- **Semantic Mapping Learning** - Automatically learns element mappings from successful interactions, improving accuracy over time
+- **Training Data Collection** - Captures caption training data for model improvement and fine-tuning
+- **GPU Acceleration** - Supports NVIDIA CUDA, Apple Silicon (MPS), and CPU fallback
+- **Performance** - ~0.6s/frame on NVIDIA GPU, ~1-2s on Apple Silicon, ~8-15s on CPU
+- **Benchmark** - 39.6% accuracy on ScreenSpot Pro benchmark
+
+**Platform Support:**
+- 🍎 **Apple Silicon (M1-M4):** Native execution with MPS GPU acceleration (~1-2s/frame)
+- ⚡ **x86_64 + NVIDIA GPU:** Docker with CUDA support (~0.6s/frame)
+- 💻 **CPU-only:** Docker with CPU fallback (~8-15s/frame)
+
 #### **Intelligent Detection Orchestration**
-The `EnhancedVisualDetectorService` combines all CV methods intelligently:
+The `EnhancedVisualDetectorService` combines all five CV methods intelligently, with OmniParser as the primary method:
 ```typescript
 // Comprehensive detection using all available methods
 const result = await enhancedDetector.detectElements(screenshot, template, {
-  useTemplateMatching: true,   // For exact UI matches
-  useFeatureMatching: true,    // For robust element detection
-  useContourDetection: true,   // For shape-based detection
-  useOCR: true,               // For text-based elements
-  combineResults: true        // Merge overlapping detections
+  useOmniParser: true,         // Primary: Semantic UI detection (YOLOv8 + Florence-2)
+  useTemplateMatching: true,   // Fallback: For exact UI matches
+  useFeatureMatching: true,    // Fallback: For robust element detection
+  useContourDetection: true,   // Fallback: For shape-based detection
+  useOCR: true,                // Fallback: For text-based elements
+  combineResults: true         // Merge overlapping detections
 });
 ```
 
+**Detection Priority:**
+1. **OmniParser** (if available and enabled) - Highest priority for semantic understanding
+2. **Template/Feature/Contour/OCR** - Fallback methods if OmniParser unavailable or fails
+3. **Multi-method fusion** - Combine results from multiple methods for maximum reliability
+
 #### **Real-Time CV Activity Monitoring**
-- **Live Method Tracking** - `CVActivityIndicatorService` tracks which CV methods are actively processing
-- **Performance Metrics** - Real-time success rates, processing times, and execution statistics
-- **UI Integration** - Server-Sent Events and REST endpoints for displaying active CV methods in the web interface
-- **Debug Telemetry** - Comprehensive method execution history for optimization
+Hawkeye provides comprehensive visibility into computer vision operations with live UI indicators:
+
+- **Live Method Tracking** - `CVActivityIndicatorService` tracks which CV methods are actively processing with animated indicators
+- **OmniParser Model Display** - Real-time display of active models (YOLOv8 + Florence-2) with GPU detection (NVIDIA GPU, Apple Silicon, or CPU)
+- **Performance Metrics** - Real-time success rates, processing times, average execution times, and total executions
+- **GPU Acceleration Status** - Live hardware detection showing compute device: ⚡ NVIDIA GPU, 🍎 Apple Silicon, or 💻 CPU
+- **UI Integration** - Dedicated CV Activity panels on both Desktop and Task pages with 500ms polling for real-time updates
+- **Debug Telemetry** - Comprehensive method execution history for optimization and troubleshooting
+
+**CV Activity Panel Features:**
+- Active method indicators with color-coded badges (Template: Blue, Feature: Purple, Contour: Green, OCR: Yellow, OmniParser: Pink)
+- Live execution timers showing how long each method has been processing
+- Performance grid: Avg Time, Total Executions, Success Rate, Compute Device
+- Automatic visibility when CV methods are active or have recent execution history
 
 #### **API Endpoints for CV Visibility**
 ```bash
-GET /cv-activity/status     # Current active methods snapshot
-GET /cv-activity/active     # Quick active/inactive check
-SSE /cv-activity/stream     # Real-time updates via Server-Sent Events
+GET /cv-activity/stream      # Real-time activity snapshot with OmniParser model info (polled every 500ms by UI)
+GET /cv-activity/status      # Current active methods snapshot
+GET /cv-activity/active      # Quick active/inactive check
 GET /cv-activity/performance # Method performance statistics
+GET /cv-activity/history     # Method execution history (last 20 executions)
 ```
+
+**Response includes:**
+- Active methods array with execution timers
+- OmniParser device type (cuda, mps, cpu)
+- OmniParser models (icon_detector: "YOLOv8", caption_model: "Florence-2")
+- Performance metrics (avg processing time, total executions, success rate)
 
 #### **Universal Element Detection Pipeline**
 The enhanced system outputs structured `UniversalUIElement` objects by fusing:
 
+- **OmniParser v2.0 semantic detection** (Primary) - YOLOv8 + Florence-2 for functional understanding with semantic mapping learning
 - **Visual pattern detection** (`VisualPatternDetectorService`) with OpenCV edge detection, CLAHE, and morphological operations
 - **OCR enrichment** through `ElementDetectorService.detectElementsUniversal` with advanced preprocessing techniques
-- **Semantic analysis** (`TextSemanticAnalyzerService`) for intent-based reasoning over raw UI text
-- **Multi-method fusion** that combines template, feature, contour, and OCR detections for maximum reliability
+- **Semantic analysis** (`TextSemanticAnalyzerService`) for intent-based reasoning over raw UI text with functional term weighting
+- **Multi-method fusion** that combines OmniParser, template, feature, contour, and OCR detections for maximum reliability
+
+**Semantic Mapping Learning:**
+- Automatically learns element mappings from successful interactions
+- 2x functional term weighting for better semantic matching
+- Screenshot caching with 2-second TTL for performance
+- Training data collection for continuous model improvement
 
 #### **OpenCV 4.6.0 Capability Matrix**
 ✅ **Active Methods**: Template matching, Feature detection (ORB/AKAZE), Morphological operations, CLAHE, Gaussian blur, Bilateral filtering, Canny edge detection, Contour analysis, Adaptive thresholding

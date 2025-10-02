@@ -48,9 +48,9 @@ const getDeviceBadge = (device?: string): { icon: string; label: string; color: 
 
   const deviceLower = device.toLowerCase();
   if (deviceLower.includes("cuda")) {
-    return { icon: "⚡", label: "GPU", color: "text-green-500" };
+    return { icon: "⚡", label: "NVIDIA GPU", color: "text-green-500" };
   } else if (deviceLower.includes("mps")) {
-    return { icon: "⚡", label: "GPU", color: "text-green-500" };
+    return { icon: "🍎", label: "Apple Silicon", color: "text-green-500" };
   } else if (deviceLower.includes("cpu")) {
     return { icon: "💻", label: "CPU", color: "text-blue-500" };
   }

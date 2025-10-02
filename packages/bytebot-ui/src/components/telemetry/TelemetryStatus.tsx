@@ -728,7 +728,7 @@ export function TelemetryStatus({ className = "" }: Props) {
                 <div className="rounded border border-border bg-card/70 px-2 py-1 dark:bg-muted/50">
                   <div className="text-[10px] text-muted-foreground">Methods</div>
                   <div className="text-[13px] font-semibold text-card-foreground">
-                    {cvData?.methods ? Object.entries(cvData.methods).filter(([_, count]) => count > 0).length : 0}
+                    {cvData?.methods ? Object.entries(cvData.methods).filter((entry) => entry[1] > 0).length : 0}
                   </div>
                 </div>
               </div>
@@ -753,7 +753,7 @@ export function TelemetryStatus({ className = "" }: Props) {
                       </div>
                     )
                   ))}
-                  {cvData?.methods && Object.entries(cvData.methods).every(([_, count]) => count === 0) && (
+                  {cvData?.methods && Object.entries(cvData.methods).every((entry) => entry[1] === 0) && (
                     <div className="rounded border border-dashed border-border/60 bg-muted/30 px-2 py-1 text-center text-[10px] text-muted-foreground">
                       No detections yet
                     </div>

@@ -1240,12 +1240,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         }).join('\n');
 
         if (hasSemanticScores) {
-          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Pick closest match: computer_click_element({ element_id: "${detection.topCandidates[0].element.id}" })\n2. Try broader query: computer_detect_elements({ description: "button" })\n3. See all: computer_detect_elements({ includeAll: true })`;
+          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Pick closest match: computer_click_element({ element_id: "${detection.topCandidates[0].element.id}" })\n2. Try broader query: computer_detect_elements({ description: "button" })\n3. See all: computer_detect_elements({ description: "", includeAll: true })`;
         } else {
-          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Use computer_detect_elements({ includeAll: true }) to see full list with descriptions\n2. Look at these element descriptions and pick one by ID\n3. Try a different query based on what you see`;
+          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Use computer_detect_elements({ description: "", includeAll: true }) to see full list with descriptions\n2. Look at these element descriptions and pick one by ID\n3. Try a different query based on what you see`;
         }
       } else if (detection.totalDetected > 0) {
-        text += `\n\n**RECOMMENDED ACTION:** Use computer_detect_elements({ includeAll: true }) to see all ${detection.totalDetected} elements with descriptions`;
+        text += `\n\n**RECOMMENDED ACTION:** Use computer_detect_elements({ description: "", includeAll: true }) to see all ${detection.totalDetected} elements with descriptions`;
       }
 
       content.push({

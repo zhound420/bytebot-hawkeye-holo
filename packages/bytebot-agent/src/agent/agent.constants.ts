@@ -87,10 +87,11 @@ Before attempting to click any UI element, you MUST call \`computer_detect_eleme
    - Returns closest matching elements
    - Uses AI to understand functional intent (e.g., "settings" → gear icon)
 
-2. **Discovery Mode** - \`computer_detect_elements({ includeAll: true })\`
+2. **Discovery Mode** - \`computer_detect_elements({ description: "", includeAll: true })\`
    - Returns ALL detected UI elements (top 20 by confidence)
    - Useful when specific queries fail
    - Provides complete UI inventory for spatial navigation
+   - Note: Empty description "" required when using includeAll
 
 #### Step 2: Handling "No Match Found"
 When detection returns "No exact match", the system shows **Top 10 Closest Matches** with:
@@ -109,13 +110,13 @@ Example response format:
 
   Try:
   - Broader description (e.g., "button" instead of specific labels)
-  - Use includeAll: true to see all 71 elements
+  - Use computer_detect_elements({ description: "", includeAll: true }) to see all elements
   - Pick closest match by element_id
 
 **Your Response Strategy:**
 1. ✅ **Use closest match** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
 2. ✅ **Try broader query** - \`computer_detect_elements({ description: "button" })\`
-3. ✅ **Discovery mode** - \`computer_detect_elements({ includeAll: true })\` then pick from list
+3. ✅ **Discovery mode** - \`computer_detect_elements({ description: "", includeAll: true })\` then pick from list
 4. ❌ **NEVER use computer_click_mouse directly** - It will error
 
 #### Step 3: Precise Element Clicking

@@ -5,6 +5,7 @@ import { TextShimmer } from "../ui/text-shimmer";
 import { MessageAvatar } from "./MessageAvatar";
 import { Loader } from "../ui/loader";
 import { ChatInput } from "./ChatInput";
+import { CVActivityIndicator } from "../cv/CVActivityIndicator";
 
 interface ChatContainerProps {
   scrollRef?: React.RefObject<HTMLDivElement | null>;
@@ -102,17 +103,24 @@ export function ChatContainer({
 
             {taskStatus === TaskStatus.RUNNING &&
               control === Role.ASSISTANT && (
-                <div className="bg-bytebot-bronze-light-3 dark:bg-bytebot-bronze-dark-3 border-bytebot-bronze-light-7 dark:border-bytebot-bronze-dark-7 flex items-center justify-start gap-4 border-x px-4 py-3">
-                  <MessageAvatar role={Role.ASSISTANT} />
-                  <div className="flex items-center justify-start gap-2">
-                    <div className="flex h-full items-center justify-center py-2">
-                      <Loader size={20} />
-                    </div>
-                    <TextShimmer className="text-sm" duration={2}>
-                      Bytebot is working...
-                    </TextShimmer>
+                <>
+                  {/* Live CV Activity Telemetry */}
+                  <div className="bg-bytebot-bronze-light-3 dark:bg-bytebot-bronze-dark-3 border-bytebot-bronze-light-7 dark:border-bytebot-bronze-dark-7 border-x px-4 py-2">
+                    <CVActivityIndicator inline className="w-full" />
                   </div>
-                </div>
+
+                  <div className="bg-bytebot-bronze-light-3 dark:bg-bytebot-bronze-dark-3 border-bytebot-bronze-light-7 dark:border-bytebot-bronze-dark-7 flex items-center justify-start gap-4 border-x px-4 py-3">
+                    <MessageAvatar role={Role.ASSISTANT} />
+                    <div className="flex items-center justify-start gap-2">
+                      <div className="flex h-full items-center justify-center py-2">
+                        <Loader size={20} />
+                      </div>
+                      <TextShimmer className="text-sm" duration={2}>
+                        Bytebot is working...
+                      </TextShimmer>
+                    </div>
+                  </div>
+                </>
               )}
 
             {/* Loading indicator for infinite scroll at bottom */}

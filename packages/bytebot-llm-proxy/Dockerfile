@@ -1,6 +1,15 @@
-FROM ghcr.io/berriai/litellm:main-stable
+FROM python:3.12-slim
 
-# Add custom config into the image
+WORKDIR /app
+
+# Install litellm
+RUN pip install --no-cache-dir 'litellm[proxy]'
+
+# Add custom config
 COPY ./bytebot-llm-proxy/litellm-config.yaml /app/config.yaml
 
-CMD ["--config", "/app/config.yaml", "--port", "4000"]
+# Expose port
+EXPOSE 4000
+
+# Run litellm proxy
+CMD ["litellm", "--config", "/app/config.yaml", "--port", "4000"]

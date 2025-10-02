@@ -39,35 +39,66 @@
 
 ## 🚀 Quick Start (Platform-Optimized)
 
-**One-command setup that automatically detects your platform and optimizes for best performance:**
+**Three-step setup that automatically detects your platform and optimizes for best performance:**
 
+### Step 1: Clone Repository
 ```bash
-# 1. Clone and navigate
 git clone https://github.com/zhound420/bytebot-hawkeye-cv.git
 cd bytebot-hawkeye-cv
+```
 
-# 2. Setup (auto-detects Apple Silicon vs x86_64/NVIDIA)
+### Step 2: Configure API Keys
+
+Create `docker/.env` with your API keys (**API keys only**, system config goes in `.env.defaults`):
+
+```bash
+cat <<'EOF' > docker/.env
+# LLM Provider API Keys (Required)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...
+EOF
+```
+
+### Step 3: Setup OmniParser (Platform-Specific)
+
+The setup script automatically detects your hardware and installs the optimal configuration:
+
+```bash
 ./scripts/setup-omniparser.sh
+```
 
-# 3. Start stack
+**What happens automatically:**
+
+- **Apple Silicon (M1-M4):** Native OmniParser with MPS GPU (~1-2s/frame) - Best performance
+- **x86_64 + NVIDIA GPU:** Docker container with CUDA (~0.6s/frame) - Production-ready
+- **x86_64 CPU-only:** Docker container with CPU (~8-15s/frame) - Works everywhere
+
+### Step 4: Start the Stack
+
+```bash
 ./scripts/start-stack.sh
 ```
 
-### What Happens Automatically
+The start script will:
+- ✅ Detect your platform and configure OmniParser connectivity
+- ✅ Start native OmniParser (Apple Silicon) or Docker container (x86_64)
+- ✅ Launch all services: agent, UI, desktop, postgres, LLM proxy
+- ✅ Apply database migrations automatically
+- ✅ Verify all services are healthy
 
-**On Apple Silicon (M1-M4):**
-- Sets up native OmniParser with MPS GPU (~1-2s/frame)
-- Configures Docker to connect to native service
-- **Best performance: GPU-accelerated**
+**Access the Stack:**
+- 🌐 Web UI: http://localhost:9992
+- 🖥️ Desktop (noVNC): http://localhost:9990
+- 🤖 Agent API: http://localhost:9991
+- 🔀 LiteLLM Proxy: http://localhost:4000
+- 👁️ OmniParser: http://localhost:9989
 
-**On x86_64 + NVIDIA GPU:**
-- Uses Docker container with CUDA (~0.6s/frame)
-- Auto-detects and uses GPU
-- **Production-ready setup**
-
-**On x86_64 CPU-only:**
-- Uses Docker container with CPU (~8-15s/frame)
-- Works everywhere, slower performance
+**Stop the stack:**
+```bash
+./scripts/stop-stack.sh
+```
 
 > **GPU not detected?** See [GPU Setup Guide](docs/GPU_SETUP.md) for troubleshooting and explicit GPU configuration.
 
@@ -170,71 +201,66 @@ The enhanced system outputs structured `UniversalUIElement` objects by fusing:
 
 `NutService` on the desktop daemon parses compound shortcuts such as `ctrl+shift+p`, mixed-case modifiers, and platform aliases (`cmd`, `option`, `win`). Legacy arrays like `['Control', 'Shift', 'X']` continue to work, but LLM tool calls can now emit compact strings and rely on the daemon to normalize, validate, and execute the correct nut-js sequence.
 
-### Running the Default Compose Stack
+### Troubleshooting
 
-To boot the Hawkeye desktop, agent, UI, and Postgres services without the LiteLLM proxy, use the standard compose topology:
+**UI shows "ECONNREFUSED" to port 9991:**
+- Check agent health: `docker compose ps bytebot-agent`
+- View agent logs: `docker compose logs bytebot-agent`
+- Verify database migrations: `docker exec bytebot-agent npx prisma migrate status`
 
-```bash
-docker compose -f docker/docker-compose.yml build
-docker compose -f docker/docker-compose.yml up -d
-```
+**OmniParser connection issues:**
+- Apple Silicon: Ensure native OmniParser is running: `lsof -i :9989`
+- x86_64: Check OmniParser container: `docker logs bytebot-omniparser`
+- Verify `OMNIPARSER_URL` in `docker/.env.defaults` matches your platform
 
-Default endpoints:
+**Database errors:**
+- The agent automatically applies migrations on startup
+- Manual migration: `docker exec bytebot-agent npx prisma migrate deploy`
 
-- Agent API – `http://localhost:9991`
-- Web UI – `http://localhost:9992`
-- Desktop noVNC – `http://localhost:9990`
-
-If the UI reports `ECONNREFUSED` to `9991`, ensure the agent container is healthy (`docker compose ps bytebot-agent`) and inspect its logs (`docker compose logs bytebot-agent`) for Prisma or DI failures.
-
-## Quick Start: Proxy Compose Stack
+## Advanced: Manual Docker Compose Setup
 
 ![Desktop accuracy overlay](docs/images/hawkeye1.png)
 
- The fastest way to try Hawkeye is the proxy-enabled Docker Compose stack—it starts the desktop, agent, UI, Postgres, and LiteLLM proxy with every precision upgrade flipped on. Populate `docker/.env` with your model keys **and** the Hawkeye-specific toggles before you launch. OpenRouter and LMStudio are first-class in the default LiteLLM config, so set the matching environment variables and make sure the aliases in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml) point to models you can reach:
+If you prefer to run Docker Compose manually instead of using the automated `start-stack.sh` script, follow these steps:
 
-- `OPENROUTER_API_KEY` powers the `openrouter-*` aliases like `openrouter-claude-3.7-sonnet`.
-- LMStudio examples such as `local-lmstudio-gemma-3-27b` expect your local server’s `api_base` to match the running LMStudio instance.
-- `BYTEBOT_GRID_OVERLAY=true` keeps the labeled coordinate grid on every capture.
-- `BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true` enables the multi-zoom screenshot refinement.
-- `BYTEBOT_SMART_FOCUS=true` and `BYTEBOT_SMART_FOCUS_MODEL=<litellm-alias>` route Smart Focus through the proxy model you configure in the LiteLLM config.
-- `BYTEBOT_COORDINATE_METRICS=true` (plus optional `BYTEBOT_COORDINATE_DEBUG=true`) records the click accuracy telemetry that distinguishes the fork.
-- `BYTEBOT_CV_ENHANCED_DETECTION=true` enables the comprehensive OpenCV 4.6.0+ pipeline with template, feature, and contour detection.
-- `BYTEBOT_CV_ACTIVITY_TRACKING=true` activates real-time CV method monitoring and performance metrics for UI visibility.
+### Using the Proxy Stack (Recommended)
+
+The proxy stack includes LiteLLM for unified model access across providers:
 
 ```bash
+# 1. Configure API keys in docker/.env (API keys ONLY)
 cat <<'EOF' > docker/.env
-# Provider keys for LiteLLM
-OPENAI_API_KEY=sk-your-key
-ANTHROPIC_API_KEY=...
-OPENROUTER_API_KEY=...
-
-# Hawkeye precision defaults
-BYTEBOT_GRID_OVERLAY=true
-BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true
-BYTEBOT_SMART_FOCUS=true
-BYTEBOT_SMART_FOCUS_MODEL=gpt-4o-mini
-BYTEBOT_COORDINATE_METRICS=true
-
-# Enhanced Computer Vision (OpenCV 4.6.0+)
-BYTEBOT_CV_ENHANCED_DETECTION=true
-BYTEBOT_CV_ACTIVITY_TRACKING=true
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=sk-or-v1-...
 EOF
 
-# Build images locally (default)
+# 2. System configuration is already set in docker/.env.defaults
+#    (OmniParser settings, Hawkeye features, etc.)
+
+# 3. Start the full stack with proxy
 docker compose -f docker/docker-compose.proxy.yml up -d --build
-
-# Prefer a different Postgres registry?
-# export BYTEBOT_POSTGRES_IMAGE=postgres:16-alpine
-
-# Or use pre-built registry images after authenticating:
-# export BYTEBOT_DESKTOP_IMAGE=ghcr.io/bytebot-ai/bytebot-desktop:edge
-# export BYTEBOT_AGENT_IMAGE=ghcr.io/bytebot-ai/bytebot-agent:edge
-# export BYTEBOT_UI_IMAGE=ghcr.io/bytebot-ai/bytebot-ui:edge
-# docker compose -f docker/docker-compose.proxy.yml up -d
 ```
 
-Before you start the stack, edit [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml) so each alias maps to the OpenRouter endpoints or LMStudio bases you control. After saving changes, restart the `bytebot-llm-proxy` container (`docker compose restart bytebot-llm-proxy`) to reload the updated routing.
+**Available Models via Proxy:**
+- Anthropic: `claude-opus-4`, `claude-sonnet-4`
+- OpenAI: `gpt-4o`, `o3`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5` variants
+- OpenRouter: `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, etc.
+- Local LMStudio: Configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
+
+To use custom model endpoints, edit `litellm-config.yaml` and restart: `docker compose restart bytebot-llm-proxy`
+
+### Using the Standard Stack (No Proxy)
+
+The standard stack connects directly to provider APIs without LiteLLM:
+
+```bash
+# Start without proxy (uses direct API keys)
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+**Note:** Direct API access requires API keys in `docker/.env`. The agent will use the provider-specific services (Anthropic, OpenAI, Google) directly.
 
 ## Alternative Deployments
 

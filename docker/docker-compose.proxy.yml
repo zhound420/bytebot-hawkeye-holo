@@ -74,6 +74,11 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/bytebotdb}
       - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-desktop:9990}
       - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
+      # API keys as fallback if proxy unavailable
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - BYTEBOT_ZOOM_REFINEMENT=${BYTEBOT_ZOOM_REFINEMENT:-true}
       - BYTEBOT_GRID_OVERLAY=true
       - BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true

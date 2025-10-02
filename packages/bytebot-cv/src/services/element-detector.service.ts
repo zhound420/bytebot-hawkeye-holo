@@ -2957,19 +2957,55 @@ export class ElementDetectorService {
         Array.isArray(element.metadata?.combinedFromMethods) &&
         element.metadata.combinedFromMethods.includes('omniparser'));
 
+    // Semantic synonyms for better matching (especially for VS Code icons)
+    const synonymMap: Record<string, string[]> = {
+      'extensions': ['puzzle', 'plugin', 'addon', 'extension', 'modules'],
+      'search': ['find', 'magnifying', 'glass', 'lookup'],
+      'settings': ['gear', 'config', 'preferences', 'cog'],
+      'files': ['folder', 'directory', 'explorer'],
+      'debug': ['bug', 'debugger', 'play'],
+    };
+
     if (element.text) {
       const elementText = element.text.toLowerCase();
-      const baseScore = elementText.includes(desc) || desc.includes(elementText)
-        ? 0.8
-        : this.fuzzyMatch(elementText, desc) * 0.6;
+      let baseScore = 0;
 
-      // Boost semantic detections by 20% (AI-generated captions are more contextually accurate)
-      score += isSemanticDetection ? baseScore * 1.2 : baseScore;
+      // Direct match (highest score)
+      if (elementText.includes(desc) || desc.includes(elementText)) {
+        baseScore = 0.8;
+      } else {
+        // Check semantic synonyms
+        let foundSynonym = false;
+        const descWords = desc.split(/\s+/);
+        const elementWords = elementText.split(/\s+/);
+
+        for (const descWord of descWords) {
+          if (synonymMap[descWord]) {
+            for (const synonym of synonymMap[descWord]) {
+              if (elementWords.some(w => w.includes(synonym) || synonym.includes(w))) {
+                baseScore = 0.7; // High score for synonym match
+                foundSynonym = true;
+                break;
+              }
+            }
+          }
+          if (foundSynonym) break;
+        }
+
+        // Fallback to fuzzy match
+        if (!foundSynonym) {
+          baseScore = this.fuzzyMatch(elementText, desc) * 0.6;
+        }
+      }
+
+      // Boost semantic detections by 50% (AI-generated captions are more contextually accurate)
+      score += isSemanticDetection ? baseScore * 1.5 : baseScore;
     }
 
     if (desc.includes('button') && element.type === 'button') score += 0.3;
     if (desc.includes('field') && element.type === 'input') score += 0.3;
     if (desc.includes('link') && element.type === 'link') score += 0.3;
+    if (desc.includes('icon') && element.type === 'icon') score += 0.2;
 
     score *= element.confidence;
 

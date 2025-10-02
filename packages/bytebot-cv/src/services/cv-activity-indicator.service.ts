@@ -18,6 +18,7 @@ export interface CVActivitySnapshot {
     totalMethodsExecuted: number;
     successRate: number;
   };
+  omniparserDevice?: string; // Device type for OmniParser (cuda, mps, cpu)
 }
 
 @Injectable()
@@ -134,6 +135,25 @@ export class CVActivityIndicatorService extends EventEmitter {
       methodDetails[id] = activity;
     });
 
+    // Extract OmniParser device info from active methods or recent history
+    let omniparserDevice: string | undefined;
+    for (const activity of this.activeMethods.values()) {
+      if (activity.method === 'omniparser' && activity.metadata?.device) {
+        omniparserDevice = activity.metadata.device;
+        break;
+      }
+    }
+    // Fallback to recent history if not currently active
+    if (!omniparserDevice) {
+      const recentOmniparser = this.methodHistory
+        .slice(-10)
+        .reverse()
+        .find(h => h.method === 'omniparser' && h.metadata?.device);
+      if (recentOmniparser) {
+        omniparserDevice = recentOmniparser.metadata?.device;
+      }
+    }
+
     return {
       activeMethods,
       totalActiveCount: activeMethods.length,
@@ -142,7 +162,8 @@ export class CVActivityIndicatorService extends EventEmitter {
         averageProcessingTime,
         totalMethodsExecuted: this.methodHistory.length,
         successRate
-      }
+      },
+      omniparserDevice
     };
   }
 

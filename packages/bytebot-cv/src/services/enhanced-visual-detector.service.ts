@@ -330,58 +330,67 @@ export class EnhancedVisualDetectorService {
   }
 
   private async runOmniParserDetection(screenshot: any, options: EnhancedDetectionOptions) {
-    return this.cvActivity.executeWithTracking(
-      'omniparser',
-      async () => {
-        if (!this.omniParserClient) {
-          throw new Error('OmniParser client not available');
-        }
-
-        // Check if service is available
-        const available = await this.omniParserClient.isAvailable();
-        if (!available) {
-          throw new Error('OmniParser service is not responding');
-        }
-
-        // Convert Mat to Buffer
-        const encoded = cv.imencode('.png', screenshot);
-
-        // Call OmniParser service
-        const response = await this.omniParserClient.parseScreenshot(encoded, {
-          includeCaptions: options.omniParserCaptions ?? true,
-          minConfidence: options.omniParserConfidence ?? 0.3,
-        });
-
-        // Convert to DetectedElement format
-        return response.elements.map((element, index) => ({
-          id: `omniparser_${Date.now()}_${index}`,
-          type: this.inferElementTypeFromCaption(element.caption),
-          coordinates: {
-            x: element.bbox[0],
-            y: element.bbox[1],
-            width: element.bbox[2],
-            height: element.bbox[3],
-            centerX: element.center[0],
-            centerY: element.center[1],
-          },
-          confidence: element.confidence,
-          text: element.caption || '',
-          description: element.caption ? `${element.caption} (AI detected)` : 'Interactive element',
-          metadata: {
-            detectionMethod: 'omniparser' as const,
-            omniparser_type: element.type,
-            semantic_caption: element.caption,
-          }
-        }));
-      },
-      {
-        captions: options.omniParserCaptions ?? true,
-        confidence_threshold: options.omniParserConfidence ?? 0.3,
-      }
-    ).catch(error => {
-      this.logger.warn('OmniParser detection failed:', error.message);
-      return [];
+    const activityId = this.cvActivity.startMethod('omniparser', {
+      captions: options.omniParserCaptions ?? true,
+      confidence_threshold: options.omniParserConfidence ?? 0.3,
     });
+
+    try {
+      if (!this.omniParserClient) {
+        throw new Error('OmniParser client not available');
+      }
+
+      // Check if service is available
+      const available = await this.omniParserClient.isAvailable();
+      if (!available) {
+        throw new Error('OmniParser service is not responding');
+      }
+
+      // Convert Mat to Buffer
+      const encoded = cv.imencode('.png', screenshot);
+
+      // Call OmniParser service
+      const response = await this.omniParserClient.parseScreenshot(encoded, {
+        includeCaptions: options.omniParserCaptions ?? true,
+        minConfidence: options.omniParserConfidence ?? 0.3,
+      });
+
+      // Update metadata with device info for UI display
+      this.cvActivity.updateMethodMetadata(activityId, {
+        device: response.device,
+        elementCount: response.count,
+        processingTime: response.processing_time_ms,
+      });
+
+      // Convert to DetectedElement format
+      const elements = response.elements.map((element, index) => ({
+        id: `omniparser_${Date.now()}_${index}`,
+        type: this.inferElementTypeFromCaption(element.caption),
+        coordinates: {
+          x: element.bbox[0],
+          y: element.bbox[1],
+          width: element.bbox[2],
+          height: element.bbox[3],
+          centerX: element.center[0],
+          centerY: element.center[1],
+        },
+        confidence: element.confidence,
+        text: element.caption || '',
+        description: element.caption ? `${element.caption} (AI detected)` : 'Interactive element',
+        metadata: {
+          detectionMethod: 'omniparser' as const,
+          omniparser_type: element.type,
+          semantic_caption: element.caption,
+        }
+      }));
+
+      this.cvActivity.stopMethod(activityId, true, elements);
+      return elements;
+    } catch (error) {
+      this.logger.warn('OmniParser detection failed:', error.message);
+      this.cvActivity.stopMethod(activityId, false, { error: error.message });
+      return [];
+    }
   }
 
   private inferElementTypeFromCaption(caption?: string): 'button' | 'input' | 'link' | 'text' | 'icon' {

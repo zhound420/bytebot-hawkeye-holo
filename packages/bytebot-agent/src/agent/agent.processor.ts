@@ -116,6 +116,11 @@ export class AgentProcessor {
   private readonly elementCache = new Map<string, CachedDetectedElement>();
   private readonly elementCacheTtlMs = 5 * 60 * 1000;
 
+  // Stuck detection state
+  private readonly taskIterationCount = new Map<string, number>();
+  private readonly taskLastActionTime = new Map<string, Date>();
+  private readonly MAX_ITERATIONS_WITHOUT_ACTION = 5; // Trigger intervention after 5 iterations without meaningful action
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -202,6 +207,10 @@ export class AgentProcessor {
     this.abortController = new AbortController();
     this.pendingScreenshotObservation = false;
 
+    // Initialize stuck detection state
+    this.taskIterationCount.set(taskId, 0);
+    this.taskLastActionTime.set(taskId, new Date());
+
     // Kick off the first iteration without blocking the caller
     void this.runIteration(taskId);
   }
@@ -224,6 +233,11 @@ export class AgentProcessor {
         );
         this.isProcessing = false;
         this.currentTaskId = null;
+
+        // Clean up stuck detection state
+        this.taskIterationCount.delete(taskId);
+        this.taskLastActionTime.delete(taskId);
+
         return;
       }
 
@@ -257,6 +271,43 @@ export class AgentProcessor {
           : []),
         ...unsummarizedMessages,
       ];
+
+      // Stuck detection: track iteration count and inject intervention if needed
+      const iterationCount = (this.taskIterationCount.get(taskId) || 0) + 1;
+      this.taskIterationCount.set(taskId, iterationCount);
+
+      // Check if we should inject an intervention prompt
+      const shouldIntervene = iterationCount % this.MAX_ITERATIONS_WITHOUT_ACTION === 0;
+      if (shouldIntervene) {
+        this.logger.warn(
+          `Task ${taskId} has been running for ${iterationCount} iterations without completion. Injecting intervention prompt.`,
+        );
+
+        // Inject system message forcing the agent to make a decision
+        messages.push({
+          id: `intervention_${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          taskId,
+          summaryId: null,
+          role: Role.USER,
+          content: [
+            {
+              type: MessageContentType.Text,
+              text: `**SYSTEM INTERVENTION**: You have been processing this task for ${iterationCount} iterations. You must now make a clear decision:
+
+1. If the task is COMPLETE and verified (e.g., via screenshot showing success), call \`set_task_status\` with status="completed" and provide a summary.
+
+2. If you are STUCK or need human guidance, call \`set_task_status\` with status="needs_help" and explain what's blocking you.
+
+3. If the task is NOT complete, take ONE concrete action right now (click, type, open app, etc.) that makes clear progress toward the goal.
+
+Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose one of the three options above immediately.`,
+            },
+          ],
+        });
+      }
+
       this.logger.debug(
         `Sending ${messages.length} messages to LLM for processing`,
       );
@@ -568,6 +619,10 @@ export class AgentProcessor {
         });
         this.isProcessing = false;
         this.currentTaskId = null;
+
+        // Clean up stuck detection state
+        this.taskIterationCount.delete(taskId);
+        this.taskLastActionTime.delete(taskId);
       }
     }
   }

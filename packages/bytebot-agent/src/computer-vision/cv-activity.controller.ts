@@ -56,4 +56,12 @@ export class CVActivityController {
       activeMethods: this.cvActivityService.getSnapshot().activeMethods
     };
   }
+
+  /**
+   * Get comprehensive CV detection and click summary for telemetry dashboard
+   */
+  @Get('detection-summary')
+  getDetectionSummary() {
+    return this.cvActivityService.getDetectionSummary();
+  }
 }

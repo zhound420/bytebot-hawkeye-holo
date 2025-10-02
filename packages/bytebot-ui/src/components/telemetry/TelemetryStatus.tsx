@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TelemetrySummary, TelemetrySessions } from "@/types";
+import { cn } from "@/lib/utils";
 import {
   NormalizedTelemetryEvent,
   NormalizedTelemetrySession,
@@ -54,9 +55,46 @@ type Props = {
   className?: string;
 };
 
+interface CVDetectionSummary {
+  detections: {
+    total: number;
+    cached: number;
+    cacheHitRate: number;
+  };
+  methods: {
+    omniparser: number;
+    ocr: number;
+    template: number;
+    feature: number;
+    contour: number;
+  };
+  clicks: {
+    total: number;
+    successful: number;
+    failed: number;
+    successRate: number;
+  };
+  recentDetections: Array<{
+    timestamp: string;
+    description: string;
+    elementsFound: number;
+    primaryMethod: string;
+    cached: boolean;
+    duration: number;
+  }>;
+  recentClicks: Array<{
+    timestamp: string;
+    elementId: string;
+    coordinates: { x: number; y: number };
+    success: boolean;
+    detectionMethod: string;
+  }>;
+}
+
 export function TelemetryStatus({ className = "" }: Props) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<TelemetrySummary | null>(null);
+  const [cvData, setCvData] = useState<CVDetectionSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<
     NormalizedTelemetrySession[]
@@ -190,6 +228,23 @@ export function TelemetryStatus({ className = "" }: Props) {
     }
   }, []);
 
+  const refreshCvData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cv-detection/summary", {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setCvData(null);
+        return;
+      }
+      const json = (await res.json()) as CVDetectionSummary;
+      setCvData(json);
+    } catch (error) {
+      void error;
+      // Preserve the previous snapshot when the CV summary request fails
+    }
+  }, []);
+
   const reset = useCallback(async () => {
     setBusy(true);
     const params = new URLSearchParams();
@@ -220,10 +275,11 @@ export function TelemetryStatus({ className = "" }: Props) {
     try {
       await refreshSessions();
       await refresh(false);
+      await refreshCvData();
     } finally {
       setBusy(false);
     }
-  }, [refresh, refreshSessions]);
+  }, [refresh, refreshSessions, refreshCvData]);
 
   useEffect(() => {
     refreshSessions();
@@ -236,6 +292,12 @@ export function TelemetryStatus({ className = "" }: Props) {
     const t = setInterval(refresh, 10000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  useEffect(() => {
+    refreshCvData();
+    const t = setInterval(refreshCvData, 10000);
+    return () => clearInterval(t);
+  }, [refreshCvData]);
 
   const normalizedEvents = useMemo<NormalizedTelemetryEvent[]>(
     () => normalizeTelemetryEvents(data?.events),
@@ -639,6 +701,137 @@ export function TelemetryStatus({ className = "" }: Props) {
                       </div>
                     );
                   })
+                )}
+              </div>
+            </div>
+
+            {/* CV Detection Activity Section */}
+            <div className="mt-3">
+              <div className="text-[11px] font-semibold text-card-foreground">CV Detection Activity</div>
+
+              {/* Summary Cards */}
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                <div className="rounded border border-border bg-card/70 px-2 py-1 dark:bg-muted/50">
+                  <div className="text-[10px] text-muted-foreground">Detections</div>
+                  <div className="text-[13px] font-semibold text-card-foreground">{cvData?.detections.total ?? 0}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Cache: {formatPercent(cvData?.detections.cacheHitRate)}
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-card/70 px-2 py-1 dark:bg-muted/50">
+                  <div className="text-[10px] text-muted-foreground">Clicks</div>
+                  <div className="text-[13px] font-semibold text-card-foreground">{cvData?.clicks.total ?? 0}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Success: {formatPercent(cvData?.clicks.successRate)}
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-card/70 px-2 py-1 dark:bg-muted/50">
+                  <div className="text-[10px] text-muted-foreground">Methods</div>
+                  <div className="text-[13px] font-semibold text-card-foreground">
+                    {cvData?.methods ? Object.entries(cvData.methods).filter(([_, count]) => count > 0).length : 0}
+                  </div>
+                </div>
+              </div>
+
+              {/* Method Breakdown */}
+              <div className="mt-2 space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Detection Methods
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {cvData?.methods && Object.entries(cvData.methods).map(([method, count]) => (
+                    count > 0 && (
+                      <div key={method} className={cn(
+                        "rounded border px-2 py-1 text-[10px]",
+                        method === 'omniparser' && "border-pink-500/30 bg-pink-500/10 text-pink-600 dark:border-pink-500/40 dark:bg-pink-500/20 dark:text-pink-300",
+                        method === 'ocr' && "border-yellow-500/30 bg-yellow-500/10 text-yellow-600 dark:border-yellow-500/40 dark:bg-yellow-500/20 dark:text-yellow-300",
+                        method === 'contour' && "border-green-500/30 bg-green-500/10 text-green-600 dark:border-green-500/40 dark:bg-green-500/20 dark:text-green-300",
+                        method === 'template' && "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-300",
+                        method === 'feature' && "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:border-purple-500/40 dark:bg-purple-500/20 dark:text-purple-300",
+                      )}>
+                        {method}: {count}
+                      </div>
+                    )
+                  ))}
+                  {cvData?.methods && Object.entries(cvData.methods).every(([_, count]) => count === 0) && (
+                    <div className="rounded border border-dashed border-border/60 bg-muted/30 px-2 py-1 text-center text-[10px] text-muted-foreground">
+                      No detections yet
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recent Detections */}
+              <div className="mt-2 space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Recent Detections (Last 10)
+                </div>
+                {!cvData?.recentDetections || cvData.recentDetections.length === 0 ? (
+                  <div className="rounded border border-dashed border-border/60 bg-muted/30 px-2 py-2 text-center text-[10px] text-muted-foreground dark:bg-muted/40">
+                    No detections yet
+                  </div>
+                ) : (
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {cvData.recentDetections.slice(0, 10).map((detection, idx) => (
+                      <div key={idx} className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] dark:bg-muted/40">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium truncate max-w-[180px]">
+                            &quot;{detection.description}&quot;
+                          </span>
+                          <span className="text-muted-foreground">
+                            {detection.elementsFound} found
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[9px] text-muted-foreground">
+                          <span className={cn(
+                            "px-1 rounded",
+                            detection.primaryMethod === 'omniparser' && "bg-pink-500/20 text-pink-600 dark:bg-pink-500/30 dark:text-pink-300",
+                            detection.primaryMethod !== 'omniparser' && "bg-gray-500/20 dark:bg-gray-500/30"
+                          )}>
+                            {detection.primaryMethod}
+                          </span>
+                          {detection.cached && (
+                            <span className="bg-blue-500/20 text-blue-600 px-1 rounded dark:bg-blue-500/30 dark:text-blue-300">⚡ cached</span>
+                          )}
+                          <span>{detection.duration}ms</span>
+                          <span className="ml-auto">{format(new Date(detection.timestamp), 'HH:mm:ss')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Clicks */}
+              <div className="mt-2 space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Recent Clicks (Last 10)
+                </div>
+                {!cvData?.recentClicks || cvData.recentClicks.length === 0 ? (
+                  <div className="rounded border border-dashed border-border/60 bg-muted/30 px-2 py-2 text-center text-[10px] text-muted-foreground dark:bg-muted/40">
+                    No clicks yet
+                  </div>
+                ) : (
+                  <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                    {cvData.recentClicks.slice(0, 10).map((click, idx) => (
+                      <div key={idx} className={cn(
+                        "rounded border px-2 py-1 text-[10px]",
+                        click.success ? "border-green-500/30 bg-green-500/10 dark:border-green-500/40 dark:bg-green-500/20" : "border-red-500/30 bg-red-500/10 dark:border-red-500/40 dark:bg-red-500/20"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[9px]">[{click.elementId}]</span>
+                          <span className="text-muted-foreground">
+                            ({click.coordinates.x}, {click.coordinates.y})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[9px] text-muted-foreground">
+                          <span>{click.success ? '✓' : '❌'}</span>
+                          <span>{click.detectionMethod}</span>
+                          <span className="ml-auto">{format(new Date(click.timestamp), 'HH:mm:ss')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

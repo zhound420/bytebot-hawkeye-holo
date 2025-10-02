@@ -30,6 +30,7 @@ interface CVDetectionData {
   detections: {
     total: number;
     cached: number;
+    cacheHitRate: number;
   };
   methods: {
     omniparser: number;
@@ -42,6 +43,7 @@ interface CVDetectionData {
     total: number;
     successful: number;
     failed: number;
+    successRate: number;
   };
   recentDetections: Array<{
     timestamp: string;

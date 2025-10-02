@@ -143,17 +143,17 @@ export default function TaskPage() {
           {/* Main container */}
           <div className="flex flex-1 flex-col gap-3">
             {/* Top row: Active Model and OmniParser side by side */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 dark:border-border/60 dark:bg-muted">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-card px-2 py-1.5 dark:border-border/60 dark:bg-muted">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Active Model
                 </span>
-                <span className="text-sm font-semibold text-foreground">
+                <span className="text-[11px] font-semibold text-foreground">
                   {modelIdentifier || "Model unavailable"}
                 </span>
                 {modelNameDetails && (
-                  <span className="text-xs text-muted-foreground">
-                    Identifier: {modelNameDetails}
+                  <span className="text-[9px] text-muted-foreground">
+                    ID: {modelNameDetails}
                   </span>
                 )}
               </div>
@@ -222,16 +222,17 @@ export default function TaskPage() {
                 </DropdownMenu>
               )}
             </DesktopContainer>
-            <TelemetryStatus />
           </div>
 
-          {/* Chat Area */}
+          {/* Chat Area + Telemetry */}
           <div className="flex h-full min-h-0 flex-col gap-3">
             {initialPrompt?.textBlocks.length ? (
               <div className="px-4">
                 <TaskPromptSummary textBlocks={initialPrompt.textBlocks} />
               </div>
             ) : null}
+            {/* Telemetry sidebar */}
+            <TelemetryStatus className="px-4" />
             {/* Messages scrollable area */}
             <div
               ref={chatContainerRef}

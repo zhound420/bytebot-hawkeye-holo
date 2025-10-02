@@ -153,49 +153,43 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
   const hasOmniParser = activity.activeMethods.includes("omniparser") || activity.omniparserDevice;
 
   return (
-    <div className={cn("rounded-lg border border-border bg-card p-3", className)}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {hasOmniParser ? "OmniParser Detection" : "CV Detection"}
+    <div className={cn("rounded-lg border border-border bg-card px-2 py-1.5", className)}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1">
+            <h3 className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {hasOmniParser ? "OmniParser" : "CV Detection"}
             </h3>
             {hasOmniParser && (
-              <span className={cn("text-xs font-medium flex items-center gap-1", deviceBadge.color)}>
+              <span className={cn("text-[9px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
                 <span>{deviceBadge.icon}</span>
                 <span>{deviceBadge.label}</span>
               </span>
             )}
           </div>
           {activity.omniparserModels && (
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[8px] text-muted-foreground">
               {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
             </div>
           )}
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-[9px] text-muted-foreground">
           {activity.totalActiveCount} {activity.totalActiveCount === 1 ? "method" : "methods"}
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {activity.activeMethods.map((method) => {
           const detail = activity.methodDetails[method];
           const displayName = methodDisplayNames[method] || method;
           const color = methodColors[method] || "bg-gray-500";
-          const isOmniParser = method === "omniparser";
 
           return (
-            <div key={method} className="flex items-center gap-2">
-              <div className={cn("h-2 w-2 rounded-full animate-pulse", color)} />
-              <span className="text-sm font-medium">{displayName}</span>
-              {isOmniParser && activity.omniparserDevice && (
-                <span className={cn("text-xs font-medium", deviceBadge.color)}>
-                  {deviceBadge.icon} {deviceBadge.label}
-                </span>
-              )}
+            <div key={method} className="flex items-center gap-1">
+              <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
+              <span className="text-[10px] font-medium">{displayName}</span>
               {detail?.startTime && (
-                <span className="text-xs text-muted-foreground ml-auto">
+                <span className="text-[9px] text-muted-foreground ml-auto">
                   {Math.round((Date.now() - detail.startTime) / 100) / 10}s
                 </span>
               )}
@@ -205,10 +199,10 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
       </div>
 
       {activity.performance.totalMethodsExecuted > 0 && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <div className="grid grid-cols-4 gap-2 text-xs">
+        <div className="mt-1.5 pt-1.5 border-t border-border">
+          <div className="grid grid-cols-4 gap-1 text-[9px]">
             <div>
-              <div className="text-muted-foreground">Avg Time</div>
+              <div className="text-muted-foreground">Avg</div>
               <div className="font-medium">
                 {Math.round(activity.performance.averageProcessingTime)}ms
               </div>
@@ -227,7 +221,7 @@ export function CVActivityIndicator({ className, compact = false }: CVActivityIn
             </div>
             <div>
               <div className="text-muted-foreground">Compute</div>
-              <div className={cn("font-medium", hasOmniParser ? deviceBadge.color : "")}>
+              <div className={cn("font-medium text-[9px]", hasOmniParser ? deviceBadge.color : "")}>
                 {hasOmniParser ? `${deviceBadge.icon} ${deviceBadge.label}` : "—"}
               </div>
             </div>

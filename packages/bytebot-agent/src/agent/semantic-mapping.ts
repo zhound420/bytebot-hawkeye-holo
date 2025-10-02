@@ -180,20 +180,39 @@ export function expandFunctionalQuery(
 /**
  * Score how well an OmniParser caption matches a user query
  * Takes into account both visual and functional synonyms
+ * Weights functional terms 2x higher than visual terms for better matching
  */
 export function scoreSemanticMatch(
   omniparserCaption: string,
   userQuery: string,
-  applicationContext: string = 'desktop'
+  applicationContext: string = 'desktop',
+  options: { weightFunctionalTerms?: number } = {}
 ): number {
   const captionLower = omniparserCaption.toLowerCase();
+  const queryLower = userQuery.toLowerCase();
   const expandedQuery = expandFunctionalQuery(userQuery, applicationContext);
+
+  // Extract original query terms (functional) vs expanded visual terms
+  const originalQueryTerms = queryLower.split(/\s+/).filter(w => w.length > 2);
+  const functionalWeight = options.weightFunctionalTerms ?? 2.0;
 
   let matchCount = 0;
   let totalWeight = 0;
 
   for (const term of expandedQuery) {
-    const weight = term.length > 5 ? 2 : 1; // Longer terms are more specific
+    // Determine if this is a functional term (from original query) or visual term (from expansion)
+    const isFunctionalTerm = originalQueryTerms.some(qt =>
+      qt.includes(term) || term.includes(qt)
+    );
+
+    // Weight functional terms higher than visual terms
+    let weight = 1.0;
+    if (isFunctionalTerm) {
+      weight = functionalWeight; // Default 2.0x for functional terms
+    } else if (term.length > 5) {
+      weight = 1.5; // Longer visual terms are more specific
+    }
+
     totalWeight += weight;
 
     if (captionLower.includes(term)) {

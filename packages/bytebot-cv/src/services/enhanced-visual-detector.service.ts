@@ -85,7 +85,7 @@ export class EnhancedVisualDetectorService {
 
   /**
    * Comprehensive UI element detection using multiple CV methods
-   * The gold standard for finding UI elements
+   * OmniParser (semantic) is primary, classical CV provides geometric fallback
    */
   async detectElements(
     screenshot: any,
@@ -102,75 +102,92 @@ export class EnhancedVisualDetectorService {
     const allElements: DetectedElement[] = [];
     const performance: any = {};
 
+    // Default OmniParser to enabled when service is available
+    const omniParserAvailable = await this.omniParserClient?.isAvailable() ?? false;
+
     const {
       useTemplateMatching = true,
       useFeatureMatching = true,
       useContourDetection = true,
-      useOCR = false, // OCR is expensive and slower than OmniParser, opt-in only
-      useOmniParser = false, // OmniParser requires Python service, opt-in
+      useOCR = false, // OCR is expensive, use as fallback only
+      useOmniParser = omniParserAvailable, // Default to enabled when service is healthy
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
     } = options;
 
     try {
-      // Template Matching
-      if (useTemplateMatching && template) {
-        const templateStart = Date.now();
-        const templateResults = await this.runTemplateMatching(screenshot, template, options);
-        performance.templateMatchingTime = Date.now() - templateStart;
+      // PRIORITY 1: OmniParser (Semantic UI Detection - PRIMARY METHOD)
+      // Run in parallel with OCR since both are slow and I/O-bound
+      const [omniParserResults, ocrResults] = await Promise.all([
+        useOmniParser && this.omniParserClient
+          ? (async () => {
+              const omniParserStart = Date.now();
+              const results = await this.runOmniParserDetection(screenshot, options);
+              performance.omniParserTime = Date.now() - omniParserStart;
+              return results;
+            })()
+          : Promise.resolve([]),
+        useOCR
+          ? (async () => {
+              const ocrStart = Date.now();
+              const results = await this.runOCRDetection(screenshot, options);
+              performance.ocrTime = Date.now() - ocrStart;
+              return results;
+            })()
+          : Promise.resolve([])
+      ]);
 
-        if (templateResults.length > 0) {
-          methodsUsed.push('template-matching');
-          allElements.push(...this.convertToDetectedElements(templateResults, 'template-matching'));
-        }
+      if (omniParserResults.length > 0) {
+        methodsUsed.push('omniparser');
+        allElements.push(...omniParserResults);
+        this.logger.debug(`OmniParser (primary) detected ${omniParserResults.length} semantic elements`);
       }
 
-      // Feature Matching
-      if (useFeatureMatching && template) {
-        const featureStart = Date.now();
-        const featureResults = await this.runFeatureMatching(screenshot, template, options);
-        performance.featureMatchingTime = Date.now() - featureStart;
-
-        if (featureResults.length > 0) {
-          methodsUsed.push('feature-matching');
-          allElements.push(...this.convertToDetectedElements(featureResults, 'feature-matching'));
-        }
+      if (ocrResults.length > 0) {
+        methodsUsed.push('ocr');
+        allElements.push(...ocrResults);
       }
 
-      // Contour Detection
-      if (useContourDetection) {
-        const contourStart = Date.now();
-        const contourResults = await this.runContourDetection(screenshot, options);
-        performance.contourDetectionTime = Date.now() - contourStart;
+      // PRIORITY 2: Classical CV methods (geometric fallback)
+      // Only run if OmniParser found nothing or explicitly requested
+      const needsClassicalCV = omniParserResults.length === 0 || template;
 
-        if (contourResults.length > 0) {
-          methodsUsed.push('contour-detection');
-          allElements.push(...this.convertContourToDetectedElements(contourResults));
+      if (needsClassicalCV) {
+        // Contour Detection (fast, geometric patterns)
+        if (useContourDetection) {
+          const contourStart = Date.now();
+          const contourResults = await this.runContourDetection(screenshot, options);
+          performance.contourDetectionTime = Date.now() - contourStart;
+
+          if (contourResults.length > 0) {
+            methodsUsed.push('contour-detection');
+            allElements.push(...this.convertContourToDetectedElements(contourResults));
+          }
         }
-      }
 
-      // OCR Detection
-      if (useOCR) {
-        const ocrStart = Date.now();
-        const ocrResults = await this.runOCRDetection(screenshot, options);
-        performance.ocrTime = Date.now() - ocrStart;
+        // Template Matching (when template provided)
+        if (useTemplateMatching && template) {
+          const templateStart = Date.now();
+          const templateResults = await this.runTemplateMatching(screenshot, template, options);
+          performance.templateMatchingTime = Date.now() - templateStart;
 
-        if (ocrResults.length > 0) {
-          methodsUsed.push('ocr');
-          allElements.push(...ocrResults);
+          if (templateResults.length > 0) {
+            methodsUsed.push('template-matching');
+            allElements.push(...this.convertToDetectedElements(templateResults, 'template-matching'));
+          }
         }
-      }
 
-      // OmniParser Detection (Semantic UI element detection)
-      if (useOmniParser && this.omniParserClient) {
-        const omniParserStart = Date.now();
-        const omniParserResults = await this.runOmniParserDetection(screenshot, options);
-        performance.omniParserTime = Date.now() - omniParserStart;
+        // Feature Matching (when template provided)
+        if (useFeatureMatching && template) {
+          const featureStart = Date.now();
+          const featureResults = await this.runFeatureMatching(screenshot, template, options);
+          performance.featureMatchingTime = Date.now() - featureStart;
 
-        if (omniParserResults.length > 0) {
-          methodsUsed.push('omniparser');
-          allElements.push(...omniParserResults);
+          if (featureResults.length > 0) {
+            methodsUsed.push('feature-matching');
+            allElements.push(...this.convertToDetectedElements(featureResults, 'feature-matching'));
+          }
         }
       }
 
@@ -223,23 +240,18 @@ export class EnhancedVisualDetectorService {
 
   /**
    * Specialized button detection using optimal methods
+   * Prioritizes OmniParser for semantic understanding (e.g., "settings button")
    */
   async detectButtons(screenshot: any): Promise<EnhancedDetectionResult> {
-    const contourOptions = {
+    // OmniParser is now primary method, it will automatically detect buttons semantically
+    // Contour detection provides geometric fallback for visual patterns
+    return this.detectElements(screenshot, null, {
+      // OmniParser defaults to enabled and is primary
+      // Contour provides geometric fallback
+      useContourDetection: true,
       minArea: 100,
       maxArea: 10000,
-      minAspectRatio: 0.2,
-      maxAspectRatio: 8.0,
       shapeTypes: ['rectangle', 'circle'] as ('rectangle' | 'circle' | 'triangle' | 'polygon')[]
-    };
-
-    return this.detectElements(screenshot, null, {
-      useContourDetection: true,
-      useOCR: false, // OCR is expensive; use OmniParser for semantic button detection instead
-      useOmniParser: true, // Prefer OmniParser for semantic button detection
-      useTemplateMatching: false,
-      useFeatureMatching: false,
-      ...contourOptions
     });
   }
 

@@ -77,21 +77,58 @@ OPERATING PRINCIPLES
 
 #### Step 1: Element Detection (MANDATORY BEFORE CLICKING)
 Before attempting to click any UI element, you MUST call \`computer_detect_elements\`.
-- Analyzes current screen using OCR and computer vision
-- Identifies all clickable elements with precise coordinates and text content
+- Uses OmniParser AI (semantic understanding) + classical CV (geometric patterns)
+- Identifies all clickable elements with precise coordinates and semantic descriptions
 - Returns elements with unique IDs for reliable targeting
 - Caches results for subsequent operations
 
-#### Step 2: Precise Element Clicking
+**Detection Modes:**
+1. **Specific Query** - \`computer_detect_elements({ description: "Install button" })\`
+   - Returns closest matching elements
+   - Uses AI to understand functional intent (e.g., "settings" → gear icon)
+
+2. **Discovery Mode** - \`computer_detect_elements({ includeAll: true })\`
+   - Returns ALL detected UI elements (top 20 by confidence)
+   - Useful when specific queries fail
+   - Provides complete UI inventory for spatial navigation
+
+#### Step 2: Handling "No Match Found"
+When detection returns "No exact match", the system shows **Top 10 Closest Matches** with:
+- Element IDs you can click immediately
+- Match scores (how well they fit your description)
+- Semantic descriptions from AI vision
+- Coordinates for verification
+
+Example response format:
+  No exact match for "Cline Install button". 71 elements detected overall.
+
+  Top 10 closest matches:
+  1. [omniparser_abc123] "Install button with icon" (match: 65%, conf: 0.85) at (150, 200)
+  2. [omniparser_def456] "Blue button" (match: 45%, conf: 0.78) at (160, 210)
+  ...
+
+  Try:
+  - Broader description (e.g., "button" instead of specific labels)
+  - Use includeAll: true to see all 71 elements
+  - Pick closest match by element_id
+
+**Your Response Strategy:**
+1. ✅ **Use closest match** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
+2. ✅ **Try broader query** - \`computer_detect_elements({ description: "button" })\`
+3. ✅ **Discovery mode** - \`computer_detect_elements({ includeAll: true })\` then pick from list
+4. ❌ **NEVER use computer_click_mouse directly** - It will error
+
+#### Step 3: Precise Element Clicking
 To click any UI element, use \`computer_click_element\`.
 - Parameter: \`element_id\` from detection results
-- Ensures accurate clicking based on visual recognition
+- Ensures accurate clicking based on AI vision + CV recognition
 - Works with your existing coordinate grid system for verification
 
 #### DEPRECATED: Direct Coordinate Clicking
-- \`computer_click_mouse\` without \`element_id\` is **NO LONGER SUPPORTED**
+- \`computer_click_mouse\` without prior detection is **NO LONGER SUPPORTED**
 - Will return error: *"Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported."*
 - When you receive this error, follow the mandatory workflow above
+- The ONLY exception is drawing/dragging operations where you need precise coordinate control
 
 #### Integration with Existing Workflow
 Your existing **Observe → Plan → Act → Verify** workflow remains the same, with updated Act step:

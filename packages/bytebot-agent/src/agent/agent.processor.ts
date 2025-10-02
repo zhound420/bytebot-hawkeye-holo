@@ -80,6 +80,7 @@ type DetectElementsResponse =
       totalDetected: number;
       includeAll: boolean;
       description?: string;
+      topCandidates?: Array<{ element: DetectedElement; score: number }>;
     }
   | {
       elements: DetectedElement[];
@@ -88,6 +89,7 @@ type DetectElementsResponse =
       totalDetected?: number;
       includeAll?: boolean;
       description?: string;
+      topCandidates?: Array<{ element: DetectedElement; score: number }>;
     };
 
 type ClickElementResponse =
@@ -167,6 +169,14 @@ export class AgentProcessor {
   // Training data collector for caption fine-tuning
   private readonly captionTrainingCollector: CaptionTrainingDataCollector;
 
+  // Screenshot-level caching to avoid re-processing similar screens
+  private screenshotCache = new Map<string, {
+    elements: DetectedElement[];
+    timestamp: number;
+    screenshotHash: string;
+  }>();
+  private readonly SCREENSHOT_CACHE_TTL_MS = 2000; // 2 seconds - screens change fast
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -189,6 +199,140 @@ export class AgentProcessor {
     this.loadVisualDescriptionCache();
     this.captionTrainingCollector = new CaptionTrainingDataCollector();
     this.logger.log('AgentProcessor initialized');
+
+    // Apply learned semantic mappings periodically (every 10 minutes)
+    setInterval(() => this.applyLearnedSemanticMappings(), 10 * 60 * 1000);
+    // Apply immediately on startup
+    this.applyLearnedSemanticMappings();
+  }
+
+  /**
+   * Apply high-confidence training data to visual description cache
+   * This creates a feedback loop where successful matches improve future detection
+   */
+  private applyLearnedSemanticMappings(): void {
+    try {
+      const stats = this.captionTrainingCollector.getStats();
+      if (stats.highConfidenceEntries === 0) {
+        return;
+      }
+
+      this.logger.debug(
+        `Applying learned semantic mappings: ${stats.highConfidenceEntries} high-confidence entries from ${stats.totalEntries} total`
+      );
+
+      // Get high-confidence mappings (70%+ confidence, 3+ verified clicks)
+      const learnedMappings = this.captionTrainingCollector.getTrainingDataset(0.7);
+
+      // Merge into visual description cache
+      for (const mapping of learnedMappings) {
+        const appCache = this.visualDescriptionCache.cache[mapping.applicationContext] || {};
+
+        // Merge functional names into existing cache entries
+        for (const functionalName of mapping.functionalNames) {
+          if (!appCache[functionalName]) {
+            // Create new cache entry from learned mapping
+            appCache[functionalName] = {
+              keywords: mapping.llmKeywords || mapping.functionalNames,
+              description: mapping.llmDescription || `Learned from ${mapping.clickCount} interactions`,
+              timestamp: Date.now(),
+              hits: mapping.clickCount,
+              confidence: mapping.confidence,
+              successCount: mapping.successCount,
+              failureCount: mapping.failureCount,
+              lastUsed: Date.now(),
+            };
+          } else {
+            // Update existing entry with learned data
+            const existing = appCache[functionalName];
+            if (mapping.confidence > existing.confidence) {
+              // Merge keywords
+              const mergedKeywords = [...new Set([
+                ...existing.keywords,
+                ...(mapping.llmKeywords || mapping.functionalNames)
+              ])];
+              existing.keywords = mergedKeywords;
+              existing.confidence = Math.max(existing.confidence, mapping.confidence);
+              existing.successCount += mapping.successCount;
+              existing.hits += mapping.clickCount;
+            }
+          }
+        }
+
+        this.visualDescriptionCache.cache[mapping.applicationContext] = appCache;
+      }
+
+      this.saveVisualDescriptionCache();
+      this.logger.debug(`Applied ${learnedMappings.length} learned semantic mappings`);
+    } catch (error) {
+      this.logger.warn(`Failed to apply learned semantic mappings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Compute a simple hash of screenshot buffer for caching
+   * Uses first/middle/last 1KB of buffer to balance speed vs accuracy
+   */
+  private computeScreenshotHash(buffer: Buffer): string {
+    const size = buffer.length;
+    const sampleSize = 1024;
+
+    // Sample from beginning, middle, and end
+    const samples = [
+      buffer.subarray(0, Math.min(sampleSize, size)),
+      buffer.subarray(Math.floor(size / 2), Math.floor(size / 2) + Math.min(sampleSize, size)),
+      buffer.subarray(Math.max(0, size - sampleSize), size)
+    ];
+
+    // Simple hash: sum of bytes at key positions
+    let hash = 0;
+    for (const sample of samples) {
+      for (let i = 0; i < sample.length; i += 16) {
+        hash = ((hash << 5) - hash) + sample[i];
+        hash |= 0; // Convert to 32bit integer
+      }
+    }
+
+    return `${hash}_${size}`;
+  }
+
+  /**
+   * Check screenshot cache and return cached elements if available
+   */
+  private getScreenshotCacheEntry(screenshotBuffer: Buffer): DetectedElement[] | null {
+    const hash = this.computeScreenshotHash(screenshotBuffer);
+    const cached = this.screenshotCache.get(hash);
+
+    if (cached && Date.now() - cached.timestamp < this.SCREENSHOT_CACHE_TTL_MS) {
+      this.logger.debug(`Screenshot cache hit (${cached.elements.length} elements, age: ${Date.now() - cached.timestamp}ms)`);
+      return cached.elements;
+    }
+
+    // Clean up expired entries
+    if (cached && Date.now() - cached.timestamp >= this.SCREENSHOT_CACHE_TTL_MS) {
+      this.screenshotCache.delete(hash);
+    }
+
+    return null;
+  }
+
+  /**
+   * Store detected elements in screenshot cache
+   */
+  private setScreenshotCacheEntry(screenshotBuffer: Buffer, elements: DetectedElement[]): void {
+    const hash = this.computeScreenshotHash(screenshotBuffer);
+    this.screenshotCache.set(hash, {
+      elements,
+      timestamp: Date.now(),
+      screenshotHash: hash,
+    });
+
+    // Limit cache size to prevent memory bloat
+    if (this.screenshotCache.size > 10) {
+      const oldestKey = Array.from(this.screenshotCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
+      this.screenshotCache.delete(oldestKey);
+    }
   }
 
   /**
@@ -1078,12 +1222,35 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     const content: MessageContentBlock[] = [];
 
     if (detection.count === 0) {
+      let text = detection.totalDetected === 0
+        ? `No UI elements detected for description "${description}".`
+        : `No exact match for "${description}". ${detection.totalDetected} element(s) detected overall.`;
+
+      // Add top candidates if available
+      if (detection.topCandidates && detection.topCandidates.length > 0) {
+        const hasSemanticScores = detection.topCandidates.some(c => c.score > 0);
+        const topMatches = detection.topCandidates.map((candidate, i) => {
+          const el = candidate.element;
+          const desc = el.metadata?.semantic_caption || el.text || el.description || 'unlabeled';
+          const location = `(${el.coordinates.x}, ${el.coordinates.y})`;
+          const matchStr = hasSemanticScores
+            ? `match: ${Math.round(candidate.score * 100)}%`
+            : `no semantic match`;
+          return `${i + 1}. [${el.id}] "${desc}" (${matchStr}, conf: ${el.confidence.toFixed(2)}) at ${location}`;
+        }).join('\n');
+
+        if (hasSemanticScores) {
+          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Pick closest match: computer_click_element({ element_id: "${detection.topCandidates[0].element.id}" })\n2. Try broader query: computer_detect_elements({ description: "button" })\n3. See all: computer_detect_elements({ includeAll: true })`;
+        } else {
+          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Use computer_detect_elements({ includeAll: true }) to see full list with descriptions\n2. Look at these element descriptions and pick one by ID\n3. Try a different query based on what you see`;
+        }
+      } else if (detection.totalDetected > 0) {
+        text += `\n\n**RECOMMENDED ACTION:** Use computer_detect_elements({ includeAll: true }) to see all ${detection.totalDetected} elements with descriptions`;
+      }
+
       content.push({
         type: MessageContentType.Text,
-        text:
-          detection.totalDetected === 0
-            ? `No UI elements detected for description "${description}".`
-            : `No elements matched description "${description}". ${detection.totalDetected} element(s) detected overall.`,
+        text,
       });
     } else {
       content.push({
@@ -1162,53 +1329,44 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     try {
       const screenshotBuffer = await this.captureScreenshotBuffer();
 
-      const searchRegion = params.region
-        ? this.normalizeRegion(params.region)
-        : undefined;
+      // Check screenshot cache first (2s TTL)
+      const cachedElements = this.getScreenshotCacheEntry(screenshotBuffer);
+      let elements: DetectedElement[];
 
-      // Use enhanced CV detection with activity tracking
-      const screenshot = this.decodeScreenshotBuffer(screenshotBuffer);
+      if (cachedElements) {
+        // Use cached elements - skip expensive CV processing
+        elements = cachedElements;
+        this.logger.debug(`Using cached detection results (${elements.length} elements)`);
+      } else {
+        // Cache miss - run full detection pipeline
+        const searchRegion = params.region
+          ? this.normalizeRegion(params.region)
+          : undefined;
 
-      // First attempt: OmniParser + Contour detection
-      let enhancedResult = await this.enhancedVisualDetector.detectElements(
-        screenshot,
-        null, // No template for general detection
-        {
-          useTemplateMatching: false,
-          useFeatureMatching: false,
-          useContourDetection: true,
-          useOCR: false, // OCR is slower than OmniParser; only enable if OmniParser is unavailable
-          useOmniParser: process.env.BYTEBOT_CV_USE_OMNIPARSER === 'true',
-          confidenceThreshold: 0.5,
-          maxResults: 20,
-          ocrRegion: searchRegion,
-        }
-      );
+        // Use enhanced CV detection with OmniParser-first strategy
+        // The enhanced-visual-detector now automatically:
+        // 1. Runs OmniParser (semantic) as primary method
+        // 2. Falls back to classical CV (geometric) if needed
+        // 3. Runs slow methods (OmniParser + OCR) in parallel
+        const screenshot = this.decodeScreenshotBuffer(screenshotBuffer);
 
-      // If searching for a specific element and no matches found, try fallback detection methods
-      if (!params.includeAll && enhancedResult.elements.length === 0 && params.description) {
-        this.logger.debug(
-          `No elements found for "${params.description}" with primary methods, trying fallback with template matching + OCR`
-        );
-
-        // Retry with all methods enabled (template matching + OCR fallback)
-        enhancedResult = await this.enhancedVisualDetector.detectElements(
+        const enhancedResult = await this.enhancedVisualDetector.detectElements(
           screenshot,
-          null,
+          null, // No template for general detection
           {
-            useTemplateMatching: true, // Enable template matching as fallback
-            useFeatureMatching: true,  // Enable feature matching for robustness
-            useContourDetection: true,
-            useOCR: true, // Enable OCR as last resort for text-based elements
-            useOmniParser: false, // Already tried OmniParser
-            confidenceThreshold: 0.4, // Lower threshold for fallback
+            // Let enhanced-visual-detector handle method selection automatically
+            // OmniParser defaults to enabled when service is available
+            confidenceThreshold: 0.5,
             maxResults: 20,
             ocrRegion: searchRegion,
           }
         );
-      }
 
-      const elements = enhancedResult.elements;
+        elements = enhancedResult.elements;
+
+        // Cache the results for future requests
+        this.setScreenshotCacheEntry(screenshotBuffer, elements);
+      }
       this.cacheDetectedElements(elements);
 
       if (params.includeAll) {
@@ -1227,6 +1385,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           params.description,
         );
 
+      // Track top candidates for helpful feedback when no match found
+      const topCandidates: Array<{ element: any; score: number }> = [];
+
       // If no match found, try semantic matching with visual synonym expansion
       if (!matchingElement && elements.length > 0) {
         this.logger.debug(
@@ -1244,7 +1405,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           `Expanded query keywords: ${expandedKeywords.join(', ')}`
         );
 
-        // Find element with highest semantic match score
+        // Find element with highest semantic match score and track top candidates
         let bestMatch: any = null;
         let bestScore = 0;
 
@@ -1262,12 +1423,20 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             this.currentApplicationContext
           );
 
-          if (score > bestScore && score >= 0.4) {
-            // Lower threshold (40%) because semantic expansion is more precise
+          // Track all candidates with non-zero scores
+          if (score > 0) {
+            topCandidates.push({ element, score });
+          }
+
+          if (score > bestScore && score >= 0.25) {
+            // Lowered threshold to 25% for better recall
             bestMatch = element;
             bestScore = score;
           }
         }
+
+        // Sort top candidates by score
+        topCandidates.sort((a, b) => b.score - a.score);
 
         if (bestMatch) {
           this.logger.debug(
@@ -1362,12 +1531,26 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       const matchingElements = matchingElement ? [matchingElement] : [];
 
+      // If no match and topCandidates is empty (all scores = 0), show top elements by confidence
+      let finalTopCandidates = topCandidates.slice(0, 10);
+      if (matchingElements.length === 0 && finalTopCandidates.length === 0 && elements.length > 0) {
+        this.logger.debug(
+          `Semantic matching returned no scores, showing top ${Math.min(10, elements.length)} elements by confidence`
+        );
+        // Sort by confidence and show top 10 as candidates with score 0
+        finalTopCandidates = elements
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 10)
+          .map(el => ({ element: el, score: 0 }));
+      }
+
       return {
         elements: matchingElements,
         count: matchingElements.length,
         totalDetected: elements.length,
         includeAll: false,
         description: params.description,
+        topCandidates: matchingElements.length === 0 ? finalTopCandidates : undefined,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

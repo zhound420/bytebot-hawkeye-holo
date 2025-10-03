@@ -168,14 +168,14 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     // Show inline status bar only when:
     // 1. There are active methods running now, OR
     // 2. There are recent detections/clicks (within last 5 minutes to show persistent activity)
-    const hasActiveWork = activity && activity.totalActiveCount > 0;
+    const hasActiveWork = Boolean(activity && activity.totalActiveCount > 0);
     const latestDetection = detectionData?.recentDetections?.[0];
     const latestClick = detectionData?.recentClicks?.[0];
 
-    const hasRecentDetection = latestDetection &&
-      (Date.now() - new Date(latestDetection.timestamp).getTime()) < 300000; // 5 minutes
-    const hasRecentClick = latestClick &&
-      (Date.now() - new Date(latestClick.timestamp).getTime()) < 300000; // 5 minutes
+    const hasRecentDetection = Boolean(latestDetection &&
+      (Date.now() - new Date(latestDetection.timestamp).getTime()) < 300000); // 5 minutes
+    const hasRecentClick = Boolean(latestClick &&
+      (Date.now() - new Date(latestClick.timestamp).getTime()) < 300000); // 5 minutes
 
     shouldShow = hasActiveWork || hasRecentDetection || hasRecentClick;
   } else {

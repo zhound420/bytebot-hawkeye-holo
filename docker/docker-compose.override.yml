@@ -8,9 +8,10 @@
 #    - Benefits: Consistent OpenCV binaries, no platform-specific build issues
 #
 # 2. GPU Configuration for OmniParser
+#    - Supports both modern CDI and legacy nvidia-docker runtime
 #    - Automatically enables NVIDIA GPU if nvidia-container-toolkit is installed
 #    - Falls back to CPU if GPU not available (no errors)
-#    - Apple Silicon: GPU config ignored (no NVIDIA support)
+#    - Apple Silicon: GPU config ignored (no NVIDIA support in Docker)
 
 services:
   bytebot-agent:
@@ -24,19 +25,32 @@ services:
 
   bytebot-omniparser:
     platform: linux/amd64
-    # GPU support: Requires nvidia-container-toolkit on host
-    # If not available, Docker ignores this and falls back to CPU
-    environment:
-      # Explicit NVIDIA environment variables for GPU access
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    # GPU Support - Multiple fallback strategies for maximum compatibility
+    # Strategy 1: Modern approach (Docker Compose 2.3+, CDI-compatible)
+    # Strategy 2: Legacy runtime (older nvidia-docker setups)
+    # Docker applies what's supported on the host automatically
+
+    # Legacy runtime support (for older setups without CDI)
+    # Comment out if it causes issues on your system
+    runtime: nvidia
+
+    # Modern device reservation (preferred, works with CDI)
+    # Docker gracefully ignores if nvidia-container-toolkit not available
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [gpu, compute, utility]
+
+    # NVIDIA environment variables (required for both legacy and modern)
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Disable NVIDIA requirement check (allows CPU fallback)
+      - NVIDIA_REQUIRE_CUDA=
 
   bytebot-llm-proxy:
     platform: linux/amd64

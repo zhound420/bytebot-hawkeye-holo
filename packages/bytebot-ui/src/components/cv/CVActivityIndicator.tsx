@@ -165,19 +165,13 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   // Don't show just because device info exists
   let shouldShow = false;
   if (inline) {
-    // Show inline status bar only when:
-    // 1. There are active methods running now, OR
-    // 2. There are recent detections/clicks (within last 5 minutes to show persistent activity)
+    // Show inline status bar when there's ANY detection or click history
+    // This creates persistent chat history of CV activity
+    const hasDetectionHistory = (detectionData?.recentDetections?.length ?? 0) > 0;
+    const hasClickHistory = (detectionData?.recentClicks?.length ?? 0) > 0;
     const hasActiveWork = Boolean(activity && activity.totalActiveCount > 0);
-    const latestDetection = detectionData?.recentDetections?.[0];
-    const latestClick = detectionData?.recentClicks?.[0];
 
-    const hasRecentDetection = Boolean(latestDetection &&
-      (Date.now() - new Date(latestDetection.timestamp).getTime()) < 300000); // 5 minutes
-    const hasRecentClick = Boolean(latestClick &&
-      (Date.now() - new Date(latestClick.timestamp).getTime()) < 300000); // 5 minutes
-
-    shouldShow = hasActiveWork || hasRecentDetection || hasRecentClick;
+    shouldShow = hasActiveWork || hasDetectionHistory || hasClickHistory;
   } else {
     // For status card (top), show if any activity or device info
     shouldShow = Boolean(activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo));
@@ -252,51 +246,59 @@ export function CVActivityIndicator({ className, compact = false, inline = false
           </div>
         )}
 
-        {/* Latest Detection */}
-        {latestDetection && (
+        {/* Recent Detection History */}
+        {detectionData && detectionData.recentDetections.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50">
-            <div className="text-[10px] text-muted-foreground mb-1">Latest Detection</div>
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                "px-1.5 py-0.5 rounded text-[9px] font-medium",
-                latestDetection.primaryMethod === 'omniparser' && "bg-pink-500/20 text-pink-600 dark:bg-pink-500/30 dark:text-pink-300",
-                latestDetection.primaryMethod !== 'omniparser' && "bg-gray-500/20 dark:bg-gray-500/30"
-              )}>
-                {latestDetection.primaryMethod}
-              </div>
-              <span className="text-[10px] text-foreground truncate flex-1">
-                &quot;{latestDetection.description}&quot;
-              </span>
-              <span className="text-[10px] font-medium text-green-600 dark:text-green-400">
-                {latestDetection.elementsFound} found
-              </span>
-              {latestDetection.cached && (
-                <span className="text-[9px] text-blue-600 dark:text-blue-400">⚡</span>
-              )}
-            </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5">
-              {latestDetection.duration}ms
+            <div className="text-[10px] text-muted-foreground mb-1">Recent Detections</div>
+            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+              {detectionData.recentDetections.slice(0, 5).map((detection, idx) => (
+                <div key={`${detection.timestamp}-${idx}`} className="flex items-center gap-2">
+                  <div className={cn(
+                    "px-1.5 py-0.5 rounded text-[9px] font-medium whitespace-nowrap",
+                    detection.primaryMethod === 'omniparser' && "bg-pink-500/20 text-pink-600 dark:bg-pink-500/30 dark:text-pink-300",
+                    detection.primaryMethod !== 'omniparser' && "bg-gray-500/20 dark:bg-gray-500/30"
+                  )}>
+                    {detection.primaryMethod}
+                  </div>
+                  <span className="text-[10px] text-foreground truncate flex-1" title={detection.description}>
+                    &quot;{detection.description}&quot;
+                  </span>
+                  <span className="text-[10px] font-medium text-green-600 dark:text-green-400 whitespace-nowrap">
+                    {detection.elementsFound} found
+                  </span>
+                  {detection.cached && (
+                    <span className="text-[9px] text-blue-600 dark:text-blue-400">⚡</span>
+                  )}
+                  <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                    {detection.duration}ms
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Latest Click */}
-        {latestClick && (
+        {/* Recent Click History */}
+        {detectionData && detectionData.recentClicks.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50">
-            <div className="text-[10px] text-muted-foreground mb-1">Latest Click</div>
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                "text-xs",
-                latestClick.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-              )}>
-                {latestClick.success ? "✓" : "❌"}
-              </span>
-              <span className="text-[10px] font-mono text-foreground">
-                [{latestClick.elementId}]
-              </span>
-              <span className="text-[10px] text-muted-foreground ml-auto">
-                {latestClick.detectionMethod}
-              </span>
+            <div className="text-[10px] text-muted-foreground mb-1">Recent Clicks</div>
+            <div className="space-y-1.5 max-h-24 overflow-y-auto">
+              {detectionData.recentClicks.slice(0, 5).map((click, idx) => (
+                <div key={`${click.timestamp}-${idx}`} className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-xs",
+                    click.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                  )}>
+                    {click.success ? "✓" : "❌"}
+                  </span>
+                  <span className="text-[10px] font-mono text-foreground truncate flex-1" title={click.elementId}>
+                    [{click.elementId}]
+                  </span>
+                  <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                    {click.detectionMethod}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}

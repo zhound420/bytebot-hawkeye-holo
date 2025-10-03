@@ -4,6 +4,7 @@ import io
 import base64
 import time
 from typing import Optional
+from contextlib import asynccontextmanager
 import numpy as np
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException, Body
@@ -71,11 +72,55 @@ class ModelStatusResponse(BaseModel):
     weights_path: str
 
 
-# Create FastAPI app
+# Lifespan event handler (replaces deprecated on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    # Startup
+    import torch
+
+    print("=" * 50)
+    print("Bytebot OmniParser Service Starting")
+    print("=" * 50)
+    print(f"Device: {settings.device}")
+    print(f"Port: {settings.port}")
+    print(f"Weights: {settings.weights_dir}")
+    print("")
+    print("GPU Diagnostics:")
+    print(f"  PyTorch Version: {torch.__version__}")
+    print(f"  CUDA Available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"  CUDA Version: {torch.version.cuda}")
+        print(f"  GPU Count: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+    print("=" * 50)
+
+    try:
+        # Preload models
+        print("Preloading models...")
+        get_model()
+        print("✓ Models preloaded successfully")
+    except Exception as e:
+        print(f"✗ Error preloading models: {e}")
+        print("Models will be loaded on first request")
+
+    print("=" * 50)
+    print("Service ready!")
+    print("=" * 50)
+
+    yield
+
+    # Shutdown
+    print("Shutting down OmniParser service...")
+
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Bytebot OmniParser Service",
     description="OmniParser v2.0 UI element detection and captioning",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -295,48 +340,6 @@ async def parse_screenshot_upload(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Startup event - preload models."""
-    import torch
-
-    print("=" * 50)
-    print("Bytebot OmniParser Service Starting")
-    print("=" * 50)
-    print(f"Device: {settings.device}")
-    print(f"Port: {settings.port}")
-    print(f"Weights: {settings.weights_dir}")
-    print("")
-    print("GPU Diagnostics:")
-    print(f"  PyTorch Version: {torch.__version__}")
-    print(f"  CUDA Available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        print(f"  CUDA Version: {torch.version.cuda}")
-        print(f"  GPU Count: {torch.cuda.device_count()}")
-        for i in range(torch.cuda.device_count()):
-            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
-    print("=" * 50)
-
-    try:
-        # Preload models
-        print("Preloading models...")
-        get_model()
-        print("✓ Models preloaded successfully")
-    except Exception as e:
-        print(f"✗ Error preloading models: {e}")
-        print("Models will be loaded on first request")
-
-    print("=" * 50)
-    print("Service ready!")
-    print("=" * 50)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Shutdown event."""
-    print("Shutting down OmniParser service...")
 
 
 def main():

@@ -30,9 +30,11 @@ class Settings(BaseSettings):
     cache_models: bool = True
     model_dtype: str = "float16"  # float16, float32, bfloat16
 
-    class Config:
-        env_prefix = "OMNIPARSER_"
-        env_file = ".env"
+    model_config = {
+        "env_prefix": "OMNIPARSER_",
+        "env_file": ".env",
+        "protected_namespaces": ()  # Disable protected namespace warning for model_dtype
+    }
 
 
 def get_device() -> Literal["cuda", "mps", "cpu"]:

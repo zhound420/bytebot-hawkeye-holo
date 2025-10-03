@@ -1254,11 +1254,42 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         text,
       });
     } else {
+      // Build a detailed summary of what OmniParser found
+      const detectionMethods = new Set(detection.elements.map(el => el.metadata?.detectionMethod));
+      const methodsUsed = Array.from(detectionMethods).join(' + ');
+
+      let summaryText = `🔍 **OmniParser Detection Results**\n\n`;
+      summaryText += `**Query:** "${description || 'all elements'}"\n`;
+      summaryText += `**Method:** ${methodsUsed || 'omniparser'}\n`;
+      summaryText += `**Found:** ${detection.count} matching / ${detection.totalDetected} total elements\n\n`;
+
+      if (detection.count > 0 && detection.count <= 10) {
+        summaryText += `**Detected Elements:**\n`;
+        detection.elements.forEach((el, i) => {
+          const caption = el.metadata?.semantic_caption || el.text || el.description || 'unlabeled';
+          const method = el.metadata?.detectionMethod === 'omniparser' ? '🤖' : '📝';
+          summaryText += `${i + 1}. ${method} **${caption}**\n`;
+          summaryText += `   • ID: \`${el.id}\`\n`;
+          summaryText += `   • Type: ${el.type} | Confidence: ${(el.confidence * 100).toFixed(0)}%\n`;
+          summaryText += `   • Location: (${el.coordinates.x}, ${el.coordinates.y})\n\n`;
+        });
+      } else if (detection.count > 10) {
+        summaryText += `**Top 10 Elements:**\n`;
+        detection.elements.slice(0, 10).forEach((el, i) => {
+          const caption = el.metadata?.semantic_caption || el.text || el.description || 'unlabeled';
+          const method = el.metadata?.detectionMethod === 'omniparser' ? '🤖' : '📝';
+          summaryText += `${i + 1}. ${method} ${caption} (\`${el.id}\`)\n`;
+        });
+        summaryText += `\n...and ${detection.count - 10} more elements.\n\n`;
+      }
+
+      summaryText += detection.includeAll
+        ? `Use \`computer_click_element({ element_id: "..." })\` with any ID above.`
+        : `Found ${detection.count} matching element(s) for "${description}". Use \`computer_click_element({ element_id: "..." })\` to click.`;
+
       content.push({
         type: MessageContentType.Text,
-        text: detection.includeAll
-          ? `Detected ${detection.count} element(s) across the screen.`
-          : `Detected ${detection.count} matching element(s) for "${description}" out of ${detection.totalDetected} detected. Use these element_id values for computer_click_element.`,
+        text: summaryText,
       });
     }
 
@@ -1280,7 +1311,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
     content.push({
       type: MessageContentType.Text,
-      text: `Detection payload: ${JSON.stringify(payload, null, 2)}`,
+      text: `\n<details>\n<summary>📊 Raw Detection Data (JSON)</summary>\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n</details>`,
     });
 
     return {
@@ -1300,20 +1331,30 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     if (clickResult.success) {
       const coordinates = clickResult.coordinates_used;
       const method = clickResult.detection_method ?? 'computer vision';
+      const elementText = clickResult.element_text || 'unlabeled';
+      const confidence = clickResult.confidence ? `${(clickResult.confidence * 100).toFixed(0)}%` : 'N/A';
+
+      let clickSummary = `✅ **Element Clicked Successfully**\n\n`;
+      clickSummary += `**Element:** "${elementText}"\n`;
+      clickSummary += `**ID:** \`${clickResult.element_id}\`\n`;
+      clickSummary += `**Method:** ${method === 'omniparser' ? '🤖 OmniParser' : method}\n`;
+      clickSummary += `**Confidence:** ${confidence}\n`;
+      clickSummary += `**Coordinates:** (${coordinates.x}, ${coordinates.y})`;
+
       content.push({
         type: MessageContentType.Text,
-        text: `Clicked element ${clickResult.element_id} at (${coordinates.x}, ${coordinates.y}) using ${method}.`,
+        text: clickSummary,
       });
     } else {
       content.push({
         type: MessageContentType.Text,
-        text: `Click element failed: ${'error' in clickResult ? clickResult.error : 'Unknown error'}`,
+        text: `❌ Click element failed: ${'error' in clickResult ? clickResult.error : 'Unknown error'}`,
       });
     }
 
     content.push({
       type: MessageContentType.Text,
-      text: `Click payload: ${JSON.stringify(clickResult, null, 2)}`,
+      text: `\n<details>\n<summary>📊 Raw Click Data (JSON)</summary>\n\n\`\`\`json\n${JSON.stringify(clickResult, null, 2)}\n\`\`\`\n</details>`,
     });
 
     return {

@@ -189,7 +189,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
   // Inline mode for chat panel
   if (inline) {
-    const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserModels;
+    const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserModels;
     const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
     const latestDetection = detectionData?.recentDetections?.[0];
     const latestClick = detectionData?.recentClicks?.[0];
@@ -323,7 +323,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   }
 
   if (compact) {
-    const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserModels;
+    const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserModels;
     const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
     const models = activity?.omniparserModels;
 
@@ -363,7 +363,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   }
 
   const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
-  const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserDevice;
+  const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserDevice;
 
   return (
     <div className={cn("rounded-lg border border-border bg-card px-2 py-1.5", className)}>

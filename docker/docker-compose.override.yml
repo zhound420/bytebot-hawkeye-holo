@@ -26,6 +26,10 @@ services:
     platform: linux/amd64
     # GPU support: Requires nvidia-container-toolkit on host
     # If not available, Docker ignores this and falls back to CPU
+    environment:
+      # Explicit NVIDIA environment variables for GPU access
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     deploy:
       resources:
         reservations:

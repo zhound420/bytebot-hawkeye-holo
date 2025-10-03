@@ -8,8 +8,12 @@ export interface OmniParserElement {
   bbox: [number, number, number, number]; // [x, y, width, height]
   center: [number, number]; // [x, y]
   confidence: number;
-  type: string;
+  type: string; // 'text' or 'icon'
   caption?: string;
+  interactable?: boolean; // Whether element is clickable (from YOLO prediction)
+  content?: string; // OCR text or caption content
+  source?: string; // 'box_ocr_content_ocr' or 'box_yolo_content_yolo'
+  element_id?: number; // Element index for SOM mapping
 }
 
 /**
@@ -24,6 +28,11 @@ export interface OmniParserResponse {
     height: number;
   };
   device: string;
+  som_image?: string; // Base64 encoded Set-of-Mark annotated image
+  ocr_detected?: number; // Number of OCR text elements detected
+  icon_detected?: number; // Number of icon elements detected
+  text_detected?: number; // Number of text elements in final result
+  interactable_count?: number; // Number of interactable elements
 }
 
 /**
@@ -31,7 +40,12 @@ export interface OmniParserResponse {
  */
 export interface OmniParserOptions {
   includeCaptions?: boolean;
+  includeSom?: boolean;
+  includeOcr?: boolean; // Run OCR text detection (default: true)
+  useFullPipeline?: boolean; // Use full OmniParser pipeline (default: true)
   minConfidence?: number;
+  iouThreshold?: number; // IoU threshold for overlap removal (default: 0.7)
+  usePaddleOcr?: boolean; // Use PaddleOCR vs EasyOCR (default: true)
 }
 
 /**
@@ -193,7 +207,12 @@ export class OmniParserClientService {
       const requestBody = {
         image: base64Image,
         include_captions: options.includeCaptions ?? true,
+        include_som: options.includeSom ?? true,
+        include_ocr: options.includeOcr ?? true,
+        use_full_pipeline: options.useFullPipeline ?? true,
         min_confidence: options.minConfidence ?? 0.3,
+        iou_threshold: options.iouThreshold ?? 0.7,
+        use_paddleocr: options.usePaddleOcr ?? true,
       };
 
       // Send request to OmniParser service
@@ -221,9 +240,17 @@ export class OmniParserClientService {
       const result: OmniParserResponse = await response.json();
 
       const elapsed = Date.now() - startTime;
-      this.logger.debug(
-        `OmniParser detected ${result.count} elements in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
-      );
+
+      // Log detailed stats if full pipeline was used
+      if (options.useFullPipeline !== false && result.ocr_detected !== undefined) {
+        this.logger.debug(
+          `OmniParser detected ${result.count} elements (${result.icon_detected} icons, ${result.text_detected} text, ${result.interactable_count} interactable) in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
+        );
+      } else {
+        this.logger.debug(
+          `OmniParser detected ${result.count} elements in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
+        );
+      }
 
       return result;
     } catch (error) {

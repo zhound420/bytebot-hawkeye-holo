@@ -21,7 +21,12 @@ class ParseRequest(BaseModel):
     """Request model for screenshot parsing."""
     image: str = Field(..., description="Base64 encoded image")
     include_captions: bool = Field(True, description="Generate captions for elements")
+    include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
+    include_ocr: bool = Field(True, description="Run OCR text detection (PaddleOCR/EasyOCR)")
+    use_full_pipeline: bool = Field(True, description="Use full OmniParser pipeline with OCR + overlap filtering")
     min_confidence: Optional[float] = Field(None, description="Minimum confidence threshold")
+    iou_threshold: Optional[float] = Field(0.7, description="IoU threshold for overlap removal")
+    use_paddleocr: bool = Field(True, description="Use PaddleOCR (True) or EasyOCR (False)")
 
 
 class ElementDetection(BaseModel):
@@ -29,8 +34,12 @@ class ElementDetection(BaseModel):
     bbox: list[int] = Field(..., description="Bounding box [x, y, width, height]")
     center: list[int] = Field(..., description="Center point [x, y]")
     confidence: float = Field(..., description="Detection confidence score")
-    type: str = Field(..., description="Element type")
+    type: str = Field(..., description="Element type ('text' or 'icon')")
     caption: Optional[str] = Field(None, description="Element caption/description")
+    interactable: Optional[bool] = Field(None, description="Whether element is interactable/clickable")
+    content: Optional[str] = Field(None, description="OCR text or caption content")
+    source: Optional[str] = Field(None, description="Detection source (box_ocr_content_ocr or box_yolo_content_yolo)")
+    element_id: Optional[int] = Field(None, description="Element index for SOM mapping")
 
 
 class ParseResponse(BaseModel):
@@ -40,6 +49,11 @@ class ParseResponse(BaseModel):
     processing_time_ms: float
     image_size: dict[str, int]
     device: str
+    som_image: Optional[str] = Field(None, description="Base64 encoded Set-of-Mark annotated image")
+    ocr_detected: Optional[int] = Field(None, description="Number of OCR text elements detected")
+    icon_detected: Optional[int] = Field(None, description="Number of icon elements detected")
+    text_detected: Optional[int] = Field(None, description="Number of text elements in final result")
+    interactable_count: Optional[int] = Field(None, description="Number of interactable elements")
 
 
 class HealthResponse(BaseModel):
@@ -170,11 +184,15 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
     """
     Parse UI screenshot to detect and caption elements.
 
+    Supports two modes:
+    1. Full Pipeline (use_full_pipeline=True): OCR + icon detection + interactivity + overlap filtering
+    2. Basic Mode (use_full_pipeline=False): Icon detection only (legacy)
+
     Args:
         request: ParseRequest with base64 image and options
 
     Returns:
-        ParseResponse with detected elements
+        ParseResponse with detected elements and optional SOM annotated image
     """
     try:
         # Decode image
@@ -183,12 +201,26 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
         # Get model
         model = get_model()
 
-        # Parse screenshot
-        result = model.parse_screenshot(
-            image,
-            include_captions=request.include_captions,
-            conf_threshold=request.min_confidence
-        )
+        # Choose pipeline based on request
+        if request.use_full_pipeline:
+            # Use full OmniParser pipeline with OCR, interactivity, and overlap filtering
+            result = model.parse_screenshot_full(
+                image,
+                include_captions=request.include_captions,
+                include_som=request.include_som,
+                include_ocr=request.include_ocr,
+                conf_threshold=request.min_confidence,
+                iou_threshold=request.iou_threshold,
+                use_paddleocr=request.use_paddleocr
+            )
+        else:
+            # Use basic pipeline (icon detection only, legacy mode)
+            result = model.parse_screenshot(
+                image,
+                include_captions=request.include_captions,
+                include_som=request.include_som,
+                conf_threshold=request.min_confidence
+            )
 
         return ParseResponse(**result)
 
@@ -202,7 +234,12 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
 async def parse_screenshot_upload(
     file: UploadFile = File(...),
     include_captions: bool = True,
-    min_confidence: Optional[float] = None
+    include_som: bool = True,
+    include_ocr: bool = True,
+    use_full_pipeline: bool = True,
+    min_confidence: Optional[float] = None,
+    iou_threshold: float = 0.7,
+    use_paddleocr: bool = True
 ):
     """
     Parse UI screenshot from file upload.
@@ -210,10 +247,15 @@ async def parse_screenshot_upload(
     Args:
         file: Uploaded image file
         include_captions: Generate captions for elements
+        include_som: Generate Set-of-Mark annotated image
+        include_ocr: Run OCR text detection
+        use_full_pipeline: Use full OmniParser pipeline
         min_confidence: Minimum confidence threshold
+        iou_threshold: IoU threshold for overlap removal
+        use_paddleocr: Use PaddleOCR (True) or EasyOCR (False)
 
     Returns:
-        ParseResponse with detected elements
+        ParseResponse with detected elements and optional SOM annotated image
     """
     try:
         # Read image file
@@ -230,12 +272,24 @@ async def parse_screenshot_upload(
         # Get model
         model = get_model()
 
-        # Parse screenshot
-        result = model.parse_screenshot(
-            image_array,
-            include_captions=include_captions,
-            conf_threshold=min_confidence
-        )
+        # Choose pipeline based on request
+        if use_full_pipeline:
+            result = model.parse_screenshot_full(
+                image_array,
+                include_captions=include_captions,
+                include_som=include_som,
+                include_ocr=include_ocr,
+                conf_threshold=min_confidence,
+                iou_threshold=iou_threshold,
+                use_paddleocr=use_paddleocr
+            )
+        else:
+            result = model.parse_screenshot(
+                image_array,
+                include_captions=include_captions,
+                include_som=include_som,
+                conf_threshold=min_confidence
+            )
 
         return ParseResponse(**result)
 

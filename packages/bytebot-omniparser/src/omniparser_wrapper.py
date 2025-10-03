@@ -2,6 +2,8 @@
 
 import time
 import sys
+import io
+import base64
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import torch
@@ -16,6 +18,27 @@ if OMNIPARSER_DIR.exists():
 
 from ultralytics import YOLO
 from transformers import AutoProcessor, AutoModelForCausalLM
+
+# Import BoxAnnotator and utilities from OmniParser
+try:
+    from util.box_annotator import BoxAnnotator
+    from util.utils import (
+        check_ocr_box,
+        get_som_labeled_img,
+        get_parsed_content_icon
+    )
+    import supervision as sv
+    from torchvision.ops import box_convert
+    OMNIPARSER_UTILS_AVAILABLE = True
+except ImportError as e:
+    # Fallback if OmniParser utils not available
+    print(f"Warning: OmniParser utils not available: {e}")
+    BoxAnnotator = None
+    sv = None
+    check_ocr_box = None
+    get_som_labeled_img = None
+    get_parsed_content_icon = None
+    OMNIPARSER_UTILS_AVAILABLE = False
 
 from .config import settings
 
@@ -178,18 +201,245 @@ class OmniParserV2:
 
         return caption
 
-    def parse_screenshot(
+    def generate_som_image(
+        self,
+        image: np.ndarray,
+        detections: List[Dict[str, Any]]
+    ) -> Optional[str]:
+        """
+        Generate Set-of-Mark (SOM) annotated image with numbered boxes.
+
+        Args:
+            image: Input image as numpy array (RGB)
+            detections: List of detected elements with bboxes
+
+        Returns:
+            Base64 encoded annotated image, or None if annotation unavailable
+        """
+        if not BoxAnnotator or not sv:
+            print("Warning: supervision library not available for SOM annotation")
+            return None
+
+        try:
+            h, w = image.shape[:2]
+
+            # Convert detections to supervision format
+            xyxy_boxes = []
+            for det in detections:
+                x, y, width, height = det["bbox"]
+                x1, y1, x2, y2 = x, y, x + width, y + height
+                xyxy_boxes.append([x1, y1, x2, y2])
+
+            if not xyxy_boxes:
+                return None
+
+            xyxy_boxes = np.array(xyxy_boxes)
+            sv_detections = sv.Detections(xyxy=xyxy_boxes)
+
+            # Create numbered labels (0, 1, 2, ...)
+            labels = [str(i) for i in range(len(detections))]
+
+            # Calculate annotation sizing based on image resolution
+            box_overlay_ratio = w / 3200
+            text_scale = 0.8 * box_overlay_ratio
+            text_thickness = max(int(2 * box_overlay_ratio), 1)
+            text_padding = max(int(3 * box_overlay_ratio), 1)
+            thickness = max(int(3 * box_overlay_ratio), 1)
+
+            # Create annotator with dynamic sizing
+            box_annotator = BoxAnnotator(
+                text_scale=text_scale,
+                text_thickness=text_thickness,
+                text_padding=text_padding,
+                thickness=thickness
+            )
+
+            # Annotate the image
+            annotated_frame = image.copy()
+            annotated_frame = box_annotator.annotate(
+                scene=annotated_frame,
+                detections=sv_detections,
+                labels=labels,
+                image_size=(w, h)
+            )
+
+            # Convert to base64
+            pil_img = Image.fromarray(annotated_frame)
+            buffered = io.BytesIO()
+            pil_img.save(buffered, format="PNG")
+            encoded_image = base64.b64encode(buffered.getvalue()).decode('ascii')
+
+            return encoded_image
+
+        except Exception as e:
+            print(f"Warning: Failed to generate SOM image: {e}")
+            return None
+
+    def parse_screenshot_full(
         self,
         image: np.ndarray,
         include_captions: bool = True,
-        conf_threshold: Optional[float] = None
+        include_som: bool = True,
+        include_ocr: bool = True,
+        conf_threshold: Optional[float] = None,
+        iou_threshold: float = 0.7,
+        use_paddleocr: bool = True
     ) -> Dict[str, Any]:
         """
-        Parse UI screenshot to detect and caption elements.
+        Parse UI screenshot using FULL OmniParser pipeline with OCR + icon detection.
+
+        This is the production-quality method that leverages OmniParser's complete feature set:
+        - OCR text detection (PaddleOCR/EasyOCR)
+        - Icon/element detection (YOLOv8)
+        - Interactivity prediction (clickable vs decorative)
+        - Overlap filtering (removes duplicates)
+        - Batch caption processing (3-5x faster)
+        - Structured output (type, interactivity, content, source)
+        - Set-of-Mark visual annotations
 
         Args:
             image: Input screenshot as numpy array (RGB)
             include_captions: Whether to generate captions for elements
+            include_som: Whether to generate Set-of-Mark annotated image
+            include_ocr: Whether to run OCR text detection
+            conf_threshold: Detection confidence threshold
+            iou_threshold: IoU threshold for overlap removal (default: 0.7)
+            use_paddleocr: Use PaddleOCR (True) or EasyOCR (False)
+
+        Returns:
+            Dictionary with detected elements, OCR text, SOM image, and metadata
+        """
+        if not OMNIPARSER_UTILS_AVAILABLE:
+            print("Warning: OmniParser utils not available, falling back to basic detection")
+            return self.parse_screenshot(image, include_captions, include_som, conf_threshold)
+
+        start_time = time.time()
+        conf_threshold = conf_threshold or settings.min_confidence
+
+        # Convert numpy array to PIL Image for OmniParser
+        pil_image = Image.fromarray(image)
+        h, w = image.shape[:2]
+
+        # Step 1: Run OCR if requested
+        ocr_bbox = None
+        ocr_text = []
+        if include_ocr and check_ocr_box:
+            try:
+                ocr_result, _ = check_ocr_box(
+                    pil_image,
+                    display_img=False,
+                    output_bb_format='xyxy',
+                    goal_filtering=None,
+                    easyocr_args={'paragraph': False, 'text_threshold': 0.9},
+                    use_paddleocr=use_paddleocr
+                )
+                ocr_text, ocr_bbox = ocr_result
+                print(f"OCR detected {len(ocr_text)} text elements")
+            except Exception as e:
+                print(f"Warning: OCR failed: {e}")
+                ocr_text = []
+                ocr_bbox = None
+
+        # Step 2: Run full OmniParser pipeline if available
+        if get_som_labeled_img and include_captions:
+            try:
+                # Calculate annotation sizing
+                box_overlay_ratio = w / 3200
+                draw_bbox_config = {
+                    'text_scale': 0.8 * box_overlay_ratio,
+                    'text_thickness': max(int(2 * box_overlay_ratio), 1),
+                    'text_padding': max(int(3 * box_overlay_ratio), 1),
+                    'thickness': max(int(3 * box_overlay_ratio), 1),
+                }
+
+                # Get caption model processor
+                caption_processor = {
+                    'model': self.caption_model,
+                    'processor': self.caption_processor
+                }
+
+                # Run full pipeline: OCR + icon detection + captioning + SOM
+                som_image_b64, label_coordinates, parsed_content_list = get_som_labeled_img(
+                    pil_image,
+                    model=self.icon_detector,
+                    BOX_TRESHOLD=conf_threshold,
+                    output_coord_in_ratio=False,  # Keep absolute coordinates
+                    ocr_bbox=ocr_bbox,
+                    draw_bbox_config=draw_bbox_config if include_som else None,
+                    caption_model_processor=caption_processor,
+                    ocr_text=ocr_text,
+                    use_local_semantics=include_captions,
+                    iou_threshold=iou_threshold,
+                    scale_img=False,
+                    batch_size=128  # Batch processing for speed
+                )
+
+                # Convert parsed_content_list to our format
+                elements = []
+                for i, elem in enumerate(parsed_content_list):
+                    bbox_norm = elem['bbox']  # [x_ratio, y_ratio, w_ratio, h_ratio]
+                    x1 = int(bbox_norm[0] * w)
+                    y1 = int(bbox_norm[1] * h)
+                    x2 = int(bbox_norm[2] * w)
+                    y2 = int(bbox_norm[3] * h)
+
+                    element = {
+                        "bbox": [x1, y1, x2 - x1, y2 - y1],
+                        "center": [int((x1 + x2) / 2), int((y1 + y2) / 2)],
+                        "confidence": 1.0,  # OmniParser doesn't return confidence per element
+                        "type": elem['type'],  # 'text' or 'icon'
+                        "interactable": elem.get('interactivity', True),  # Interactivity prediction
+                        "content": elem.get('content', ''),  # OCR text or caption
+                        "source": elem.get('source', 'unknown'),  # Detection source
+                        "element_id": i,  # Element index for SOM mapping
+                        "caption": elem.get('content', '') if elem['type'] == 'icon' else None
+                    }
+                    elements.append(element)
+
+                processing_time = (time.time() - start_time) * 1000
+
+                result = {
+                    "elements": elements,
+                    "count": len(elements),
+                    "processing_time_ms": round(processing_time, 2),
+                    "image_size": {"width": w, "height": h},
+                    "device": self.device,
+                    "ocr_detected": len(ocr_text) if include_ocr else 0,
+                    "icon_detected": sum(1 for e in elements if e['type'] == 'icon'),
+                    "text_detected": sum(1 for e in elements if e['type'] == 'text'),
+                    "interactable_count": sum(1 for e in elements if e['interactable']),
+                }
+
+                if include_som and som_image_b64:
+                    result["som_image"] = som_image_b64
+
+                return result
+
+            except Exception as e:
+                print(f"Warning: Full OmniParser pipeline failed: {e}")
+                print(f"Falling back to basic detection")
+                # Fall through to basic detection
+
+        # Fallback to basic detection if full pipeline unavailable
+        return self.parse_screenshot(image, include_captions, include_som, conf_threshold)
+
+    def parse_screenshot(
+        self,
+        image: np.ndarray,
+        include_captions: bool = True,
+        include_som: bool = True,
+        conf_threshold: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Parse UI screenshot to detect and caption elements (BASIC method).
+
+        For production use, prefer parse_screenshot_full() which includes OCR,
+        interactivity detection, overlap filtering, and batch processing.
+
+        Args:
+            image: Input screenshot as numpy array (RGB)
+            include_captions: Whether to generate captions for elements
+            include_som: Whether to generate Set-of-Mark annotated image
             conf_threshold: Detection confidence threshold
 
         Returns:
@@ -210,15 +460,25 @@ class OmniParserV2:
                     print(f"Warning: Failed to caption element: {e}")
                     detection["caption"] = "interactive element"
 
+        # Generate SOM annotated image if requested
+        som_image = None
+        if include_som:
+            som_image = self.generate_som_image(image, detections)
+
         processing_time = (time.time() - start_time) * 1000  # Convert to ms
 
-        return {
+        result = {
             "elements": detections,
             "count": len(detections),
             "processing_time_ms": round(processing_time, 2),
             "image_size": {"width": image.shape[1], "height": image.shape[0]},
             "device": self.device
         }
+
+        if som_image:
+            result["som_image"] = som_image
+
+        return result
 
 
 # Global model instance (lazy loaded)

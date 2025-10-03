@@ -189,8 +189,8 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
   // Inline mode for chat panel
   if (inline) {
-    const hasOmniParser = activity.activeMethods.includes("omniparser") || activity.omniparserModels;
-    const deviceBadge = getDeviceBadge(activity.omniparserDevice);
+    const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserModels;
+    const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
     const latestDetection = detectionData?.recentDetections?.[0];
     const latestClick = detectionData?.recentClicks?.[0];
 
@@ -200,7 +200,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
-              {activity.activeMethods.map((method) => (
+              {activity?.activeMethods?.map((method) => (
                 <div
                   key={method}
                   className={cn(
@@ -215,14 +215,14 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               <span className="text-xs font-medium text-foreground">
                 {hasOmniParser ? "🔍 OmniParser" : "🔍 CV Detection"}
               </span>
-              {activity.omniparserModels && (
+              {activity?.omniparserModels && (
                 <span className="text-[9px] text-muted-foreground">
                   {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
                 </span>
               )}
             </div>
           </div>
-          {hasOmniParser && activity.omniparserDevice && (
+          {hasOmniParser && activity?.omniparserDevice && (
             <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
               <span>{deviceBadge.icon}</span>
               <span>{deviceBadge.label}</span>
@@ -231,7 +231,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         </div>
 
         {/* Active Methods */}
-        {activity.totalActiveCount > 0 && (
+        {activity && activity.totalActiveCount > 0 && (
           <div className="space-y-1 mb-2">
             {activity.activeMethods.map((method) => {
               const detail = Object.values(activity.methodDetails).find(d => d.method === method);
@@ -323,14 +323,14 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   }
 
   if (compact) {
-    const hasOmniParser = activity.activeMethods.includes("omniparser") || activity.omniparserModels;
-    const deviceBadge = getDeviceBadge(activity.omniparserDevice);
-    const models = activity.omniparserModels;
+    const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserModels;
+    const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
+    const models = activity?.omniparserModels;
 
     return (
       <div className={cn("flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2", className)}>
         <div className="flex items-center gap-1">
-          {activity.activeMethods.map((method) => (
+          {activity?.activeMethods?.map((method) => (
             <div
               key={method}
               className={cn(
@@ -346,7 +346,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             <span className="text-xs font-medium text-foreground">
               {hasOmniParser ? "OmniParser" : "CV"} Active
             </span>
-            {hasOmniParser && activity.omniparserDevice && (
+            {hasOmniParser && activity?.omniparserDevice && (
               <span className={cn("text-xs font-medium", deviceBadge.color)}>
                 {deviceBadge.icon}
               </span>
@@ -362,8 +362,8 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     );
   }
 
-  const deviceBadge = getDeviceBadge(activity.omniparserDevice);
-  const hasOmniParser = activity.activeMethods.includes("omniparser") || activity.omniparserDevice;
+  const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
+  const hasOmniParser = activity?.activeMethods.includes("omniparser") || activity?.omniparserDevice;
 
   return (
     <div className={cn("rounded-lg border border-border bg-card px-2 py-1.5", className)}>
@@ -380,20 +380,20 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               </span>
             )}
           </div>
-          {activity.omniparserModels && (
+          {activity?.omniparserModels && (
             <div className="text-[8px] text-muted-foreground">
               {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
             </div>
           )}
         </div>
         <span className="text-[9px] text-muted-foreground">
-          {activity.totalActiveCount} {activity.totalActiveCount === 1 ? "method" : "methods"}
+          {activity?.totalActiveCount} {activity?.totalActiveCount === 1 ? "method" : "methods"}
         </span>
       </div>
 
       <div className="space-y-1">
-        {activity.activeMethods.map((method) => {
-          const detail = activity.methodDetails[method];
+        {activity?.activeMethods?.map((method) => {
+          const detail = activity?.methodDetails?.[method];
           const displayName = methodDisplayNames[method] || method;
           const color = methodColors[method] || "bg-gray-500";
 
@@ -411,7 +411,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         })}
       </div>
 
-      {activity.performance.totalMethodsExecuted > 0 && (
+      {activity && activity.performance.totalMethodsExecuted > 0 && (
         <div className="mt-1.5 pt-1.5 border-t border-border">
           <div className="grid grid-cols-3 gap-1 text-[9px]">
             <div>

@@ -30,10 +30,11 @@ export class ElementDetectorService {
     return null;
   }
 
-  async getClickCoordinates(_element: DetectedElement): Promise<{ coordinates: { x: number; y: number }; method: string }> {
+  async getClickCoordinates(_element: DetectedElement): Promise<{ coordinates: { x: number; y: number }; method: string; confidence: number }> {
     return {
       coordinates: { x: 0, y: 0 },
-      method: 'stub'
+      method: 'stub',
+      confidence: 0
     };
   }
 }

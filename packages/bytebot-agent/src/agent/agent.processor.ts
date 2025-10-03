@@ -44,7 +44,6 @@ import {
   CVActivityIndicatorService,
   DetectionHistoryEntry,
   ClickHistoryEntry,
-  getOpenCvModule,
 } from '@bytebot/cv';
 import {
   ComputerClickElementInput,
@@ -1812,11 +1811,8 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
   }
 
   private decodeScreenshotBuffer(buffer: Buffer): any {
-    const cv = getOpenCvModule();
-    if (!cv) {
-      throw new Error('OpenCV not available for enhanced detection');
-    }
-    return cv.imdecode(buffer);
+    // OpenCV removed - return null to disable enhanced detection
+    throw new Error('OpenCV removed - enhanced detection not available. Use OmniParser instead.');
   }
 
   private getElementFromCache(elementId: string): DetectedElement | null {

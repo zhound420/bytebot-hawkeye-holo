@@ -390,53 +390,24 @@ async function runPrismaOperations() {
 }
 
 /**
- * Load and verify OpenCV (from existing start-prod.js)
+ * Verify computer vision services (OmniParser + Tesseract.js)
  */
-function verifyOpenCvBindings() {
-  console.log('[startup] Verifying OpenCV bindings...');
-  
+function verifyComputerVision() {
+  console.log('[startup] Verifying computer vision services...');
+
   try {
-    // Try different module paths for OpenCV
-    let cv;
-    const possiblePaths = [
-      '@u4/opencv4nodejs',
-      'opencv4nodejs',
-      '/app/packages/bytebot-cv/node_modules/@u4/opencv4nodejs',
-      '/usr/lib/node_modules/@u4/opencv4nodejs'
-    ];
+    // Verify Tesseract.js is available
+    require('tesseract.js');
+    console.log('[startup] ✓ Tesseract.js OCR available');
 
-    for (const modulePath of possiblePaths) {
-      try {
-        cv = require(modulePath);
-        console.log(`[startup] ✓ Found OpenCV at: ${modulePath}`);
-        break;
-      } catch (err) {
-        console.log(`[startup] ⚠ OpenCV not found at: ${modulePath}`);
-        continue;
-      }
-    }
-
-    if (!cv) {
-      throw new Error('opencv4nodejs module not found in any expected location');
-    }
-    
-    if (!cv || typeof cv.Mat !== 'function') {
-      throw new Error('opencv4nodejs module loaded but cv.Mat is not available');
-    }
-    
-    // Test basic functionality
-    const testMat = new cv.Mat(5, 5, cv.CV_8UC3);
-    if (!testMat || testMat.rows !== 5 || testMat.cols !== 5) {
-      throw new Error('opencv4nodejs basic functionality test failed');
-    }
-    
-    console.log('[startup] ✓ OpenCV bindings verified successfully');
+    // Note: OmniParser is a separate Python service that will be checked at runtime
+    console.log('[startup] ✓ Computer vision services ready (OpenCV removed)');
+    console.log('[startup] Using OmniParser (primary) + Tesseract.js (fallback)');
     return true;
-    
+
   } catch (error) {
-    console.log(`[startup] ⚠ OpenCV verification failed: ${error.message}`);
-    console.log('[startup] The application will start but computer vision features may not work');
-    console.log('[startup] Consider rebuilding the container with: docker compose build --no-cache bytebot-agent');
+    console.log(`[startup] ⚠ Computer vision verification warning: ${error.message}`);
+    console.log('[startup] The application will start but CV features may have limited functionality');
     return false;
   }
 }
@@ -488,8 +459,8 @@ async function main() {
     // Step 3: Run Prisma operations
     await runPrismaOperations();
     
-    // Step 4: Verify OpenCV (optional, non-blocking)
-    verifyOpenCvBindings();
+    // Step 4: Verify computer vision services (optional, non-blocking)
+    verifyComputerVision();
     
     // Step 5: Start application
     startApplication();

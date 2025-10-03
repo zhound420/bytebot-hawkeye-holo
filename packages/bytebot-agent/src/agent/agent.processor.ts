@@ -1349,7 +1349,8 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         // 1. Runs OmniParser (semantic) as primary method
         // 2. Falls back to classical CV (geometric) if needed
         // 3. Runs slow methods (OmniParser + OCR) in parallel
-        const screenshot = this.decodeScreenshotBuffer(screenshotBuffer);
+        // OpenCV removed - screenshot buffer used directly by OmniParser/OCR
+        const screenshot = screenshotBuffer;
 
         const enhancedResult = await this.enhancedVisualDetector.detectElements(
           screenshot,
@@ -1810,10 +1811,6 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     }
   }
 
-  private decodeScreenshotBuffer(buffer: Buffer): any {
-    // OpenCV removed - return null to disable enhanced detection
-    throw new Error('OpenCV removed - enhanced detection not available. Use OmniParser instead.');
-  }
 
   private getElementFromCache(elementId: string): DetectedElement | null {
     this.pruneElementCache();

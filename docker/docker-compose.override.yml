@@ -1,15 +1,16 @@
-# Docker Compose Override - Force x86_64 Architecture
-# This ensures consistent builds across Mac (Apple Silicon), Linux, and Windows
-# by forcing all containers to use x86_64 architecture.
+# Docker Compose Override - Cross-Platform Optimizations
+# This file is automatically loaded by Docker Compose.
 #
-# On Apple Silicon Macs: Uses Rosetta 2 emulation (~20% slower but stable)
-# On x86_64 systems: Native performance, no emulation
+# 1. Force x86_64 Architecture
+#    - Ensures consistent builds across Mac (Apple Silicon), Linux, and Windows
+#    - On Apple Silicon: Uses Rosetta 2 emulation (~20% slower but stable)
+#    - On x86_64 systems: Native performance, no emulation
+#    - Benefits: Consistent OpenCV binaries, no platform-specific build issues
 #
-# Benefits:
-# - Consistent OpenCV binaries across all platforms
-# - No platform-specific build issues
-# - Pre-built packages work reliably
-# - Faster builds (no cross-compilation)
+# 2. GPU Configuration for OmniParser
+#    - Automatically enables NVIDIA GPU if nvidia-container-toolkit is installed
+#    - Falls back to CPU if GPU not available (no errors)
+#    - Apple Silicon: GPU config ignored (no NVIDIA support)
 
 services:
   bytebot-agent:
@@ -23,6 +24,15 @@ services:
 
   bytebot-omniparser:
     platform: linux/amd64
+    # GPU support: Requires nvidia-container-toolkit on host
+    # If not available, Docker ignores this and falls back to CPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   bytebot-llm-proxy:
     platform: linux/amd64

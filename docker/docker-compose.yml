@@ -141,10 +141,9 @@ services:
       - omniparser_weights:/app/weights
     networks:
       - bytebot-network
-    # GPU support: Automatically uses NVIDIA GPU if nvidia-container-toolkit is installed
-    # No explicit configuration needed - Docker will detect and use GPU if available
+    # GPU support configured in docker-compose.override.yml (automatically loaded)
+    # Requires: nvidia-container-toolkit installed on host
     # Apple Silicon: MPS not available in Docker, runs on CPU (for GPU use native setup)
-    # To explicitly reserve GPU, use: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
       interval: 30s

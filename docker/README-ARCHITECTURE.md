@@ -29,18 +29,32 @@ All Docker containers are configured to run on **x86_64 (linux/amd64)** architec
 
 ### Configuration
 
-The `docker-compose.override.yml` file forces x86_64 architecture:
+The `docker-compose.override.yml` file provides two key configurations:
+
+1. **x86_64 Architecture** - Forces all containers to run on linux/amd64
+2. **GPU Support** - Automatically enables NVIDIA GPU for OmniParser if available
 
 ```yaml
 services:
   bytebot-agent:
     platform: linux/amd64
-  bytebot-desktop:
+  bytebot-omniparser:
     platform: linux/amd64
-  # ... etc
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 ```
 
 This file is **automatically loaded** by Docker Compose when running commands in the `docker/` directory.
+
+**GPU Behavior:**
+- If `nvidia-container-toolkit` is installed: Uses GPU (CUDA)
+- If not installed: Gracefully falls back to CPU (no errors)
+- Apple Silicon: GPU config is ignored (no NVIDIA support)
 
 ### Testing Architecture
 

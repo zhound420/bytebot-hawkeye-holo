@@ -1,19 +1,19 @@
 # GPU Configuration Extension for NVIDIA GPUs
-# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
-# This file explicitly reserves NVIDIA GPU resources for OmniParser.
-# Only use this if you have nvidia-container-toolkit installed and want
-# to ensure GPU allocation.
+# NOTE: As of the latest version, GPU configuration is now included in
+# docker-compose.override.yml and loaded automatically. This file is kept
+# for backward compatibility but is no longer needed for normal usage.
+#
+# The default setup now automatically enables GPU if nvidia-container-toolkit
+# is available, and gracefully falls back to CPU if not.
+#
+# This file can still be used if you need custom GPU configuration:
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
 # Prerequisites:
 # - NVIDIA GPU (requires x86_64/amd64 architecture)
 # - nvidia-container-toolkit installed
 # - NVIDIA drivers installed
-#
-# Not needed for:
-# - Automatic GPU detection (default behavior works fine)
-# - Apple Silicon Macs (no NVIDIA GPU support)
-# - CPU-only systems
 
 services:
   bytebot-omniparser:

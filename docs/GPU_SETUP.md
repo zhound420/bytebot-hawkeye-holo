@@ -82,25 +82,17 @@ docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 ./scripts/start-stack.sh
 ```
 
-Docker will automatically use the NVIDIA GPU if nvidia-container-toolkit is installed.
+**GPU configuration is now automatic!** The `docker/docker-compose.override.yml` file (automatically loaded) includes GPU configuration that:
+- Uses NVIDIA GPU if nvidia-container-toolkit is installed
+- Gracefully falls back to CPU if not available
+- No errors if GPU not present
 
-### Explicit GPU Reservation (Optional)
-
-If automatic detection doesn't work, use the GPU overlay:
-
-```bash
-# Start with explicit GPU reservation
-docker compose \
-  -f docker/docker-compose.proxy.yml \
-  -f docker/docker-compose.gpu.yml \
-  up -d --build
-```
-
-The `docker-compose.gpu.yml` overlay adds:
+The override file includes:
 
 ```yaml
 services:
   bytebot-omniparser:
+    platform: linux/amd64
     deploy:
       resources:
         reservations:
@@ -109,6 +101,8 @@ services:
               count: all
               capabilities: [gpu]
 ```
+
+**Note:** `docker-compose.gpu.yml` is now redundant but kept for backward compatibility. The GPU config is in `docker-compose.override.yml` by default.
 
 ### Check OmniParser GPU Usage
 
@@ -180,9 +174,18 @@ docker compose -f docker/docker-compose.proxy.yml -f docker/docker-compose.gpu.y
 **On Mac**: This is expected - use native execution instead.
 
 **On PC**:
-1. Install nvidia-container-toolkit (see above)
-2. Restart Docker daemon
-3. Use explicit GPU overlay if needed
+1. Verify nvidia-container-toolkit is installed: `nvidia-container-toolkit --version`
+2. Restart Docker daemon: `sudo systemctl restart docker`
+3. Rebuild OmniParser container to apply GPU config:
+   ```bash
+   docker compose -f docker/docker-compose.proxy.yml down bytebot-omniparser
+   docker compose -f docker/docker-compose.proxy.yml up -d bytebot-omniparser
+   ```
+4. Check if GPU is being used:
+   ```bash
+   docker exec bytebot-omniparser python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+   # Should output: CUDA available: True
+   ```
 
 ### Performance is slow
 

@@ -37,6 +37,53 @@
 
 ---
 
+## 📋 Prerequisites
+
+### Required Software
+- **Docker** (≥20.10) & **Docker Compose** (≥2.0)
+- **Git** for cloning the repository
+- **Node.js** ≥20.0.0 (for local development only, not needed for Docker)
+
+### API Keys (Required)
+At least one LLM provider API key:
+- **Anthropic** (Claude models) - Get at [console.anthropic.com](https://console.anthropic.com)
+- **OpenAI** (GPT models) - Get at [platform.openai.com](https://platform.openai.com)
+- **Google** (Gemini models) - Get at [aistudio.google.com](https://aistudio.google.com)
+- **OpenRouter** (Multi-model proxy) - Get at [openrouter.ai](https://openrouter.ai)
+
+### GPU Requirements (Recommended for Best OmniParser Performance)
+
+OmniParser v2.0 provides semantic UI detection with GPU acceleration:
+
+#### **x86_64 Linux/Windows (NVIDIA GPU)**
+**Best performance: ~0.6s/frame with CUDA**
+
+Install `nvidia-container-toolkit` to enable GPU in Docker:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo systemctl restart docker
+
+# Verify GPU access works
+docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+```
+
+**Without GPU:** Falls back to CPU (~8-15s/frame) - works but significantly slower.
+
+#### **Apple Silicon (M1-M4)**
+**Best performance: ~1-2s/frame with MPS**
+
+No additional installation needed - `setup-omniparser.sh` automatically configures native execution with Metal GPU acceleration.
+
+> **Note:** Docker Desktop on macOS doesn't pass through GPU access, so OmniParser runs natively outside Docker for best performance.
+
+#### **x86_64 CPU-only**
+Works without GPU but slower (~8-15s/frame). No additional setup needed.
+
+---
+
 ## 🚀 Quick Start (Platform-Optimized)
 
 **Three-step setup that automatically detects your platform and optimizes for best performance:**

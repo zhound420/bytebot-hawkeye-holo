@@ -30,11 +30,15 @@ export class ElementDetectorService {
     return null;
   }
 
-  async getClickCoordinates(_element: DetectedElement): Promise<{ coordinates: { x: number; y: number }; method: string; confidence: number }> {
+  async getClickCoordinates(element: DetectedElement): Promise<{ coordinates: { x: number; y: number }; method: string; confidence: number }> {
+    // Return the element's actual center coordinates from OmniParser/OCR detection
     return {
-      coordinates: { x: 0, y: 0 },
-      method: 'stub',
-      confidence: 0
+      coordinates: {
+        x: Math.round(element.coordinates.centerX),
+        y: Math.round(element.coordinates.centerY)
+      },
+      method: element.metadata.detectionMethod,
+      confidence: element.confidence
     };
   }
 }

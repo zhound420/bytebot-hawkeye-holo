@@ -71,7 +71,7 @@ export class ComputerUseTools {
   @Tool({
     name: 'computer_detect_elements',
     description:
-      'Detects interactive UI elements on the current screen using OCR and CV heuristics.',
+      'Detects interactive UI elements on the current screen using OmniParser v2.0 AI (YOLOv8 + Florence-2) for semantic understanding and Tesseract.js OCR for text extraction. This is the preferred method for finding clickable elements.',
     parameters: z.object({
       description: z
         .string()

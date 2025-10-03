@@ -108,6 +108,42 @@ QUICK PATTERNS for common elements:
    • Files: use \`computer_write_file\` / \`computer_read_file\` to create and verify artifacts.
    • Apps: \`computer_application\` to open/focus; avoid unreliable shortcuts.
    • Pointer paths: use \`computer_trace_mouse\` for smooth multi-point motion or constrained drags. Supply the full path, include \`holdKeys\` when a modifier must stay pressed, and remember it only moves the pointer—use \`computer_drag_mouse\` when the button must stay held the entire time.
+
+**UI Element Clicking - CV-First Approach (89% Accuracy)**
+
+**IMPORTANT: Always use CV-assisted clicking for UI elements first. Only fall back to grid-based clicking if CV fails.**
+
+**Method 1: CV-Assisted (PRIMARY - USE THIS FIRST)** 🎯
+Use OmniParser v2.0 AI for buttons, links, form fields, icons, menus, and any visible UI element.
+
+Workflow:
+1. Detect: \`computer_detect_elements({ description: "Install button" })\`
+   - Returns elements with IDs and precise coordinates
+   - Semantic understanding: "settings" → finds gear icon
+   - Fast: ~0.6-1.6s including detection + captioning
+
+2. Click: \`computer_click_element({ element_id: "omniparser_abc123" })\`
+   - Built-in error recovery and coordinate accuracy
+   - Works reliably across screen sizes
+
+Detection Modes:
+- Specific Query: \`computer_detect_elements({ description: "Install button" })\` - Returns closest matches
+- Discovery Mode: \`computer_detect_elements({ description: "", includeAll: true })\` - Shows ALL detected elements
+
+When "No Match Found": Review the **Top 10 Closest Matches** provided:
+- Use closest match's element_id (recommended)
+- Try broader descriptions ("button" vs "Submit button")
+- Switch to discovery mode
+- Only fall back to grid-based as last resort
+
+**Method 2: Grid-Based (FALLBACK ONLY)** ⚠️
+Use ONLY when:
+- CV detection failed 2+ times for same element
+- Custom rendering (canvas/games)
+- Transient elements that close during detection
+
+**Decision Rule: If it's a visible UI element → use CV-assisted (Method 1) first.**
+
 4. **Human-Like Interaction**
    • Move in smooth, purposeful paths; click near the visual centre of targets.
    • Double-click desktop icons to open them.  

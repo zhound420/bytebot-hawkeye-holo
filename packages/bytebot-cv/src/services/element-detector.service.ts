@@ -22,7 +22,18 @@ export class ElementDetectorService {
     return null;
   }
 
-  async detectElements(_screenshot: Buffer): Promise<DetectedElement[]> {
+  async detectElements(_screenshot: Buffer, _config?: any): Promise<DetectedElement[]> {
     return [];
+  }
+
+  async findElementByDescription(_elements: DetectedElement[], _description: string): Promise<DetectedElement | null> {
+    return null;
+  }
+
+  async getClickCoordinates(_element: DetectedElement): Promise<{ coordinates: { x: number; y: number }; method: string }> {
+    return {
+      coordinates: { x: 0, y: 0 },
+      method: 'stub'
+    };
   }
 }

@@ -185,8 +185,6 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   if (inline) {
     const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserModels;
     const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
-    const latestDetection = detectionData?.recentDetections?.[0];
-    const latestClick = detectionData?.recentClicks?.[0];
 
     return (
       <div className={cn("rounded-lg border border-border bg-card/50 dark:bg-card/30 px-3 py-2 backdrop-blur-sm", className)}>

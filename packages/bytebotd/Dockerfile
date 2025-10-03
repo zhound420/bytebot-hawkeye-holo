@@ -147,7 +147,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
     && git clone https://github.com/novnc/websockify.git /opt/websockify \
     && cd /opt/websockify \
-    && pip3 install .
+    && pip3 install --break-system-packages .
 
 # -----------------------------------------------------------------------------
 # 5. Application setup (bytebotd)

@@ -14,6 +14,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV DISPLAY=:0
 ENV NPM_CONFIG_IGNORE_ENGINES=true
 
+# Create symlink for Node.js binary (supervisord expects /usr/bin/node)
+RUN ln -sf /usr/local/bin/node /usr/bin/node && \
+    ln -sf /usr/local/bin/npm /usr/bin/npm
+
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
 # -----------------------------------------------------------------------------

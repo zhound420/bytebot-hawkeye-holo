@@ -1,11 +1,9 @@
 # -----------------------------------------------------------------------------
-# Bytebot Dockerfile - Virtual Desktop Environment
+# Bytebot Dockerfile - Virtual Desktop Environment (No OpenCV)
 # -----------------------------------------------------------------------------
 
-# Base image
-# Use urielch/opencv-nodejs as base - has @u4/opencv4nodejs precompiled
-FROM urielch/opencv-nodejs:latest AS base
-
+# Base image - standard Node.js (OpenCV removed)
+FROM node:20.19.5-slim AS base
 
 # -----------------------------------------------------------------------------
 # 1. Environment setup
@@ -14,22 +12,18 @@ FROM urielch/opencv-nodejs:latest AS base
 ARG DEBIAN_FRONTEND=noninteractive
 # Configure display for X11 applications
 ENV DISPLAY=:0
-# Set environment to use globally installed @u4/opencv4nodejs and ignore Node.js engine checks
-ENV NODE_PATH=/usr/lib/node_modules \
-    OPENCV4NODEJS_DISABLE_AUTOBUILD=1 \
-    OPENCV4NODEJS_SKIP_TRACKING=1 \
-    NPM_CONFIG_IGNORE_ENGINES=true
+ENV NPM_CONFIG_IGNORE_ENGINES=true
 
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
 # -----------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
-    # Essential build tools (needed for dpkg-architecture)
+    # Essential build tools
     dpkg-dev \
     # X11 / VNC
     xvfb x11vnc xauth x11-xserver-utils \
     x11-apps sudo software-properties-common \
-    # Desktop environment 
+    # Desktop environment
     xfce4 xfce4-goodies dbus dbus-x11 wmctrl \
     bluez bluetooth \
     # Display manager with autologin capability
@@ -55,50 +49,6 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /run/dbus && \
     # Generate a machine-id so dbus-daemon doesn't complain
     dbus-uuidgen --ensure=/etc/machine-id
-
-# -----------------------------------------------------------------------------
-# 2.5. Install Node.js EARLY (before compiling any native modules)
-# -----------------------------------------------------------------------------
-# Install Node.js 20.x using direct binary installation to bypass package conflicts
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
-
-# Use NVM to install and use Node.js 20.x
-ENV NVM_DIR=/root/.nvm
-RUN . "$NVM_DIR/nvm.sh" && nvm install 20.19.5 && nvm use 20.19.5 && nvm alias default 20.19.5
-
-# Set PATH to prioritize NVM Node.js installation
-ENV PATH="$NVM_DIR/versions/node/v20.19.5/bin:$PATH"
-
-# Verify Node.js installation and version
-RUN echo "=== Node.js Installation Verification ===" \
-    && which node && which npm \
-    && node --version \
-    && npm --version \
-    && echo "Node.js location: $(which node)" \
-    && echo "npm location: $(which npm)" \
-    && echo "Node.js version: $(node --version)" \
-    && echo "npm version: $(npm --version)"
-
-# Verify Node.js version meets requirements (should be 20.x)
-RUN NODE_VERSION=$(node --version | sed 's/v//') \
-    && echo "Checking Node.js version: $NODE_VERSION" \
-    && if ! node -e "const ver=process.version.slice(1).split('.').map(Number); if(ver[0]<20){process.exit(1)}"; then \
-        echo "ERROR: Node.js version $NODE_VERSION is not 20.x or higher"; \
-        exit 1; \
-    fi \
-    && echo "✓ Node.js version $NODE_VERSION meets requirements"
-
-# Copy Node.js binaries to accessible location for supervisord compatibility
-# Cache buster: 2025-09-30-21:15
-RUN echo "Copying Node.js binaries to accessible location:" \
-    && cp "$NVM_DIR/versions/node/v20.19.5/bin/node" /usr/local/bin/node \
-    && cp "$NVM_DIR/versions/node/v20.19.5/bin/npm" /usr/local/bin/npm \
-    && chown root:root /usr/local/bin/node /usr/local/bin/npm \
-    && chmod +x /usr/local/bin/node /usr/local/bin/npm \
-    && ln -sf /usr/local/bin/node /usr/bin/node \
-    && ln -sf /usr/local/bin/npm /usr/bin/npm \
-    && echo "✓ Node.js binaries copied to /usr/local/bin and symlinked" \
-    && echo "✓ Accessible to all users: $(ls -la /usr/local/bin/node /usr/local/bin/npm)"
 
 # -----------------------------------------------------------------------------
 # 3. Additional software installation
@@ -128,15 +78,13 @@ RUN apt-get update && apt-get install -y \
     && update-alternatives --set x-www-browser /usr/bin/firefox-esr \
     && fc-cache -f -v
 
-# Ensure fontconfig caches are writable at runtime (needed for sandboxed desktop user)
+# Ensure fontconfig caches are writable at runtime
 RUN mkdir -p /var/cache/fontconfig /root/.cache/fontconfig /root/.fontconfig \
     && chmod -R 777 /var/cache/fontconfig /root/.cache/fontconfig /root/.fontconfig
-
 
 # Install 1Password based on architecture
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
-        # Install from APT repository for AMD64
         curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
         gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
         echo "deb [arch=amd64 signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/amd64 stable main" | \
@@ -150,20 +98,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
         apt-get update && apt-get install -y 1password && \
         apt-get clean && rm -rf /var/lib/apt/lists/*; \
     elif [ "$ARCH" = "arm64" ]; then \
-        # Install from tar.gz for ARM64
         apt-get update && apt-get install -y \
             libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils \
             libatspi2.0-0 libdrm2 libgbm1 libxcb-dri3-0 libxkbcommon0 \
             libsecret-1-0 && \
         apt-get clean && rm -rf /var/lib/apt/lists/* && \
         curl -sSL https://downloads.1password.com/linux/tar/beta/aarch64/1password-latest.tar.gz -o /tmp/1password.tar.gz && \
-        # Extract the full 1Password bundle so libraries like libffmpeg.so remain in their expected relative paths
         mkdir -p /opt/1password && \
         tar -xzf /tmp/1password.tar.gz -C /opt/1password --strip-components=1 && \
-        # Link the main executable into the global PATH
         ln -sf /opt/1password/1password /usr/bin/1password && \
         chmod +x /opt/1password/1password && \
-        # Copy icons to standard locations
         mkdir -p /usr/share/pixmaps /usr/share/icons/hicolor/512x512/apps /usr/share/icons/hicolor/256x256/apps && \
         find /opt/1password -name "*1password*.png" -o -name "*1password*.svg" | while read icon; do \
             if [[ "$icon" == *"512"* ]]; then \
@@ -173,9 +117,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
             fi; \
             cp "$icon" /usr/share/pixmaps/1password.png 2>/dev/null || true; \
         done && \
-        # Clean up temporary files
         rm -rf /tmp/1password.tar.gz && \
-        # Update icon cache
         gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true; \
     else \
         echo "1Password is not available for $ARCH architecture."; \
@@ -199,12 +141,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
         echo "VSCode is not available for $ARCH architecture."; \
     fi
 
-# Debian comes with pip which is sufficient - no upgrade needed
-
 # -----------------------------------------------------------------------------
 # 4. VNC and remote access setup
 # -----------------------------------------------------------------------------
-# Install noVNC and websockify
 RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
     && git clone https://github.com/novnc/websockify.git /opt/websockify \
     && cd /opt/websockify \
@@ -213,8 +152,6 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
 # -----------------------------------------------------------------------------
 # 5. Application setup (bytebotd)
 # -----------------------------------------------------------------------------
-# Copy package files first to leverage Docker cache
-
 # Install dependencies required to build libnut-core and uiohook-napi
 RUN apt-get update && \
     apt-get install -y \
@@ -236,6 +173,7 @@ COPY packages/bytebot-cv/ /bytebot/packages/bytebot-cv/
 COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
+
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -259,6 +197,7 @@ RUN apt-get update && apt-get install -y \
     librsvg2-dev \
     libpixman-1-dev \
     && rm -rf /var/lib/apt/lists/*
+
 # Set workspace dependencies
 RUN node -e "const fs=require('fs'); const path=require('path'); const file=path.join('package.json'); const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.dependencies['@bytebot/cv']='../bytebot-cv'; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\n');" \
     && npm install --prefix ../shared
@@ -266,15 +205,11 @@ RUN node -e "const fs=require('fs'); const path=require('path'); const file=path
 # Clear npm cache to avoid stale builds
 RUN npm cache clean --force
 
-# Install bytebot-cv dependencies directly (avoiding workspace dependencies)
+# Install bytebot-cv dependencies (no OpenCV)
 RUN cd ../bytebot-cv \
-    && echo "Installing bytebot-cv dependencies..." \
-    && echo "Removing @u4/opencv4nodejs from package.json (using global install)..." \
-    && npm remove @u4/opencv4nodejs 2>/dev/null || true \
-    && echo "Installing only bytebot-cv direct dependencies..." \
-    && npm install --no-workspaces --include=dev --ignore-engines --ignore-scripts \
-    && echo "✓ bytebot-cv dependencies installed successfully" \
-    && echo "Note: @u4/opencv4nodejs will be resolved via NODE_PATH at runtime"
+    && echo "Installing bytebot-cv dependencies (OmniParser + Tesseract.js only)..." \
+    && npm install --no-workspaces --include=dev --ignore-engines \
+    && echo "✓ bytebot-cv dependencies installed successfully (no OpenCV)"
 
 # Rebuild Canvas for Node.js 20.x compatibility in bytebot-cv
 RUN cd ../bytebot-cv \
@@ -284,8 +219,7 @@ RUN cd ../bytebot-cv \
     && echo "✓ Canvas rebuilt successfully in bytebot-cv" \
     && node -e "const canvas = require('canvas'); console.log('Canvas version in bytebot-cv:', canvas.version || 'available');"
 
-# Install bytebotd dependencies (no local @u4/opencv4nodejs needed due to NODE_PATH)  
-# Exclude Sharp initially to avoid ARM64 issues
+# Install bytebotd dependencies
 RUN npm install --build-from-source --ignore-optional
 
 # Remove Sharp from dependencies temporarily and install manually
@@ -293,11 +227,9 @@ RUN npm uninstall sharp 2>/dev/null || true && \
     rm -rf node_modules/sharp && \
     npm cache clean --force
 
-# Install Sharp with modern auto-detection (no npm config needed)
+# Install Sharp with modern auto-detection
 RUN npm install --no-save sharp@^0.33.5 && \
-    # Verify Sharp installation
     node -e "const sharp = require('sharp'); console.log('Sharp version:', sharp.versions || 'available');"
-
 
 # Build packages with TypeScript
 WORKDIR /bytebot/packages/bytebot-cv
@@ -310,7 +242,7 @@ RUN node -e "const fs=require('fs'); const path=require('path'); const file=path
 
 RUN npm run build
 
-# Final verification step - ensure bytebot-cv can load canvas successfully
+# Final verification - ensure bytebot-cv can load canvas successfully
 RUN echo "=== Final Canvas Module Verification ===" \
     && cd /bytebot/packages/bytebot-cv \
     && echo "Testing canvas in bytebot-cv..." \
@@ -320,7 +252,6 @@ RUN echo "=== Final Canvas Module Verification ===" \
 WORKDIR /compile
 
 # Upgrade CMake to version 3.20+ required by libnut-core
-# Download and install CMake binary directly since Kitware APT repo doesn't support Debian bullseye
 RUN ARCH=$(dpkg --print-architecture) && \
     CMAKE_VERSION="3.29.8" && \
     if [ "$ARCH" = "amd64" ]; then \
@@ -330,18 +261,13 @@ RUN ARCH=$(dpkg --print-architecture) && \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
-    # Download CMake binary
     wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${CMAKE_ARCH}.tar.gz -O /tmp/cmake.tar.gz && \
-    # Extract to /opt/cmake
     mkdir -p /opt/cmake && \
     tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1 && \
-    # Create symlinks to system PATH
     ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake && \
     ln -sf /opt/cmake/bin/cpack /usr/local/bin/cpack && \
     ln -sf /opt/cmake/bin/ctest /usr/local/bin/ctest && \
-    # Verify CMake version
     cmake --version && \
-    # Clean up
     rm -f /tmp/cmake.tar.gz
 
 RUN git clone https://github.com/ZachJW34/libnut-core.git && \
@@ -349,7 +275,7 @@ RUN git clone https://github.com/ZachJW34/libnut-core.git && \
     npm install && \
     npm run build:release
 
-# replace /bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node with /compile/libnut-core/build/Release/libnut.node
+# Replace libnut.node with compiled version
 RUN rm -f /bytebot/packages/bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node && \
     cp /compile/libnut-core/build/Release/libnut.node /bytebot/packages/bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node
 
@@ -358,9 +284,8 @@ RUN rm -rf /compile
 WORKDIR /bytebot/packages/bytebotd
 
 # -----------------------------------------------------------------------------
-# 7. User setup and autologin configuration
+# 6. User setup and autologin configuration
 # -----------------------------------------------------------------------------
-# Create non-root user
 RUN useradd -ms /bin/bash user && echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 RUN mkdir -p /var/run/dbus && \
@@ -370,13 +295,7 @@ RUN mkdir -p /var/run/dbus && \
 RUN mkdir -p /tmp/bytebot-screenshots && \
     chown -R user:user /tmp/bytebot-screenshots
 
-# -----------------------------------------------------------------------------
-#  Copy staged system files and keep sane permissions
-# -----------------------------------------------------------------------------
-# 1. Ensure everything under /bytebotd/root is owned by root (files + dirs)
-# 2. Set *files* to 0644 and *directories* to 0755 so that applications can
-#    traverse directories (execute bit!) while keeping the contents read-only.
-# 3. Copy the tree to /
+# Copy staged system files
 RUN chown -R root:root /bytebot/packages/bytebotd/root && \
     find /bytebot/packages/bytebotd/root -type f -exec chmod 644 {} + && \
     find /bytebot/packages/bytebotd/root -type d -exec chmod 755 {} + && \
@@ -413,13 +332,11 @@ ENV BYTEBOT_GRID_OVERLAY=true \
 RUN mkdir -p /home/user/.config /home/user/.local/share /home/user/.cache \
     && chown -R user:user /home/user/.config /home/user/.local /home/user/.cache
 
-
 WORKDIR /home/user
 
 # -----------------------------------------------------------------------------
-# 8. Port configuration and runtime
+# 7. Port configuration and runtime
 # -----------------------------------------------------------------------------
-# - Port 9990: bytebotd and external noVNC websocket
 EXPOSE 9990
 
 # Start supervisor to manage all services

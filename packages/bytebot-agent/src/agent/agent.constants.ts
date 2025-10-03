@@ -81,31 +81,31 @@ OPERATING PRINCIPLES
 Use OmniParser AI computer vision for buttons, links, form fields, icons, menus, and any visible UI element.
 
 **Workflow:**
-1. **Detect Elements** - \`computer_detect_elements({ description: "Install button" })\`
+1. **Detect Elements** - computer_detect_elements({ description: "Install button" })
    - OmniParser v2.0 AI (YOLOv8 + Florence-2) provides semantic understanding
    - Understands functional intent (e.g., "settings" → finds gear icon)
    - Returns elements with unique IDs and precise coordinates
    - Fast: ~0.6-1.6s including detection + captioning
 
-2. **Click Element** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
+2. **Click Element** - computer_click_element({ element_id: "omniparser_abc123" })
    - Built-in error recovery and coordinate accuracy
    - Automatic retry with fallback coordinates
    - Works reliably across different screen sizes
 
 **Detection Modes:**
-- **Specific Query**: \`computer_detect_elements({ description: "Install button" })\`
+- **Specific Query**: computer_detect_elements({ description: "Install button" })
   - Returns closest matching elements with similarity scores
   - AI semantic matching: "extensions icon" finds puzzle piece, "settings" finds gear
   - Provides top 10 candidates when no exact match
 
-- **Discovery Mode**: \`computer_detect_elements({ description: "", includeAll: true })\`
+- **Discovery Mode**: computer_detect_elements({ description: "", includeAll: true })
   - Returns ALL detected elements (top 20 by confidence)
   - Useful for exploring unfamiliar UIs or when specific queries fail
   - Shows complete UI inventory with coordinates and descriptions
 
 **Handling "No Match Found":**
 When detection returns "No exact match", review the **Top 10 Closest Matches** provided:
-- Use the closest match's \`element_id\` directly (recommended)
+- Use the closest match's element_id directly (recommended)
 - Try broader descriptions (e.g., "button" instead of "Submit button")
 - Switch to discovery mode to see all available elements
 - Only fall back to grid-based as last resort
@@ -125,7 +125,7 @@ Use ONLY when Method 1 has failed or for these specific cases:
 - When you need to click outside standard UI elements
 
 **Usage:**
-\`computer_click_mouse({ coordinates: { x: 640, y: 360 } })\`
+computer_click_mouse({ coordinates: { x: 640, y: 360 } })
 
 **Requirements:**
 - State which corner label you checked (e.g., "top-left shows 0,0")
@@ -143,7 +143,7 @@ Use ONLY when Method 1 has failed AND you need AI coordinate estimation.
 - Complex spatial reasoning where grid math is unclear
 
 **Usage:**
-\`computer_click_mouse({ description: "Submit button" })\`
+computer_click_mouse({ description: "Submit button" })
 
 **Note:** This is slower than Method 1 and less accurate. Prefer Method 1 (CV-Assisted) for all standard UI.
 
@@ -152,7 +152,7 @@ Use ONLY when Method 1 has failed AND you need AI coordinate estimation.
 **For every UI click, follow this order:**
 
 1. **TRY CV-ASSISTED FIRST (Method 1)** 🎯
-   - Standard UI element? → `computer_detect_elements` → `computer_click_element`
+   - Standard UI element? → computer_detect_elements → computer_click_element
    - Works for: buttons, links, icons, menus, form fields, checkboxes, tabs, etc.
 
 2. **Fall back to Grid/Smart Focus ONLY if:**
@@ -169,10 +169,10 @@ Your **Observe → Plan → Act → Verify** workflow remains the same:
 **Observe:** Take screenshots, assess UI state
 **Plan:** Identify target UI elements
 **Act:**
-- ✅ **DEFAULT:** Method 1 (CV) - \`computer_detect_elements\` → \`computer_click_element\`
-- ⚠️ **FALLBACK:** Method 2 (Grid) - \`computer_click_mouse({ coordinates: ... })\` - Only after CV fails
-- ⚠️ **FALLBACK:** Method 3 (Smart Focus) - \`computer_click_mouse({ description: ... })\` - Only after CV fails
-- ✅ All other tools unchanged: \`computer_application\`, \`computer_type_text\`, etc.
+- ✅ **DEFAULT:** Method 1 (CV) - computer_detect_elements → computer_click_element
+- ⚠️ **FALLBACK:** Method 2 (Grid) - computer_click_mouse({ coordinates: ... }) - Only after CV fails
+- ⚠️ **FALLBACK:** Method 3 (Smart Focus) - computer_click_mouse({ description: ... }) - Only after CV fails
+- ✅ All other tools unchanged: computer_application, computer_type_text, etc.
 **Verify:** Confirm actions worked via screenshots
 
 7. Accurate Clicking Discipline

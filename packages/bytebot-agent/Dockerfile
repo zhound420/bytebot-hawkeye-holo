@@ -106,8 +106,8 @@ RUN echo "=== Build completed successfully ===" && \
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD node -e "try { \
-        const cv = require('opencv4nodejs'); \
-        console.log('Health check: opencv4nodejs loaded'); \
+        const cv = require('@u4/opencv4nodejs'); \
+        console.log('Health check: @u4/opencv4nodejs loaded'); \
         const testMat = new cv.Mat(5, 5, cv.CV_8UC3); \
         console.log('Health check: basic Mat operations work'); \
         process.exit(0); \

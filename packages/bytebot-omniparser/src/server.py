@@ -300,12 +300,23 @@ async def parse_screenshot_upload(
 @app.on_event("startup")
 async def startup_event():
     """Startup event - preload models."""
+    import torch
+
     print("=" * 50)
     print("Bytebot OmniParser Service Starting")
     print("=" * 50)
     print(f"Device: {settings.device}")
     print(f"Port: {settings.port}")
     print(f"Weights: {settings.weights_dir}")
+    print("")
+    print("GPU Diagnostics:")
+    print(f"  PyTorch Version: {torch.__version__}")
+    print(f"  CUDA Available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"  CUDA Version: {torch.version.cuda}")
+        print(f"  GPU Count: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
     print("=" * 50)
 
     try:

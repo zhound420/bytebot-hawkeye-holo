@@ -21,13 +21,13 @@ COPY requirements.txt .
 
 # Install PyTorch based on target platform
 # arm64 (Apple Silicon in Docker): CPU-only since MPS doesn't pass through
-# amd64 (x86_64): Full CUDA support
+# amd64 (x86_64): Full CUDA support (12.1 - backward compatible with 11.8+)
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
         echo "Building for ARM64 - installing CPU-only PyTorch"; \
         pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
     else \
-        echo "Building for AMD64 - installing CUDA-enabled PyTorch"; \
-        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu118; \
+        echo "Building for AMD64 - installing CUDA 12.1 PyTorch"; \
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121; \
     fi
 
 # Install remaining requirements

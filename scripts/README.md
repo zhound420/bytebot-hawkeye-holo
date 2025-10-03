@@ -251,6 +251,49 @@ docker builder prune -f
 ./scripts/fresh-build.sh
 ```
 
+### OmniParser falling back to CPU on x86_64/NVIDIA
+
+**Symptoms:**
+- OmniParser logs show "⚠ No GPU acceleration available - using CPU"
+- Processing time ~8-15s per frame instead of ~0.6s
+
+**Diagnosis:**
+```bash
+# Check if container has GPU access
+docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+
+# Check nvidia-container-toolkit
+docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+```
+
+**Common Causes:**
+1. **CUDA version mismatch** - PyTorch built for CUDA 11.8, but system has CUDA 12.x
+   - **Fixed:** Dockerfile now uses CUDA 12.1 PyTorch (backward compatible)
+2. **nvidia-container-toolkit not installed**
+   ```bash
+   # Install on Ubuntu/Debian
+   distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+   curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+   curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+     sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo systemctl restart docker
+   ```
+3. **Docker not configured with GPU runtime**
+   - Check `/etc/docker/daemon.json` includes nvidia runtime
+   - Restart Docker: `sudo systemctl restart docker`
+
+**Solution:** Rebuild OmniParser container:
+```bash
+cd docker
+docker compose down bytebot-omniparser
+docker compose build --no-cache bytebot-omniparser
+docker compose up -d bytebot-omniparser
+
+# Verify GPU access
+docker logs bytebot-omniparser | grep -A 5 "GPU Diagnostics"
+```
+
 ---
 
 ## Environment Configuration

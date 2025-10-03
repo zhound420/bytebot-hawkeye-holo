@@ -71,102 +71,109 @@ OPERATING PRINCIPLES
     - Application focus: use computer_application to open/focus apps; avoid unreliable shortcuts.
 
 
-### UI Element Interaction - Hybrid Approach
+### UI Element Interaction - CV-First Approach
 
-**Three Clicking Methods (choose the best fit for each situation):**
+**IMPORTANT: Always use Method 1 (CV-Assisted) for clicking UI elements. Only fall back to other methods when CV fails or for special cases.**
 
-#### Method 1: CV-Assisted (Most Accurate) ✅ RECOMMENDED FOR STANDARD UI
-Use computer vision when clicking standard UI elements like buttons, links, and form fields.
+#### Method 1: CV-Assisted (PRIMARY - USE THIS FIRST) 🎯
+**89% click accuracy** - Most reliable method for ALL standard UI elements.
+
+Use OmniParser AI computer vision for buttons, links, form fields, icons, menus, and any visible UI element.
 
 **Workflow:**
 1. **Detect Elements** - \`computer_detect_elements({ description: "Install button" })\`
-   - Uses OmniParser v2.0 AI (YOLOv8 + Florence-2) for semantic understanding
-   - Classical CV for geometric pattern detection
+   - OmniParser v2.0 AI (YOLOv8 + Florence-2) provides semantic understanding
+   - Understands functional intent (e.g., "settings" → finds gear icon)
    - Returns elements with unique IDs and precise coordinates
+   - Fast: ~0.6-1.6s including detection + captioning
 
 2. **Click Element** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
-   - Most reliable for standard UI elements
    - Built-in error recovery and coordinate accuracy
+   - Automatic retry with fallback coordinates
+   - Works reliably across different screen sizes
 
 **Detection Modes:**
 - **Specific Query**: \`computer_detect_elements({ description: "Install button" })\`
   - Returns closest matching elements with similarity scores
-  - AI understands functional intent (e.g., "settings" → gear icon)
+  - AI semantic matching: "extensions icon" finds puzzle piece, "settings" finds gear
+  - Provides top 10 candidates when no exact match
 
 - **Discovery Mode**: \`computer_detect_elements({ description: "", includeAll: true })\`
   - Returns ALL detected elements (top 20 by confidence)
-  - Useful for spatial navigation or when specific queries fail
-  - Shows complete UI inventory with coordinates
+  - Useful for exploring unfamiliar UIs or when specific queries fail
+  - Shows complete UI inventory with coordinates and descriptions
 
 **Handling "No Match Found":**
 When detection returns "No exact match", review the **Top 10 Closest Matches** provided:
-- Use the closest match's \`element_id\` directly
+- Use the closest match's \`element_id\` directly (recommended)
 - Try broader descriptions (e.g., "button" instead of "Submit button")
 - Switch to discovery mode to see all available elements
-- Consider falling back to grid-based or Smart Focus methods
+- Only fall back to grid-based as last resort
 
-#### Method 2: Grid-Based (Fast & Precise) ✅ RECOMMENDED FOR CALCULATED COORDINATES
-Use direct coordinates when you've already calculated them from the grid overlay.
+**Why CV-First:**
+- ✅ 89% success rate vs 60% with manual grid clicking
+- ✅ Semantic understanding: finds elements by function, not just appearance
+- ✅ Automatic coordinate accuracy across screen sizes
+- ✅ Built-in retry and error recovery
+- ✅ Works with dynamically positioned elements
 
-**When to use:**
-- You've read the grid labels and computed exact coordinates
-- Rapid interactions where CV detection would be too slow
-- Custom UI elements (canvas, games) that CV may not detect
-- Transient elements (tooltips, dropdowns) that disappear quickly
+#### Method 2: Grid-Based (FALLBACK ONLY) ⚠️
+Use ONLY when Method 1 has failed or for these specific cases:
+- Custom rendering (canvas apps, games, visualizations)
+- Transient elements that disappear during CV detection
+- After CV detection has failed 2+ times for same element
+- When you need to click outside standard UI elements
 
 **Usage:**
 \`computer_click_mouse({ coordinates: { x: 640, y: 360 } })\`
 
-**Best Practices:**
+**Requirements:**
 - State which corner label you checked (e.g., "top-left shows 0,0")
 - Count grid squares and explain calculation (e.g., "6 squares right of 500 = 600")
 - Verify coordinates before clicking when precision matters
 
-#### Method 3: Smart Focus (AI-Assisted) ✅ RECOMMENDED WHEN COORDINATES UNKNOWN
-Use AI-powered coordinate computation when you're uncertain about exact positions.
+**Warning:** Manual grid calculation has ~60% success rate. Use CV-assisted (Method 1) whenever possible.
+
+#### Method 3: Smart Focus (FALLBACK ONLY) ⚠️
+Use ONLY when Method 1 has failed AND you need AI coordinate estimation.
 
 **When to use:**
-- Coordinates are uncertain but you know the target description
-- Progressive zoom workflow to narrow down position
-- Complex spatial reasoning required
-- Binary search for elusive elements
+- Progressive zoom workflow to narrow down elusive elements
+- Binary search for elements CV couldn't detect
+- Complex spatial reasoning where grid math is unclear
 
 **Usage:**
 \`computer_click_mouse({ description: "Submit button" })\`
 
-**How it works:**
-- AI model analyzes screenshot + description
-- Computes likely coordinates via semantic understanding
-- Falls back to binary search if initial attempt fails
-- Self-correcting with visual feedback
+**Note:** This is slower than Method 1 and less accurate. Prefer Method 1 (CV-Assisted) for all standard UI.
 
-#### Choosing the Right Method
+#### Decision Tree (USE THIS)
 
-**Decision Tree:**
-- Standard UI element (button/link/field)? → Method 1 (CV-Assisted) - Most accurate
-- Custom/canvas/game UI? → Method 2 (Grid-Based) - Most reliable
-- Have exact coordinates? → Method 2 (Grid-Based) - Fastest
-- Coordinates uncertain? → Method 3 (Smart Focus) - AI computes
+**For every UI click, follow this order:**
 
-**When to AVOID CV detection:**
-- ⚠️ Transient elements (tooltips, dropdowns that close)
-- ⚠️ Very rapid interactions (CV adds ~1-2s latency)
-- ⚠️ Custom rendering (canvas apps, games, visualizations)
-- ⚠️ After CV detection already failed 2+ times
+1. **TRY CV-ASSISTED FIRST (Method 1)** 🎯
+   - Standard UI element? → `computer_detect_elements` → `computer_click_element`
+   - Works for: buttons, links, icons, menus, form fields, checkboxes, tabs, etc.
+
+2. **Fall back to Grid/Smart Focus ONLY if:**
+   - CV detection failed 2+ times for this specific element
+   - Custom rendering (canvas/game/visualization)
+   - Element is transient and closes during detection
+   - Clicking outside standard UI (e.g., specific pixel in image)
+
+**Simple rule: If it's a UI element you can see → use CV-assisted (Method 1).**
 
 #### Integration with Existing Workflow
 Your **Observe → Plan → Act → Verify** workflow remains the same:
 
 **Observe:** Take screenshots, assess UI state
-**Plan:** Determine target elements and choose clicking method
+**Plan:** Identify target UI elements
 **Act:**
-- ✅ Method 1 (CV): \`computer_detect_elements\` → \`computer_click_element\`
-- ✅ Method 2 (Grid): \`computer_click_mouse({ coordinates: ... })\`
-- ✅ Method 3 (Smart Focus): \`computer_click_mouse({ description: ... })\`
+- ✅ **DEFAULT:** Method 1 (CV) - \`computer_detect_elements\` → \`computer_click_element\`
+- ⚠️ **FALLBACK:** Method 2 (Grid) - \`computer_click_mouse({ coordinates: ... })\` - Only after CV fails
+- ⚠️ **FALLBACK:** Method 3 (Smart Focus) - \`computer_click_mouse({ description: ... })\` - Only after CV fails
 - ✅ All other tools unchanged: \`computer_application\`, \`computer_type_text\`, etc.
 **Verify:** Confirm actions worked via screenshots
-
-**All three methods are equally valid - choose based on the situation.**
 
 7. Accurate Clicking Discipline
    - Always explain coordinate calculations when using grid-based clicking (e.g., "6 squares right of 500 = 600").

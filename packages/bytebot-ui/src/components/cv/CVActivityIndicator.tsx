@@ -160,7 +160,28 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;
   const hasDeviceInfo = activity?.omniparserDevice !== undefined;
   const hasModelInfo = activity?.omniparserModels !== undefined;
-  const shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo);
+
+  // For inline mode (chat panel), only show if there's actual CV activity happening
+  // Don't show just because device info exists
+  let shouldShow = false;
+  if (inline) {
+    // Show inline status bar only when:
+    // 1. There are active methods running now, OR
+    // 2. There are recent detections/clicks (within last 5 minutes to show persistent activity)
+    const hasActiveWork = activity && activity.totalActiveCount > 0;
+    const latestDetection = detectionData?.recentDetections?.[0];
+    const latestClick = detectionData?.recentClicks?.[0];
+
+    const hasRecentDetection = latestDetection &&
+      (Date.now() - new Date(latestDetection.timestamp).getTime()) < 300000; // 5 minutes
+    const hasRecentClick = latestClick &&
+      (Date.now() - new Date(latestClick.timestamp).getTime()) < 300000; // 5 minutes
+
+    shouldShow = hasActiveWork || hasRecentDetection || hasRecentClick;
+  } else {
+    // For status card (top), show if any activity or device info
+    shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo);
+  }
 
   if (!shouldShow) {
     return null;
@@ -392,7 +413,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
       {activity.performance.totalMethodsExecuted > 0 && (
         <div className="mt-1.5 pt-1.5 border-t border-border">
-          <div className="grid grid-cols-4 gap-1 text-[9px]">
+          <div className="grid grid-cols-3 gap-1 text-[9px]">
             <div>
               <div className="text-muted-foreground">Avg</div>
               <div className="font-medium">
@@ -409,12 +430,6 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               <div className="text-muted-foreground">Success</div>
               <div className="font-medium">
                 {Math.round(activity.performance.successRate * 100)}%
-              </div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">Compute</div>
-              <div className={cn("font-medium text-[9px]", hasOmniParser ? deviceBadge.color : "")}>
-                {hasOmniParser ? `${deviceBadge.icon} ${deviceBadge.label}` : "—"}
               </div>
             </div>
           </div>

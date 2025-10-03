@@ -76,7 +76,7 @@ const computerDetectElementsJsonSchema = {
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    'Detect UI elements in the current screenshot using computer vision techniques including OCR, template matching, and edge detection. This is the preferred method for finding clickable elements instead of manual coordinate targeting.',
+    'Detect UI elements in the current screenshot using OmniParser AI (YOLOv8 + Florence-2) for semantic understanding and Tesseract.js OCR for text extraction. This is the preferred method for finding clickable elements instead of manual coordinate targeting.',
   input_schema: computerDetectElementsJsonSchema,
 };
 

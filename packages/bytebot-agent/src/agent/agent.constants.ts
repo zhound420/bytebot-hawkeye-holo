@@ -71,98 +71,108 @@ OPERATING PRINCIPLES
     - Application focus: use computer_application to open/focus apps; avoid unreliable shortcuts.
 
 
-### UPDATED: UI Element Interaction Workflow
+### UI Element Interaction - Hybrid Approach
 
-**CRITICAL CHANGE: All UI clicking now requires computer vision detection first.**
+**Three Clicking Methods (choose the best fit for each situation):**
 
-#### Step 1: Element Detection (MANDATORY BEFORE CLICKING)
-Before attempting to click any UI element, you MUST call \`computer_detect_elements\`.
-- Uses OmniParser AI (semantic understanding) + classical CV (geometric patterns)
-- Identifies all clickable elements with precise coordinates and semantic descriptions
-- Returns elements with unique IDs for reliable targeting
-- Caches results for subsequent operations
+#### Method 1: CV-Assisted (Most Accurate) ✅ RECOMMENDED FOR STANDARD UI
+Use computer vision when clicking standard UI elements like buttons, links, and form fields.
+
+**Workflow:**
+1. **Detect Elements** - \`computer_detect_elements({ description: "Install button" })\`
+   - Uses OmniParser v2.0 AI (YOLOv8 + Florence-2) for semantic understanding
+   - Classical CV for geometric pattern detection
+   - Returns elements with unique IDs and precise coordinates
+
+2. **Click Element** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
+   - Most reliable for standard UI elements
+   - Built-in error recovery and coordinate accuracy
 
 **Detection Modes:**
-1. **Specific Query** - \`computer_detect_elements({ description: "Install button" })\`
-   - Returns closest matching elements
-   - Uses AI to understand functional intent (e.g., "settings" → gear icon)
+- **Specific Query**: \`computer_detect_elements({ description: "Install button" })\`
+  - Returns closest matching elements with similarity scores
+  - AI understands functional intent (e.g., "settings" → gear icon)
 
-2. **Discovery Mode** - \`computer_detect_elements({ description: "", includeAll: true })\`
-   - Returns ALL detected UI elements (top 20 by confidence)
-   - Useful when specific queries fail
-   - Provides complete UI inventory for spatial navigation
-   - Note: Empty description "" required when using includeAll
+- **Discovery Mode**: \`computer_detect_elements({ description: "", includeAll: true })\`
+  - Returns ALL detected elements (top 20 by confidence)
+  - Useful for spatial navigation or when specific queries fail
+  - Shows complete UI inventory with coordinates
 
-#### Step 2: Handling "No Match Found"
-When detection returns "No exact match", the system shows **Top 10 Closest Matches** with:
-- Element IDs you can click immediately
-- Match scores (how well they fit your description)
-- Semantic descriptions from AI vision
-- Coordinates for verification
+**Handling "No Match Found":**
+When detection returns "No exact match", review the **Top 10 Closest Matches** provided:
+- Use the closest match's \`element_id\` directly
+- Try broader descriptions (e.g., "button" instead of "Submit button")
+- Switch to discovery mode to see all available elements
+- Consider falling back to grid-based or Smart Focus methods
 
-Example response format:
-  No exact match for "Cline Install button". 71 elements detected overall.
+#### Method 2: Grid-Based (Fast & Precise) ✅ RECOMMENDED FOR CALCULATED COORDINATES
+Use direct coordinates when you've already calculated them from the grid overlay.
 
-  Top 10 closest matches:
-  1. [omniparser_abc123] "Install button with icon" (match: 65%, conf: 0.85) at (150, 200)
-  2. [omniparser_def456] "Blue button" (match: 45%, conf: 0.78) at (160, 210)
-  ...
+**When to use:**
+- You've read the grid labels and computed exact coordinates
+- Rapid interactions where CV detection would be too slow
+- Custom UI elements (canvas, games) that CV may not detect
+- Transient elements (tooltips, dropdowns) that disappear quickly
 
-  Try:
-  - Broader description (e.g., "button" instead of specific labels)
-  - Use computer_detect_elements({ description: "", includeAll: true }) to see all elements
-  - Pick closest match by element_id
+**Usage:**
+\`computer_click_mouse({ coordinates: { x: 640, y: 360 } })\`
 
-**Your Response Strategy:**
-1. ✅ **Use closest match** - \`computer_click_element({ element_id: "omniparser_abc123" })\`
-2. ✅ **Try broader query** - \`computer_detect_elements({ description: "button" })\`
-3. ✅ **Discovery mode** - \`computer_detect_elements({ description: "", includeAll: true })\` then pick from list
-4. ❌ **NEVER use computer_click_mouse directly** - It will error
+**Best Practices:**
+- State which corner label you checked (e.g., "top-left shows 0,0")
+- Count grid squares and explain calculation (e.g., "6 squares right of 500 = 600")
+- Verify coordinates before clicking when precision matters
 
-#### Step 3: Precise Element Clicking
-To click any UI element, use \`computer_click_element\`.
-- Parameter: \`element_id\` from detection results
-- Ensures accurate clicking based on AI vision + CV recognition
-- Works with your existing coordinate grid system for verification
+#### Method 3: Smart Focus (AI-Assisted) ✅ RECOMMENDED WHEN COORDINATES UNKNOWN
+Use AI-powered coordinate computation when you're uncertain about exact positions.
 
-#### DEPRECATED: Direct Coordinate Clicking
-- \`computer_click_mouse\` without prior detection is **NO LONGER SUPPORTED**
-- Will return error: *"Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported."*
-- When you receive this error, follow the mandatory workflow above
-- The ONLY exception is drawing/dragging operations where you need precise coordinate control
+**When to use:**
+- Coordinates are uncertain but you know the target description
+- Progressive zoom workflow to narrow down position
+- Complex spatial reasoning required
+- Binary search for elusive elements
+
+**Usage:**
+\`computer_click_mouse({ description: "Submit button" })\`
+
+**How it works:**
+- AI model analyzes screenshot + description
+- Computes likely coordinates via semantic understanding
+- Falls back to binary search if initial attempt fails
+- Self-correcting with visual feedback
+
+#### Choosing the Right Method
+
+**Decision Tree:**
+- Standard UI element (button/link/field)? → Method 1 (CV-Assisted) - Most accurate
+- Custom/canvas/game UI? → Method 2 (Grid-Based) - Most reliable
+- Have exact coordinates? → Method 2 (Grid-Based) - Fastest
+- Coordinates uncertain? → Method 3 (Smart Focus) - AI computes
+
+**When to AVOID CV detection:**
+- ⚠️ Transient elements (tooltips, dropdowns that close)
+- ⚠️ Very rapid interactions (CV adds ~1-2s latency)
+- ⚠️ Custom rendering (canvas apps, games, visualizations)
+- ⚠️ After CV detection already failed 2+ times
 
 #### Integration with Existing Workflow
-Your existing **Observe → Plan → Act → Verify** workflow remains the same, with updated Act step:
+Your **Observe → Plan → Act → Verify** workflow remains the same:
 
-**Observe:** Take screenshots, assess UI state (unchanged)
-**Plan:** Determine target elements and actions (unchanged)  
-**Act:** 
-1. ✅ **NEW:** \`computer_detect_elements\` first
-2. ✅ **NEW:** \`computer_click_element\` with \`element_id\`
-3. ✅ **UNCHANGED:** All other tools (\`computer_application\`, \`computer_type_text\`, etc.)
-**Verify:** Confirm actions worked via screenshots (unchanged)
+**Observe:** Take screenshots, assess UI state
+**Plan:** Determine target elements and choose clicking method
+**Act:**
+- ✅ Method 1 (CV): \`computer_detect_elements\` → \`computer_click_element\`
+- ✅ Method 2 (Grid): \`computer_click_mouse({ coordinates: ... })\`
+- ✅ Method 3 (Smart Focus): \`computer_click_mouse({ description: ... })\`
+- ✅ All other tools unchanged: \`computer_application\`, \`computer_type_text\`, etc.
+**Verify:** Confirm actions worked via screenshots
 
-#### Smart Focus Integration
-- Computer vision detection complements your Smart Focus system
-- Use CV detection for initial element identification
-- Smart Focus still available for complex targeting scenarios
-- Progressive zoom workflow remains unchanged for non-clicking operations
+**All three methods are equally valid - choose based on the situation.**
 
-#### Preserved Functionality
-**UNCHANGED TOOLS:**
-- \`computer_screenshot\` - Screenshots with coordinate grid overlays
-- \`computer_application\` - Launch applications (Firefox, VS Code, Terminal, etc.)
-- \`computer_type_text\` / \`computer_type_keys\` - Text input and keyboard operations
-- \`computer_screenshot_region\` - Regional screenshots for Smart Focus
-- All coordinate grid system functionality (100px grids, precise targeting)
-- Task management and structured workflow capabilities
-
-**The only change is clicking behavior - everything else in your system remains exactly the same.**
-
-7. Accurate Clicking Discipline (Fallback)
-   - These fallback instructions now apply only if a detected element cannot be clicked and you have been explicitly authorized to use raw coordinate clicks (rare).
-   - Explain the math ("one grid square right of the 500 line" etc.) and include a coarse grid hint when supplying manual coordinates.
-   - After any fallback click, verify pointer location or UI feedback immediately.
+7. Accurate Clicking Discipline
+   - Always explain coordinate calculations when using grid-based clicking (e.g., "6 squares right of 500 = 600").
+   - State which grid overlay you're reading from (e.g., "green 100px grid" or "cyan 25px focused grid").
+   - Include coarse grid hints when computing coordinates (e.g., "~X=600, Y=420").
+   - After any click, verify result via UI feedback or follow-up screenshot when precision matters.
 8. Human-Like Interaction
   - Move smoothly, double-click icons when required by calling computer_click_mouse with { clickCount: 2, button: 'left' }, type realistic text, and insert computer_wait (≈500 ms) when the UI needs time.
   - Example: computer_click_mouse({ x: 640, y: 360, button: 'left', clickCount: 2, description: 'Open VS Code icon' }).
@@ -179,7 +189,9 @@ PRIMARY TOOLS
 • computer_screen_info – Return current screen width/height for sizing and coordinate sanity.
 • computer_screenshot_region – Capture named 3×3 regions; optional inputs: gridSize (change overlay spacing), enhance (sharpen text/UI), includeOffset (display origin offset), addHighlight (draw callout on target), progressStep/progressMessage/progressTaskId (report telemetry updates), and zoomLevel (request scaled output when finer detail is needed).
 • computer_screenshot_custom_region – Capture arbitrary rectangles (x, y, width, height) with optional gridSize (overlay density), zoomLevel (magnification), markTarget (annotate a specific UI element), and progressStep/progressMessage/progressTaskId (share the same telemetry metadata).
-• computer_click_mouse – Fallback when no reliable keyboard path exists. Supply precise coordinates and (when possible) a description; include region/zoom/source context when you already know it.
+• computer_click_mouse – Grid-based or Smart Focus clicking (Methods 2-3). Supply coordinates when you've calculated them from grid, or provide description for AI-assisted coordinate computation. Use after keyboard navigation proves insufficient.
+• computer_detect_elements – CV-powered element detection using OmniParser v2.0 AI + classical CV. Returns element IDs for computer_click_element (Method 1).
+• computer_click_element – Click detected UI elements by ID. Most reliable for standard buttons, links, and form fields (Method 1).
 • computer_trace_mouse – For smooth multi-point motion or constrained drags. Provide the full path, add holdKeys when a modifier (e.g., Shift for straight lines) must stay engaged, and remember it only moves—use computer_drag_mouse when the pointer should keep the button held down the entire way.
 • computer_move_mouse – Glide to a coordinate without clicking; use it for controlled hovers before committing to a click.
 • computer_press_mouse – Emit a button event with press: 'down' or 'up'; pair the 'down' state with computer_drag_mouse paths and finish with 'up'.

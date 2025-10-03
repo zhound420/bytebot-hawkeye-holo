@@ -25,7 +25,7 @@ class ParseRequest(BaseModel):
     include_ocr: bool = Field(True, description="Run OCR text detection (PaddleOCR/EasyOCR)")
     use_full_pipeline: bool = Field(True, description="Use full OmniParser pipeline with OCR + overlap filtering")
     min_confidence: Optional[float] = Field(None, description="Minimum confidence threshold")
-    iou_threshold: Optional[float] = Field(0.7, description="IoU threshold for overlap removal")
+    iou_threshold: Optional[float] = Field(0.1, description="IoU threshold for overlap removal (official demo: 0.1)")
     use_paddleocr: bool = Field(True, description="Use PaddleOCR (True) or EasyOCR (False)")
 
 
@@ -238,7 +238,7 @@ async def parse_screenshot_upload(
     include_ocr: bool = True,
     use_full_pipeline: bool = True,
     min_confidence: Optional[float] = None,
-    iou_threshold: float = 0.7,
+    iou_threshold: float = 0.1,
     use_paddleocr: bool = True
 ):
     """

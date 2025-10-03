@@ -36,7 +36,8 @@ export type ActionSource =
   | "manual"
   | "smart_focus"
   | "progressive_zoom"
-  | "binary_search";
+  | "binary_search"
+  | "cv_detection";
 
 export type ClickContext = {
   region?: { x: number; y: number; width: number; height: number };

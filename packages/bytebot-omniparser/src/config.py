@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     # Device settings (auto = auto-detect, cuda = NVIDIA, mps = Apple Silicon, cpu = CPU)
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
 
-    # Detection settings
-    min_confidence: float = 0.3
+    # Detection settings (aligned with official OmniParser demo defaults)
+    min_confidence: float = 0.05  # Official demo default: 0.05 (was 0.3 - too high!)
     max_detections: int = 100
 
     # Performance settings

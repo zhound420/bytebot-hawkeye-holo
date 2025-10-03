@@ -640,12 +640,6 @@ type ClickMouseResponse = {
 async function performClick(
   input: ClickInput,
 ): Promise<{ coordinates?: Coordinates; context?: ClickContext } | null> {
-  if (!input.element_id) {
-    throw new Error(
-      'Must use computer_detect_elements first to identify clickable elements, then computer_click_element with the detected element ID. Description-only clicks are no longer supported.',
-    );
-  }
-
   const { element_id: _elementId, ...clickPayload } = input;
   const { coordinates, description } = clickPayload;
   const normalizedClickCount =
@@ -661,7 +655,36 @@ async function performClick(
         }
       : undefined);
 
-  if (coordinates) {
+  // Hybrid Approach: Three methods in order of preference
+  // 1. CV-Assisted (element_id) - Most accurate for standard UI elements
+  // 2. Grid-Based (coordinates) - Fast and precise for calculated positions
+  // 3. Smart Focus (description) - AI-assisted when coordinates unknown
+
+  // Method 1: CV-Assisted Click (preferred when element_id available)
+  if (input.element_id) {
+    console.log(
+      `[Click] Using CV detection with element_id: ${input.element_id}`,
+    );
+    // CV detection logic will be handled by the element detection system
+    // For now, this path indicates CV was used
+    if (coordinates) {
+      await clickMouse({
+        ...clickPayload,
+        clickCount: normalizedClickCount,
+        context: { ...baseContext, source: 'cv_detection' as const },
+      });
+      return {
+        coordinates,
+        context: { ...baseContext, source: 'cv_detection' as const },
+      };
+    }
+  }
+
+  // Method 2: Grid-Based Click (direct coordinates)
+  if (coordinates && typeof coordinates.x === 'number' && typeof coordinates.y === 'number') {
+    console.log(
+      `[Click] Using grid-based coordinates: (${coordinates.x}, ${coordinates.y})`,
+    );
     await clickMouse({
       ...clickPayload,
       clickCount: normalizedClickCount,
@@ -670,16 +693,19 @@ async function performClick(
     return { coordinates, context: baseContext };
   }
 
+  // Method 3: Smart Focus (AI-assisted coordinate computation from description)
   const trimmedDescription = description?.trim();
-  const requireDesc = process.env.BYTEBOT_REQUIRE_CLICK_DESCRIPTION !== 'false';
-  if (!trimmedDescription && !coordinates && requireDesc) {
-    throw new Error(
-      'Click rejected: provide coordinates or a short target description to enable Smart Focus.',
-    );
-  }
-  if (!trimmedDescription && !coordinates) {
+
+  if (!trimmedDescription) {
+    // No element_id, coordinates, or description provided
+    const requireDesc = process.env.BYTEBOT_REQUIRE_CLICK_DESCRIPTION !== 'false';
+    if (requireDesc) {
+      throw new Error(
+        'Click requires one of: element_id (from computer_detect_elements), coordinates (from grid), or description (for Smart Focus).',
+      );
+    }
     console.warn(
-      '[SmartFocus] No coordinates or description provided; proceeding with direct click at current cursor position.',
+      '[Click] No element_id, coordinates, or description provided; clicking at current cursor position.',
     );
     await clickMouse({
       ...clickPayload,
@@ -688,6 +714,10 @@ async function performClick(
     });
     return null;
   }
+
+  console.log(
+    `[Click] Using Smart Focus with description: "${trimmedDescription}"`,
+  );
 
   const helper = getSmartClickHelper();
 

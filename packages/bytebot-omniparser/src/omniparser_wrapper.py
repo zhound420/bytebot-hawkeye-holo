@@ -282,7 +282,7 @@ class OmniParserV2:
         include_som: bool = True,
         include_ocr: bool = True,
         conf_threshold: Optional[float] = None,
-        iou_threshold: float = 0.7,
+        iou_threshold: float = 0.1,
         use_paddleocr: bool = True
     ) -> Dict[str, Any]:
         """
@@ -303,7 +303,7 @@ class OmniParserV2:
             include_som: Whether to generate Set-of-Mark annotated image
             include_ocr: Whether to run OCR text detection
             conf_threshold: Detection confidence threshold
-            iou_threshold: IoU threshold for overlap removal (default: 0.7)
+            iou_threshold: IoU threshold for overlap removal (default: 0.1, official demo value)
             use_paddleocr: Use PaddleOCR (True) or EasyOCR (False)
 
         Returns:

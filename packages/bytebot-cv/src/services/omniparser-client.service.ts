@@ -203,15 +203,15 @@ export class OmniParserClientService {
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
 
-      // Create request body
+      // Create request body (using official OmniParser demo defaults)
       const requestBody = {
         image: base64Image,
         include_captions: options.includeCaptions ?? true,
         include_som: options.includeSom ?? true,
         include_ocr: options.includeOcr ?? true,
         use_full_pipeline: options.useFullPipeline ?? true,
-        min_confidence: options.minConfidence ?? 0.3,
-        iou_threshold: options.iouThreshold ?? 0.7,
+        min_confidence: options.minConfidence ?? 0.05, // Official demo default (was 0.3)
+        iou_threshold: options.iouThreshold ?? 0.1, // Official demo default (was 0.7)
         use_paddleocr: options.usePaddleOcr ?? true,
       };
 

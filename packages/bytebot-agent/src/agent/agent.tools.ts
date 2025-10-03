@@ -72,20 +72,20 @@ export const _traceMouseTool = {
 export const _clickMouseTool = {
   name: 'computer_click_mouse',
   description:
-    'Performs a mouse click. Prefer keyboard navigation/shortcuts first; use clicking as a fallback. When clicking, either: (1) provide precise coordinates (use grid/zoom), or (2) include a short target description (e.g., "Submit button") to enable Smart Focus. Clicks without coordinates or description are rejected by default.',
+    'Performs a mouse click using grid-based coordinates or Smart Focus AI. This is one of three clicking methods: (1) CV-assisted via computer_detect_elements + computer_click_element [most accurate for standard UI], (2) Grid-based with precise coordinates [fast and reliable], or (3) Smart Focus with description [AI-computed coordinates]. Provide either coordinates (from grid calculation) or description (for Smart Focus). Prefer keyboard navigation/shortcuts when possible.',
   input_schema: {
     type: 'object' as const,
     properties: {
       coordinates: {
         ...coordinateSchema,
         description:
-          'Click coordinates in pixels. When grid overlay is present, use grid lines and labels to calculate precise coordinates (e.g., intersection at 400,300). Defaults to current position if not specified.',
+          'Click coordinates in pixels (Method 2: Grid-Based). Read grid overlay labels and count squares to calculate precise position (e.g., "6 squares right of 500 = 600"). Use when you have exact coordinates or need fast clicking. Omit to use Smart Focus instead.',
         nullable: true,
       },
       description: {
         type: 'string' as const,
         description:
-          'Short description of the intended target (e.g., "Submit button"). REQUIRED if coordinates are omitted; used by Smart Focus to compute exact coordinates. Keep it 3–6 words. Include optional coarse grid hint like "~X=600,Y=420".',
+          'Short description of target element (Method 3: Smart Focus). AI computes coordinates from description (e.g., "Submit button"). Use when coordinates are uncertain. Keep it 3–6 words. Can include optional grid hint like "~X=600,Y=420". Omit if providing exact coordinates.',
         minLength: 1,
         nullable: true,
       },

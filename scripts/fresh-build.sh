@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Colors for output
@@ -13,10 +13,38 @@ echo -e "${BLUE}   Bytebot Hawkeye - Fresh Build${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
-# Detect platform
+# Detect platform with enhanced Windows/WSL support
 ARCH=$(uname -m)
 OS=$(uname -s)
-echo -e "${BLUE}Platform: $OS $ARCH${NC}"
+
+# Detect if running on Windows WSL
+IS_WSL=false
+if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+    IS_WSL=true
+    OS="WSL"
+fi
+
+# Normalize OS name
+case "$OS" in
+    Linux*)
+        if [ "$IS_WSL" = true ]; then
+            PLATFORM="Windows (WSL)"
+        else
+            PLATFORM="Linux"
+        fi
+        ;;
+    Darwin*)
+        PLATFORM="macOS"
+        ;;
+    CYGWIN*|MINGW*|MSYS*)
+        PLATFORM="Windows (Git Bash)"
+        ;;
+    *)
+        PLATFORM="$OS"
+        ;;
+esac
+
+echo -e "${BLUE}Platform: $PLATFORM ($ARCH)${NC}"
 echo ""
 
 # Stop any running services
@@ -83,9 +111,9 @@ else
 fi
 echo ""
 
-# Start OmniParser for Apple Silicon
-if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
-    echo -e "${BLUE}Step 6: Starting native OmniParser (Apple Silicon)...${NC}"
+# Start OmniParser for Apple Silicon (native with MPS GPU)
+if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
+    echo -e "${BLUE}Step 6: Starting native OmniParser (Apple Silicon with MPS GPU)...${NC}"
     if [ -f "scripts/start-omniparser.sh" ]; then
         ./scripts/start-omniparser.sh
         echo ""
@@ -94,12 +122,18 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
         # Verify OmniParser is running
         if curl -s http://localhost:9989/health > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ OmniParser running on port 9989${NC}"
+            echo -e "${GREEN}✓ OmniParser running natively on port 9989${NC}"
         else
             echo -e "${YELLOW}⚠ OmniParser may not be ready yet${NC}"
         fi
     else
         echo -e "${YELLOW}⚠ OmniParser start script not found${NC}"
+    fi
+    echo ""
+else
+    echo -e "${BLUE}Step 6: OmniParser will run in Docker container${NC}"
+    if [[ "$PLATFORM" == "Windows (WSL)" ]] || [[ "$PLATFORM" == "Linux" ]]; then
+        echo -e "${BLUE}(CUDA GPU acceleration if available)${NC}"
     fi
     echo ""
 fi
@@ -119,10 +153,13 @@ else
     echo -e "${BLUE}Using: Standard Stack${NC}"
 fi
 
-# Build services based on platform
-if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
-    echo -e "${BLUE}Building for Apple Silicon (without OmniParser container)...${NC}"
-    # Build without OmniParser container (running natively)
+# Build services - now unified across all platforms with x86_64 architecture
+echo -e "${BLUE}Building services (forced x86_64 architecture for consistency)...${NC}"
+
+if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
+    echo -e "${YELLOW}Note: Running via Rosetta 2 on Apple Silicon${NC}"
+    echo -e "${BLUE}Building without OmniParser container (using native)...${NC}"
+    # Build without OmniParser container (running natively with MPS)
     docker compose -f $COMPOSE_FILE build \
         bytebot-desktop \
         bytebot-agent \
@@ -138,7 +175,8 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         postgres \
         $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
 else
-    echo -e "${BLUE}Building for x86_64 (includes OmniParser container)...${NC}"
+    # Linux and Windows (WSL) - build everything including OmniParser
+    echo -e "${BLUE}Building all services including OmniParser...${NC}"
     docker compose -f $COMPOSE_FILE up -d --build
 fi
 
@@ -182,14 +220,19 @@ fi
 
 echo ""
 echo "Services:"
-echo "  • UI:       http://localhost:9992"
-echo "  • Agent:    http://localhost:9991"
-echo "  • Desktop:  http://localhost:9990"
-echo "  • OmniParser: http://localhost:9989"
-
-if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
-    echo "             (native with MPS GPU)"
+echo "  • UI:        http://localhost:9992"
+echo "  • Agent:     http://localhost:9991"
+echo "  • Desktop:   http://localhost:9990"
+if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
+    echo "  • OmniParser: http://localhost:9989 (native with MPS GPU)"
+else
+    echo "  • OmniParser: http://localhost:9989 (Docker, CUDA if available)"
 fi
+
+echo ""
+echo -e "${BLUE}Platform Info:${NC}"
+echo "  • Detected: $PLATFORM ($ARCH)"
+echo "  • Docker:   x86_64 (linux/amd64) via docker-compose.override.yml"
 
 echo ""
 echo "View logs:"

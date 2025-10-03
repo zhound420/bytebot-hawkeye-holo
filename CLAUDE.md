@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🎯 Recent Changes: OpenCV Removed
+
+**OpenCV has been completely removed from the codebase** to reduce complexity and improve maintainability. The system now relies on:
+- **OmniParser** (PRIMARY) - YOLOv8 + Florence-2 for semantic UI detection (89% click accuracy)
+- **Tesseract.js** (FALLBACK) - Pure JavaScript OCR for text extraction
+
+**What was removed:**
+- All OpenCV native bindings and build complexity
+- Template matching, feature detection, contour detection services
+- OpenCV preprocessing pipelines (CLAHE, morphology, filters)
+
+**Benefits:**
+- ✅ Simpler installation (no native bindings to compile)
+- ✅ Smaller package size (~850MB OmniParser models vs multiple GB OpenCV + models)
+- ✅ Better cross-platform compatibility (no C++ compilation issues)
+- ✅ Superior detection accuracy (OmniParser semantic understanding)
+
 ## Important Instruction Reminders
 
 Do what has been asked; nothing more, nothing less.
@@ -17,7 +34,7 @@ Bytebot Hawkeye is a precision-enhanced fork of the open-source AI Desktop Agent
 2. **bytebot-agent-cc** - Claude Code integration variant with `@anthropic-ai/claude-code` SDK
 3. **bytebot-ui** - Next.js frontend with desktop dashboard and task management
 4. **bytebotd** - Desktop daemon providing computer control with enhanced coordinate accuracy
-5. **bytebot-cv** - Computer vision package with OpenCV bindings for element detection
+5. **bytebot-cv** - Computer vision package with OmniParser + Tesseract.js for element detection
 6. **bytebot-omniparser** - Python FastAPI service for semantic UI detection via OmniParser v2.0
 7. **bytebot-llm-proxy** - LiteLLM proxy service for multi-provider model routing
 8. **shared** - Common TypeScript types, utilities, and universal coordinate mappings
@@ -35,19 +52,26 @@ All packages depend on `shared` and must build it first. The build order is:
 This fork adds precision tooling on top of upstream Bytebot:
 - **Smart Focus System**: 3-stage coarse→focus→click workflow with tunable grids
 - **Progressive zoom capture**: Deterministic zoom ladder with coordinate reconciliation
-- **Universal element detection**: CV pipeline with visual pattern detection + OCR enrichment + OmniParser v2.0
+- **Universal element detection**: OmniParser v2.0 (YOLOv8 + Florence-2) + Tesseract.js OCR
 - **Coordinate telemetry**: Accuracy metrics and adaptive calibration
 - **Grid overlay guidance**: Always-on coordinate grids with debug overlays
 
-## Quick Start (Platform-Optimized)
+## Quick Start
 
-**One-command setup that automatically detects your platform and optimizes for best performance:**
+**Simple 3-step setup:**
 
 ```bash
-# 1. Setup (auto-detects Apple Silicon vs x86_64/NVIDIA)
+# 1. Install dependencies
+npm install
+
+# 2. Build packages (shared → bytebot-cv → services)
+cd packages/shared && npm run build
+cd ../bytebot-cv && npm install && npm run build
+
+# 3. Setup OmniParser (auto-detects Apple Silicon vs x86_64/NVIDIA)
 ./scripts/setup-omniparser.sh
 
-# 2. Start stack
+# 4. Start stack
 ./scripts/start-stack.sh
 ```
 
@@ -144,15 +168,11 @@ npm run lint               # ESLint with --fix
 ```bash
 cd packages/bytebot-cv
 
+npm install                # Install dependencies (Tesseract.js, canvas)
 npm run build              # TypeScript compilation
 npm run dev                # Watch mode
-npm run verify             # Check OpenCV capabilities
-npm run patch              # Patch OpenCV bindings
 
-# Note: postinstall automatically runs:
-# - patch-opencv-binding.js
-# - strip-opencv-tracking.js
-# - verify-opencv-capabilities.js
+# Note: OpenCV removed - now uses OmniParser + Tesseract.js only
 ```
 
 ### bytebot-llm-proxy (LiteLLM Proxy)
@@ -248,12 +268,14 @@ OMNIPARSER_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
 
 ### Disabling OmniParser
 
-To disable OmniParser and use only classical CV methods:
+To disable OmniParser (will fall back to Tesseract.js OCR only):
 
 ```bash
 # docker/.env
 BYTEBOT_CV_USE_OMNIPARSER=false
 ```
+
+**Note:** Classical OpenCV-based CV methods (template matching, feature detection, contour detection) have been removed. OmniParser + Tesseract.js provide superior detection accuracy.
 
 ## Database
 
@@ -300,24 +322,22 @@ BYTEBOT_ADAPTIVE_CALIBRATION=true
 
 ## Computer Vision Pipeline
 
-The bytebot-cv package provides five detection methods:
-- **Template Matching** - Multi-scale OpenCV template matching
-- **Feature Detection** - ORB/AKAZE feature-based matching
-- **Contour Detection** - Morphological shape analysis
-- **OCR** - Tesseract.js text extraction with preprocessing
-- **OmniParser** (NEW) - Semantic UI detection via YOLOv8 + Florence-2
+The bytebot-cv package provides two detection methods:
+- **OmniParser** (PRIMARY) - Semantic UI detection via YOLOv8 + Florence-2
+- **OCR** (FALLBACK) - Tesseract.js text extraction
+
+**Note:** OpenCV-based methods (template matching, feature detection, contour detection) have been removed to reduce complexity. OmniParser provides superior semantic understanding with 89% click accuracy.
 
 ### CV Services Architecture
 Core detection services in `packages/bytebot-cv/src/`:
-- `services/enhanced-visual-detector.service.ts` - Multi-method orchestrator (5 methods)
+- `services/enhanced-visual-detector.service.ts` - OmniParser + OCR orchestrator
 - `services/omniparser-client.service.ts` - OmniParser REST client
-- `services/element-detector.service.ts` - Universal element detection
-- `services/visual-pattern-detector.service.ts` - Pattern recognition
-- `services/text-semantic-analyzer.service.ts` - OCR text analysis
 - `services/cv-activity-indicator.service.ts` - Real-time CV activity tracking
-- `detectors/template/template-matcher.service.ts` - Template matching
-- `detectors/feature/feature-matcher.service.ts` - ORB/AKAZE feature detection
-- `detectors/contour/contour-detector.service.ts` - Shape-based detection
+- `services/element-detector.service.ts` - Stub (use OmniParser instead)
+- `services/visual-pattern-detector.service.ts` - Stub (use OmniParser instead)
+- `services/text-semantic-analyzer.service.ts` - OCR text analysis
+- `services/universal-detector.service.ts` - Universal element detection
+- `detectors/ocr/ocr-detector.ts` - Tesseract.js OCR implementation
 
 ### OmniParser Integration
 
@@ -384,7 +404,7 @@ All NestJS packages use Jest:
 - Node.js ≥20.0.0 required for all packages (Python 3.12 for bytebot-omniparser)
 - TypeScript strict mode enabled
 - Monorepo structure requires building shared package first
-- OpenCV capabilities checked at startup with compatibility matrix
+- **OpenCV removed** - system now uses OmniParser (primary) + Tesseract.js (fallback)
 - Universal coordinates stored in `config/universal-coordinates.yaml`
 - Desktop accuracy metrics available at `/desktop` UI route
 - OmniParser requires 8-10GB VRAM (NVIDIA GPU, Apple Silicon M1-M4, or CPU fallback)

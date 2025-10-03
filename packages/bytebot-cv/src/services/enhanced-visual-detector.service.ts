@@ -1,34 +1,12 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { TemplateMatcherService } from '../detectors/template/template-matcher.service';
-import { FeatureMatcherService } from '../detectors/feature/feature-matcher.service';
-import { ContourDetectorService } from '../detectors/contour/contour-detector.service';
 import { OCRDetector } from '../detectors/ocr/ocr-detector';
 import { CVActivityIndicatorService } from './cv-activity-indicator.service';
 import { OmniParserClientService } from './omniparser-client.service';
-import { getOpenCvModule, hasOpenCv } from '../utils/opencv-loader';
 import { DetectedElement, BoundingBox } from '../types';
 
-const cv = getOpenCvModule();
-
 export interface EnhancedDetectionOptions {
-  useTemplateMatching?: boolean;
-  useFeatureMatching?: boolean;
-  useContourDetection?: boolean;
   useOCR?: boolean;
   useOmniParser?: boolean;
-
-  // Template matching options
-  templateThreshold?: number;
-  scaleFactors?: number[];
-
-  // Feature matching options
-  featureDetector?: 'ORB' | 'AKAZE';
-  maxFeatures?: number;
-
-  // Contour detection options
-  minArea?: number;
-  maxArea?: number;
-  shapeTypes?: ('rectangle' | 'circle' | 'triangle' | 'polygon')[];
 
   // OCR options
   ocrRegion?: BoundingBox;
@@ -48,9 +26,6 @@ export interface EnhancedDetectionResult {
   methodsUsed: string[];
   performance: {
     totalTime: number;
-    templateMatchingTime?: number;
-    featureMatchingTime?: number;
-    contourDetectionTime?: number;
     ocrTime?: number;
     omniParserTime?: number;
   };
@@ -63,14 +38,11 @@ export class EnhancedVisualDetectorService {
   private readonly ocrDetector: OCRDetector;
 
   constructor(
-    private readonly templateMatcher: TemplateMatcherService,
-    private readonly featureMatcher: FeatureMatcherService,
-    private readonly contourDetector: ContourDetectorService,
     private readonly cvActivity: CVActivityIndicatorService,
     @Optional() private readonly omniParserClient?: OmniParserClientService,
   ) {
     this.ocrDetector = new OCRDetector();
-    this.logger.log('Enhanced Visual Detector Service initialized');
+    this.logger.log('Enhanced Visual Detector Service initialized (OmniParser + OCR only)');
 
     if (this.omniParserClient) {
       this.omniParserClient.isAvailable().then((available) => {
@@ -84,16 +56,15 @@ export class EnhancedVisualDetectorService {
   }
 
   /**
-   * Comprehensive UI element detection using multiple CV methods
-   * OmniParser (semantic) is primary, classical CV provides geometric fallback
+   * UI element detection using OmniParser (semantic) and OCR (text)
    */
   async detectElements(
-    screenshot: any,
-    template: any | Buffer,
+    screenshotBuffer: Buffer,
+    _template: any,
     options: EnhancedDetectionOptions = {}
   ): Promise<EnhancedDetectionResult> {
-    if (!hasOpenCv || !screenshot) {
-      this.logger.warn('Enhanced detection unavailable: missing OpenCV or screenshot');
+    if (!screenshotBuffer) {
+      this.logger.warn('Enhanced detection unavailable: missing screenshot buffer');
       return this.createEmptyResult();
     }
 
@@ -106,9 +77,6 @@ export class EnhancedVisualDetectorService {
     const omniParserAvailable = await this.omniParserClient?.isAvailable() ?? false;
 
     const {
-      useTemplateMatching = true,
-      useFeatureMatching = true,
-      useContourDetection = true,
       useOCR = false, // OCR is expensive, use as fallback only
       useOmniParser = omniParserAvailable, // Default to enabled when service is healthy
       confidenceThreshold = 0.6,
@@ -117,13 +85,12 @@ export class EnhancedVisualDetectorService {
     } = options;
 
     try {
-      // PRIORITY 1: OmniParser (Semantic UI Detection - PRIMARY METHOD)
-      // Run in parallel with OCR since both are slow and I/O-bound
+      // Run OmniParser and OCR in parallel since both are I/O-bound
       const [omniParserResults, ocrResults] = await Promise.all([
         useOmniParser && this.omniParserClient
           ? (async () => {
               const omniParserStart = Date.now();
-              const results = await this.runOmniParserDetection(screenshot, options);
+              const results = await this.runOmniParserDetection(screenshotBuffer, options);
               performance.omniParserTime = Date.now() - omniParserStart;
               return results;
             })()
@@ -131,7 +98,7 @@ export class EnhancedVisualDetectorService {
         useOCR
           ? (async () => {
               const ocrStart = Date.now();
-              const results = await this.runOCRDetection(screenshot, options);
+              const results = await this.runOCRDetection(screenshotBuffer, options);
               performance.ocrTime = Date.now() - ocrStart;
               return results;
             })()
@@ -141,54 +108,12 @@ export class EnhancedVisualDetectorService {
       if (omniParserResults.length > 0) {
         methodsUsed.push('omniparser');
         allElements.push(...omniParserResults);
-        this.logger.debug(`OmniParser (primary) detected ${omniParserResults.length} semantic elements`);
+        this.logger.debug(`OmniParser detected ${omniParserResults.length} semantic elements`);
       }
 
       if (ocrResults.length > 0) {
         methodsUsed.push('ocr');
         allElements.push(...ocrResults);
-      }
-
-      // PRIORITY 2: Classical CV methods (geometric fallback)
-      // Only run if OmniParser found nothing or explicitly requested
-      const needsClassicalCV = omniParserResults.length === 0 || template;
-
-      if (needsClassicalCV) {
-        // Contour Detection (fast, geometric patterns)
-        if (useContourDetection) {
-          const contourStart = Date.now();
-          const contourResults = await this.runContourDetection(screenshot, options);
-          performance.contourDetectionTime = Date.now() - contourStart;
-
-          if (contourResults.length > 0) {
-            methodsUsed.push('contour-detection');
-            allElements.push(...this.convertContourToDetectedElements(contourResults));
-          }
-        }
-
-        // Template Matching (when template provided)
-        if (useTemplateMatching && template) {
-          const templateStart = Date.now();
-          const templateResults = await this.runTemplateMatching(screenshot, template, options);
-          performance.templateMatchingTime = Date.now() - templateStart;
-
-          if (templateResults.length > 0) {
-            methodsUsed.push('template-matching');
-            allElements.push(...this.convertToDetectedElements(templateResults, 'template-matching'));
-          }
-        }
-
-        // Feature Matching (when template provided)
-        if (useFeatureMatching && template) {
-          const featureStart = Date.now();
-          const featureResults = await this.runFeatureMatching(screenshot, template, options);
-          performance.featureMatchingTime = Date.now() - featureStart;
-
-          if (featureResults.length > 0) {
-            methodsUsed.push('feature-matching');
-            allElements.push(...this.convertToDetectedElements(featureResults, 'feature-matching'));
-          }
-        }
       }
 
       // Process results
@@ -221,17 +146,14 @@ export class EnhancedVisualDetectorService {
   }
 
   /**
-   * Quick UI element detection using the most reliable methods
+   * Quick UI element detection using OmniParser only
    * Optimized for speed over comprehensiveness
    */
   async quickDetectElements(
-    screenshot: any,
+    screenshotBuffer: Buffer,
     options: Partial<EnhancedDetectionOptions> = {}
   ): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshot, null, {
-      useTemplateMatching: false,
-      useFeatureMatching: false,
-      useContourDetection: true,
+    return this.detectElements(screenshotBuffer, null, {
       useOCR: false,
       maxResults: 10,
       ...options
@@ -239,98 +161,20 @@ export class EnhancedVisualDetectorService {
   }
 
   /**
-   * Specialized button detection using optimal methods
-   * Prioritizes OmniParser for semantic understanding (e.g., "settings button")
+   * Specialized button detection using OmniParser for semantic understanding
    */
-  async detectButtons(screenshot: any): Promise<EnhancedDetectionResult> {
-    // OmniParser is now primary method, it will automatically detect buttons semantically
-    // Contour detection provides geometric fallback for visual patterns
-    return this.detectElements(screenshot, null, {
-      // OmniParser defaults to enabled and is primary
-      // Contour provides geometric fallback
-      useContourDetection: true,
-      minArea: 100,
-      maxArea: 10000,
-      shapeTypes: ['rectangle', 'circle'] as ('rectangle' | 'circle' | 'triangle' | 'polygon')[]
+  async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
+    return this.detectElements(screenshotBuffer, null, {
+      useOmniParser: true,
+      useOCR: false,
     });
   }
 
-  private async runTemplateMatching(screenshot: any, template: any, options: EnhancedDetectionOptions) {
-    return this.cvActivity.executeWithTracking(
-      'template-matching',
-      async () => {
-        const templateMat = Buffer.isBuffer(template)
-          ? cv.imdecode(template)
-          : template;
-
-        return await this.templateMatcher.findMatches(screenshot, templateMat, {
-          threshold: options.templateThreshold || 0.8,
-          scaleFactors: options.scaleFactors || [1.0, 0.8, 1.2],
-          maxMatches: 10
-        });
-      },
-      {
-        threshold: options.templateThreshold || 0.8,
-        scaleFactors: options.scaleFactors || [1.0, 0.8, 1.2]
-      }
-    ).catch(error => {
-      this.logger.warn('Template matching failed:', error.message);
-      return [];
-    });
-  }
-
-  private async runFeatureMatching(screenshot: any, template: any, options: EnhancedDetectionOptions) {
-    return this.cvActivity.executeWithTracking(
-      'feature-matching',
-      async () => {
-        const templateMat = Buffer.isBuffer(template)
-          ? cv.imdecode(template)
-          : template;
-
-        return await this.featureMatcher.findFeatureMatches(screenshot, templateMat, {
-          detector: options.featureDetector || 'ORB',
-          maxFeatures: options.maxFeatures || 1000,
-          matchThreshold: 0.75
-        });
-      },
-      {
-        detector: options.featureDetector || 'ORB',
-        maxFeatures: options.maxFeatures || 1000
-      }
-    ).catch(error => {
-      this.logger.warn('Feature matching failed:', error.message);
-      return [];
-    });
-  }
-
-  private async runContourDetection(screenshot: any, options: EnhancedDetectionOptions) {
-    return this.cvActivity.executeWithTracking(
-      'contour-detection',
-      async () => {
-        return await this.contourDetector.findElementsByShape(screenshot, {
-          minArea: options.minArea || 100,
-          maxArea: options.maxArea || 50000,
-          shapeTypes: options.shapeTypes || ['rectangle', 'circle']
-        });
-      },
-      {
-        minArea: options.minArea || 100,
-        maxArea: options.maxArea || 50000,
-        shapeTypes: options.shapeTypes || ['rectangle', 'circle']
-      }
-    ).catch(error => {
-      this.logger.warn('Contour detection failed:', error.message);
-      return [];
-    });
-  }
-
-  private async runOCRDetection(screenshot: any, options: EnhancedDetectionOptions) {
+  private async runOCRDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     return this.cvActivity.executeWithTracking(
       'ocr-detection',
       async () => {
-        // Convert Mat to Buffer for OCR
-        const encoded = cv.imencode('.png', screenshot);
-        return await this.ocrDetector.detect(encoded, options.ocrRegion);
+        return await this.ocrDetector.detect(screenshotBuffer, options.ocrRegion);
       },
       {
         region: options.ocrRegion ? `${options.ocrRegion.width}x${options.ocrRegion.height}` : 'full-screen'
@@ -341,7 +185,7 @@ export class EnhancedVisualDetectorService {
     });
   }
 
-  private async runOmniParserDetection(screenshot: any, options: EnhancedDetectionOptions) {
+  private async runOmniParserDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     const activityId = this.cvActivity.startMethod('omniparser', {
       captions: options.omniParserCaptions ?? true,
       confidence_threshold: options.omniParserConfidence ?? 0.3,
@@ -358,11 +202,8 @@ export class EnhancedVisualDetectorService {
         throw new Error('OmniParser service is not responding');
       }
 
-      // Convert Mat to Buffer
-      const encoded = cv.imencode('.png', screenshot);
-
-      // Call OmniParser service
-      const response = await this.omniParserClient.parseScreenshot(encoded, {
+      // Call OmniParser service with Buffer
+      const response = await this.omniParserClient.parseScreenshot(screenshotBuffer, {
         includeCaptions: options.omniParserCaptions ?? true,
         minConfidence: options.omniParserConfidence ?? 0.3,
       });
@@ -425,68 +266,6 @@ export class EnhancedVisualDetectorService {
     return 'button'; // Default
   }
 
-  private convertToDetectedElements(results: any[], method: string): DetectedElement[] {
-    return results.map((result, index) => ({
-      id: `${method}_${Date.now()}_${index}`,
-      type: this.inferElementType(result),
-      coordinates: {
-        x: result.x,
-        y: result.y,
-        width: result.width || 10,
-        height: result.height || 10,
-        centerX: result.x + (result.width || 10) / 2,
-        centerY: result.y + (result.height || 10) / 2,
-      },
-      confidence: result.confidence || 0.5,
-      text: result.text || '',
-      description: `Element detected by ${method}`,
-      metadata: {
-        detectionMethod: method as 'template-matching' | 'feature-matching' | 'ocr-detection',
-        originalResult: result
-      }
-    }));
-  }
-
-  private convertContourToDetectedElements(results: any[]): DetectedElement[] {
-    return results.map((result, index) => ({
-      id: `contour_${Date.now()}_${index}`,
-      type: this.mapShapeToElementType(result.shape),
-      coordinates: {
-        x: result.x,
-        y: result.y,
-        width: result.width,
-        height: result.height,
-        centerX: result.x + result.width / 2,
-        centerY: result.y + result.height / 2,
-      },
-      confidence: result.confidence,
-      text: '',
-      description: `${result.shape} element (area: ${result.area})`,
-      metadata: {
-        detectionMethod: 'contour-detection' as const,
-        shape: result.shape,
-        area: result.area,
-        aspectRatio: result.aspectRatio
-      }
-    }));
-  }
-
-  private inferElementType(result: any): 'button' | 'input' | 'link' | 'text' | 'icon' {
-    // Basic heuristics for element type inference
-    if (result.confidence > 0.8) return 'button';
-    if (result.width > 100 && result.height < 40) return 'input';
-    return 'button'; // Default to button for UI automation
-  }
-
-  private mapShapeToElementType(shape: string): 'button' | 'input' | 'link' | 'text' | 'icon' {
-    switch (shape) {
-      case 'circle': return 'button';
-      case 'rectangle':
-      case 'square': return 'button';
-      default: return 'icon';
-    }
-  }
-
   private combineOverlappingElements(elements: DetectedElement[]): DetectedElement[] {
     const combined: DetectedElement[] = [];
     const used = new Set<number>();
@@ -515,8 +294,8 @@ export class EnhancedVisualDetectorService {
       const allMethods = overlapping.map(el => el.metadata?.detectionMethod).filter(Boolean);
       bestElement.metadata = {
         ...bestElement.metadata,
-        detectionMethod: 'hybrid' as const, // Use hybrid for combined detections
-        combinedFromMethods: allMethods
+        detectionMethod: allMethods.length > 1 ? 'hybrid' as const : bestElement.metadata?.detectionMethod,
+        combinedFromMethods: allMethods.length > 1 ? allMethods : undefined
       };
 
       combined.push(bestElement);

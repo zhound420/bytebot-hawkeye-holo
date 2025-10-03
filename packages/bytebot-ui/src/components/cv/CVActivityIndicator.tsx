@@ -180,7 +180,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     shouldShow = hasActiveWork || hasRecentDetection || hasRecentClick;
   } else {
     // For status card (top), show if any activity or device info
-    shouldShow = activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo);
+    shouldShow = Boolean(activity && (activity.totalActiveCount > 0 || hasRecentActivity || hasDeviceInfo || hasModelInfo));
   }
 
   if (!shouldShow) {

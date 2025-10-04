@@ -58,7 +58,7 @@ Total: ~16s ✓ (matches observed)
 1. **Disable OCR for Speed** (if text detection not critical):
    ```bash
    # In docker/.env or agent config
-   BYTEBOT_CV_USE_OMNIPARSER_OCR=false
+   BYTEBOT_CV_USE_HOLO_OCR=false
    ```
    Expected improvement: 16s → 12s (25% faster)
 
@@ -81,7 +81,7 @@ Total: ~16s ✓ (matches observed)
 
 2. **Profile Individual Components**:
    ```bash
-   cd packages/bytebot-omniparser
+   cd packages/bytebot-holo
    python -m cProfile -o profile.stats src/server.py
    ```
 
@@ -251,7 +251,7 @@ Expected on MPS:     1000-2000ms
 ### High Priority (Do Now)
 
 1. **Disable OCR** if not critical for accuracy:
-   - Set `BYTEBOT_CV_USE_OMNIPARSER_OCR=false`
+   - Set `BYTEBOT_CV_USE_HOLO_OCR=false`
    - Expected: 16s → 12s (25% improvement)
 
 2. **Reduce Caption Scope**:

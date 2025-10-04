@@ -50,7 +50,7 @@ echo -e "${BLUE}================================================${NC}"
 echo ""
 
 # Check if setup has been run
-if [[ ! -d "packages/bytebot-omniparser/venv" ]]; then
+if [[ ! -d "packages/bytebot-holo/venv" ]]; then
     echo -e "${RED}✗ Holo 1.5-7B not set up yet${NC}"
     echo ""
     echo "Run setup first:"
@@ -84,7 +84,7 @@ if ! validate_model_cache "$MODEL_CACHE"; then
     exit 1
 fi
 
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 
 # Check if already running (verify it's actually Holo via PID file)
 if [[ -f "../../logs/holo.pid" ]]; then

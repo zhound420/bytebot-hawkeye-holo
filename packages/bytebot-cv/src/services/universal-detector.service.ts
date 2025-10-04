@@ -9,7 +9,7 @@ import {
 import { DetectedElement, BoundingBox } from '../types';
 
 /**
- * Universal element detector - now powered by OmniParser + OCR
+ * Universal element detector - now powered by Holo 1.5-7B + OCR
  * OpenCV-based detection removed
  */
 @Injectable()
@@ -20,20 +20,20 @@ export class UniversalDetectorService {
     private readonly textAnalyzer: TextSemanticAnalyzerService,
     @Optional() private readonly enhancedDetector?: EnhancedVisualDetectorService,
   ) {
-    this.logger.log('UniversalDetectorService initialized with OmniParser + OCR pipeline');
+    this.logger.log('UniversalDetectorService initialized with Holo 1.5-7B + OCR pipeline');
   }
 
   async detectElements(screenshot: Buffer): Promise<DetectionResult> {
     const startTime = Date.now();
 
     try {
-      // Use EnhancedVisualDetectorService which implements OmniParser (primary) + OCR (fallback)
+      // Use EnhancedVisualDetectorService which implements Holo 1.5-7B (primary) + OCR (fallback)
       const detectionResult = await this.enhancedDetector?.detectElements(
         screenshot,
         null,
         {
-          useOmniParser: true,
-          useOCR: false, // OCR is expensive, only use if OmniParser fails
+          useHolo: true,
+          useOCR: false, // OCR is expensive, only use if Holo fails
           confidenceThreshold: 0.5,
           maxResults: 50,
           combineResults: true,

@@ -48,12 +48,6 @@ export interface HoloOptions {
   usePaddleOcr?: boolean; // Deprecated - maintained for compatibility
 }
 
-// Backward compatibility type aliases
-export type OmniParserElement = HoloElement;
-export type OmniParserResponse = HoloResponse;
-export type OmniParserOptions = HoloOptions;
-export type OmniParserModelStatus = HoloModelStatus;
-
 /**
  * Holo 1.5-7B model status
  */
@@ -76,9 +70,6 @@ export interface HoloModelStatus {
  *
  * Integrates with the Python FastAPI service to provide UI element localization
  * using Holo 1.5-7B (Qwen2.5-VL base) for precision coordinate prediction.
- *
- * Note: Maintained as "OmniParserClientService" for backward compatibility,
- * but now uses Holo 1.5-7B for improved localization accuracy.
  */
 @Injectable()
 export class HoloClientService {
@@ -348,6 +339,3 @@ export class HoloClientService {
     };
   }
 }
-
-// Backward compatibility class alias (must be after class declaration)
-export const OmniParserClientService = HoloClientService;

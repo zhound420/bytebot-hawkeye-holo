@@ -1,10 +1,10 @@
 # Holo 1.5-7B service extension for Bytebot Hawkeye
-# Usage: docker compose -f docker-compose.yml -f docker-compose.omniparser.yml up -d
+# Usage: docker compose -f docker-compose.yml -f docker-compose.holo.yml up -d
 
 services:
-  bytebot-omniparser:
+  bytebot-holo:
     build:
-      context: ../packages/bytebot-omniparser
+      context: ../packages/bytebot-holo
       dockerfile: Dockerfile
     container_name: bytebot-holo
     restart: unless-stopped
@@ -39,7 +39,7 @@ services:
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
       - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
-      bytebot-omniparser:
+      bytebot-holo:
         condition: service_healthy
 
   # Update bytebot-agent to use Holo 1.5-7B
@@ -49,7 +49,7 @@ services:
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
       - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
-      bytebot-omniparser:
+      bytebot-holo:
         condition: service_healthy
 
 volumes:

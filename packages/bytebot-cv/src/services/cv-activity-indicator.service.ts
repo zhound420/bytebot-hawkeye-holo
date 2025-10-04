@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter } from 'events';
-import { HoloClientService } from './omniparser-client.service';
+import { HoloClientService } from './holo-client.service';
 
 export interface CVMethodActivity {
   method: string;

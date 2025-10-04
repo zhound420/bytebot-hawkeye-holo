@@ -17,7 +17,7 @@ All Docker containers are configured to run on **x86_64 (linux/amd64)** architec
 - Docker containers run via Rosetta 2 emulation
 - Performance: ~20% slower than native ARM64, but stable
 - OmniParser: Runs **natively outside Docker** with MPS GPU for best performance
-- See: `packages/bytebot-omniparser/NATIVE_MACOS.md`
+- See: `packages/bytebot-holo/NATIVE_MACOS.md`
 
 #### x86_64 (Intel/AMD)
 - Native performance, no emulation
@@ -38,7 +38,7 @@ The `docker-compose.override.yml` file provides two key configurations:
 services:
   bytebot-agent:
     platform: linux/amd64
-  bytebot-omniparser:
+  bytebot-holo:
     platform: linux/amd64
     deploy:
       resources:

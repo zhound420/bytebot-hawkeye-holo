@@ -1,19 +1,19 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { OCRDetector } from '../detectors/ocr/ocr-detector';
 import { CVActivityIndicatorService } from './cv-activity-indicator.service';
-import { HoloClientService } from './omniparser-client.service';
+import { HoloClientService } from './holo-client.service';
 import { DetectedElement, BoundingBox } from '../types';
 
 export interface EnhancedDetectionOptions {
   useOCR?: boolean;
-  useOmniParser?: boolean; // Legacy param name: means "use Holo 1.5-7B"
+  useHolo?: boolean; // Use Holo 1.5-7B for UI element detection
 
   // OCR options
   ocrRegion?: BoundingBox;
 
-  // Holo 1.5-7B options (legacy param names for backward compatibility)
-  omniParserCaptions?: boolean; // Enable functional captions for detected elements
-  omniParserConfidence?: number; // Minimum confidence threshold (0-1)
+  // Holo 1.5-7B options
+  holoCaptions?: boolean; // Enable functional captions for detected elements
+  holoConfidence?: number; // Minimum confidence threshold (0-1)
 
   // General options
   confidenceThreshold?: number;
@@ -27,7 +27,7 @@ export interface EnhancedDetectionResult {
   performance: {
     totalTime: number;
     ocrTime?: number;
-    omniParserTime?: number;
+    holoTime?: number;
   };
   confidence: number;
 }
@@ -78,7 +78,7 @@ export class EnhancedVisualDetectorService {
 
     const {
       useOCR = false, // OCR is expensive, use as fallback only
-      useOmniParser = holoAvailable, // Legacy param: means "use Holo 1.5-7B", defaults to enabled when service healthy
+      useHolo = holoAvailable, // Use Holo 1.5-7B, defaults to enabled when service healthy
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
@@ -87,7 +87,7 @@ export class EnhancedVisualDetectorService {
     try {
       // Run Holo 1.5 and OCR in parallel since both are I/O-bound
       const [holoResults, ocrResults] = await Promise.all([
-        useOmniParser && this.holoClient
+        useHolo && this.holoClient
           ? (async () => {
               const holoStart = Date.now();
               const results = await this.runHoloDetection(screenshotBuffer, options);
@@ -166,7 +166,7 @@ export class EnhancedVisualDetectorService {
    */
   async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
     return this.detectElements(screenshotBuffer, null, {
-      useOmniParser: true, // Legacy param: means "use Holo 1.5-7B"
+      useHolo: true, // Use Holo 1.5-7B for UI element detection
       useOCR: false,
     });
   }
@@ -187,10 +187,10 @@ export class EnhancedVisualDetectorService {
   }
 
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
-    // Track Holo 1.5-7B activity (legacy option names kept for backward compatibility)
+    // Track Holo 1.5-7B activity
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
-      captions: options.omniParserCaptions ?? true,
-      confidence_threshold: options.omniParserConfidence ?? 0.3,
+      captions: options.holoCaptions ?? true,
+      confidence_threshold: options.holoConfidence ?? 0.3,
     });
 
     try {
@@ -206,8 +206,8 @@ export class EnhancedVisualDetectorService {
 
       // Call Holo 1.5-7B service with Buffer
       const response = await this.holoClient.parseScreenshot(screenshotBuffer, {
-        includeCaptions: options.omniParserCaptions ?? true,
-        minConfidence: options.omniParserConfidence ?? 0.3,
+        includeCaptions: options.holoCaptions ?? true,
+        minConfidence: options.holoConfidence ?? 0.3,
       });
 
       // Update metadata with device info for UI display

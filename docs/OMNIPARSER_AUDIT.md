@@ -204,4 +204,4 @@
 - OmniParser GitHub: https://github.com/microsoft/OmniParser
 - OmniParser demo.ipynb: Full pipeline example
 - OmniParser utils.py: Core detection functions
-- Our wrapper: `packages/bytebot-omniparser/src/omniparser_wrapper.py`
+- Our wrapper: `packages/bytebot-holo/src/omniparser_wrapper.py`

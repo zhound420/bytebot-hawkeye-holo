@@ -23,7 +23,7 @@
 **Added `parse_screenshot_full()` method** that uses OmniParser's complete `get_som_labeled_img()` pipeline:
 
 ```python
-# packages/bytebot-omniparser/src/omniparser_wrapper.py
+# packages/bytebot-holo/src/omniparser_wrapper.py
 def parse_screenshot_full(
     self,
     image: np.ndarray,
@@ -342,7 +342,7 @@ paddleocr            # OCR engine (primary, faster)
 
 **Installation:**
 ```bash
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 pip install -r requirements.txt
 ```
 
@@ -352,7 +352,7 @@ pip install -r requirements.txt
 
 ```bash
 # Enable/disable OCR
-BYTEBOT_CV_USE_OMNIPARSER_OCR=true
+BYTEBOT_CV_USE_HOLO_OCR=true
 
 # OCR engine choice (paddleocr or easyocr)
 OMNIPARSER_OCR_ENGINE=paddleocr
@@ -370,7 +370,7 @@ OMNIPARSER_BATCH_SIZE=128  # GPU: 128, CPU: 16
 
 ```bash
 # Start OmniParser service
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 python src/server.py
 
 # Test full pipeline
@@ -445,8 +445,8 @@ assert elapsed < 3.0  # Should complete in < 3s on GPU
 - **Audit Document**: `docs/OMNIPARSER_AUDIT.md`
 - **SOM Status**: `docs/SOM_IMPLEMENTATION_STATUS.md`
 - **Implementation Files**:
-  - `packages/bytebot-omniparser/src/omniparser_wrapper.py`
-  - `packages/bytebot-omniparser/src/server.py`
+  - `packages/bytebot-holo/src/omniparser_wrapper.py`
+  - `packages/bytebot-holo/src/server.py`
   - `packages/bytebot-cv/src/services/omniparser-client.service.ts`
 
 ## Summary

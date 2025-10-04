@@ -33,10 +33,10 @@ If diagnostics show GPU not detected in container:
 cd docker
 
 # Stop and remove old container
-docker compose down bytebot-omniparser
+docker compose down bytebot-holo
 
 # Rebuild with CUDA 12.1 support (no cache to ensure fresh PyTorch)
-docker compose build --no-cache bytebot-omniparser
+docker compose build --no-cache bytebot-holo
 
 # Start services
 docker compose up -d
@@ -46,7 +46,7 @@ docker compose up -d
 
 ```bash
 # Check startup logs for GPU diagnostics
-docker logs bytebot-omniparser | grep -A 15 "GPU Diagnostics"
+docker logs bytebot-holo | grep -A 15 "GPU Diagnostics"
 
 # Should show:
 #   PyTorch Version: 2.x.x+cu121
@@ -56,7 +56,7 @@ docker logs bytebot-omniparser | grep -A 15 "GPU Diagnostics"
 #   GPU 0: NVIDIA GeForce RTX 3090
 
 # Run verification script
-docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+docker exec bytebot-holo python /app/scripts/verify-gpu.py
 
 # Should show:
 #   ✓ GPU Acceleration Available
@@ -89,7 +89,7 @@ docker compose up -d
 docker ps
 
 # All containers should show "healthy" or "Up" status:
-# - bytebot-omniparser  (healthy)
+# - bytebot-holo  (healthy)
 # - bytebot-desktop     (healthy)
 # - bytebot-agent       (healthy)
 # - bytebot-ui          (Up)
@@ -98,11 +98,11 @@ docker ps
 
 ## What Changed
 
-### packages/bytebot-omniparser/Dockerfile
+### packages/bytebot-holo/Dockerfile
 - **Before:** PyTorch with CUDA 11.8 (`cu118`)
 - **After:** PyTorch with CUDA 12.1 (`cu121`) - backward compatible
 
-### packages/bytebot-omniparser/src/server.py
+### packages/bytebot-holo/src/server.py
 - Added GPU diagnostics at startup (PyTorch version, CUDA availability, GPU names)
 
 ### packages/bytebot-agent/Dockerfile
@@ -111,7 +111,7 @@ docker ps
 
 ### New Files
 - `scripts/diagnose-cuda.sh` - CUDA GPU diagnostic tool
-- `packages/bytebot-omniparser/scripts/verify-gpu.py` - Container GPU verification
+- `packages/bytebot-holo/scripts/verify-gpu.py` - Container GPU verification
 
 ## Performance Impact
 
@@ -168,6 +168,6 @@ docker compose up -d
 
 If issues persist after rebuild:
 1. Check diagnostics: `./scripts/diagnose-cuda.sh`
-2. Check OmniParser logs: `docker logs bytebot-omniparser`
-3. Verify GPU in container: `docker exec bytebot-omniparser python /app/scripts/verify-gpu.py`
+2. Check OmniParser logs: `docker logs bytebot-holo`
+3. Verify GPU in container: `docker exec bytebot-holo python /app/scripts/verify-gpu.py`
 4. Test Docker GPU: `docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi`

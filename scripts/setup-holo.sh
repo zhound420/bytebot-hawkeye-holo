@@ -81,16 +81,16 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     # Check if force reinstall requested
     if [[ "$FORCE_REINSTALL" == "true" ]]; then
         echo -e "${YELLOW}Force reinstall requested${NC}"
-        if [[ -d "packages/bytebot-omniparser/venv" ]]; then
+        if [[ -d "packages/bytebot-holo/venv" ]]; then
             echo "Removing existing Python environment..."
-            rm -rf packages/bytebot-omniparser/venv
+            rm -rf packages/bytebot-holo/venv
         fi
         clean_incomplete_cache "$MODEL_CACHE"
         echo ""
     fi
 
     # Validate existing setup
-    if [[ -d "packages/bytebot-omniparser/venv" ]] && validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
+    if [[ -d "packages/bytebot-holo/venv" ]] && validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
         echo -e "${GREEN}✓ Holo 1.5-7B already set up${NC}"
         echo ""
         echo "Setup includes:"
@@ -109,7 +109,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
         echo ""
         exit 0
-    elif [[ -d "packages/bytebot-omniparser/venv" ]]; then
+    elif [[ -d "packages/bytebot-holo/venv" ]]; then
         echo -e "${YELLOW}⚠ Partial setup detected${NC}"
         echo "  ✓ Python environment exists"
         echo "  ✗ Model not cached or incomplete"
@@ -130,7 +130,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo ""
         # Don't exit - continue to model download section
         # Skip venv creation, but MUST upgrade packages in case requirements changed
-        cd packages/bytebot-omniparser
+        cd packages/bytebot-holo
         source venv/bin/activate
 
         echo "Upgrading dependencies to latest versions..."
@@ -143,7 +143,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     # Set up native Holo 1.5-7B
     if [[ "$SKIP_VENV_CREATION" != "true" ]]; then
     echo -e "${BLUE}Setting up native Holo 1.5-7B for Apple Silicon...${NC}"
-    cd packages/bytebot-omniparser
+    cd packages/bytebot-holo
 
     # Create virtual environment
     echo "Creating Python virtual environment..."

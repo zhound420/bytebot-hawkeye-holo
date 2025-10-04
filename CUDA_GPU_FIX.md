@@ -91,13 +91,13 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 cd docker
 
 # Stop and remove old container
-docker compose down bytebot-omniparser
+docker compose down bytebot-holo
 
 # Clear any cached layers
 docker builder prune -f
 
 # Rebuild from scratch
-docker compose build --no-cache bytebot-omniparser
+docker compose build --no-cache bytebot-holo
 
 # Start services
 docker compose up -d
@@ -107,7 +107,7 @@ docker compose up -d
 
 ```bash
 # Check startup logs
-docker logs bytebot-omniparser | grep -A 15 "GPU Diagnostics"
+docker logs bytebot-holo | grep -A 15 "GPU Diagnostics"
 
 # Should now show:
 #   PyTorch Version: 2.5.1+cu121
@@ -117,7 +117,7 @@ docker logs bytebot-omniparser | grep -A 15 "GPU Diagnostics"
 #   GPU 0: NVIDIA GeForce RTX 3090
 
 # Run verification script
-docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+docker exec bytebot-holo python /app/scripts/verify-gpu.py
 
 # Should show:
 #   ✓ GPU Acceleration Available
@@ -132,7 +132,7 @@ If the above doesn't work, try using older GPU syntax:
 **Edit `docker/docker-compose.override.yml`:**
 
 ```yaml
-  bytebot-omniparser:
+  bytebot-holo:
     platform: linux/amd64
     runtime: nvidia  # Add this line
     environment:
@@ -149,8 +149,8 @@ If the above doesn't work, try using older GPU syntax:
 
 Then rebuild:
 ```bash
-docker compose down bytebot-omniparser
-docker compose up -d --build bytebot-omniparser
+docker compose down bytebot-holo
+docker compose up -d --build bytebot-holo
 ```
 
 ---
@@ -172,7 +172,7 @@ sudo reboot
 
 **Check if compose is using GPU config:**
 ```bash
-docker inspect bytebot-omniparser | grep -i nvidia
+docker inspect bytebot-holo | grep -i nvidia
 
 # Should show:
 #   "Runtime": "nvidia",
@@ -183,17 +183,17 @@ docker inspect bytebot-omniparser | grep -i nvidia
 **If nothing shows, force GPU access:**
 ```bash
 # Stop container
-docker compose down bytebot-omniparser
+docker compose down bytebot-holo
 
 # Start with explicit GPU flag
 docker run --rm --gpus all \
-  --name bytebot-omniparser-test \
+  --name bytebot-holo-test \
   -p 9989:9989 \
-  -e OMNIPARSER_DEVICE=auto \
-  bytebot-omniparser:local
+  -e HOLO_DEVICE=auto \
+  bytebot-holo:local
 
 # Check logs
-docker logs -f bytebot-omniparser-test
+docker logs -f bytebot-holo-test
 ```
 
 ---
@@ -236,5 +236,5 @@ docker logs -f bytebot-omniparser-test
 
 5. **Contact support:**
    - Provide output of: `./scripts/diagnose-cuda.sh`
-   - Docker logs: `docker logs bytebot-omniparser`
+   - Docker logs: `docker logs bytebot-holo`
    - GPU test: `docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi`

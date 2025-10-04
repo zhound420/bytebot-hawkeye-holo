@@ -16,7 +16,7 @@ However, modern NVIDIA systems often use CUDA 12.x drivers. PyTorch built for CU
 
 ## Solution
 
-### 1. Updated Dockerfile (packages/bytebot-omniparser/Dockerfile)
+### 1. Updated Dockerfile (packages/bytebot-holo/Dockerfile)
 
 Changed PyTorch installation to use CUDA 12.1 wheels, which are backward compatible with CUDA 11.8+ and support modern NVIDIA drivers:
 
@@ -28,7 +28,7 @@ pip install --no-cache-dir torch torchvision --index-url https://download.pytorc
 pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
-### 2. Enhanced GPU Diagnostics (packages/bytebot-omniparser/src/server.py)
+### 2. Enhanced GPU Diagnostics (packages/bytebot-holo/src/server.py)
 
 Added detailed GPU diagnostics to startup logging:
 
@@ -45,13 +45,13 @@ if torch.cuda.is_available():
 
 This helps diagnose GPU detection issues immediately on container startup.
 
-### 3. Added GPU Verification Script (packages/bytebot-omniparser/scripts/verify-gpu.py)
+### 3. Added GPU Verification Script (packages/bytebot-holo/scripts/verify-gpu.py)
 
 Created standalone diagnostic script to verify PyTorch CUDA setup:
 
 ```bash
 # Inside container
-docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+docker exec bytebot-holo python /app/scripts/verify-gpu.py
 
 # Output shows:
 # - PyTorch version
@@ -102,11 +102,11 @@ After rebuilding the container:
 ```bash
 # 1. Rebuild with new CUDA version
 cd docker
-docker compose build --no-cache bytebot-omniparser
-docker compose up -d bytebot-omniparser
+docker compose build --no-cache bytebot-holo
+docker compose up -d bytebot-holo
 
 # 2. Check logs for GPU detection
-docker logs bytebot-omniparser | grep -A 10 "GPU Diagnostics"
+docker logs bytebot-holo | grep -A 10 "GPU Diagnostics"
 
 # Expected output with GPU:
 #   CUDA Available: True
@@ -115,7 +115,7 @@ docker logs bytebot-omniparser | grep -A 10 "GPU Diagnostics"
 #   GPU 0: NVIDIA GeForce RTX 3090
 
 # 3. Run verification script
-docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+docker exec bytebot-holo python /app/scripts/verify-gpu.py
 
 # 4. Test detection performance
 curl -X POST http://localhost:9989/parse \
@@ -136,17 +136,17 @@ curl -X POST http://localhost:9989/parse \
 ## Related Files
 
 ### Modified
-- `packages/bytebot-omniparser/Dockerfile` - CUDA 11.8 → 12.1
-- `packages/bytebot-omniparser/src/server.py` - Enhanced startup diagnostics
+- `packages/bytebot-holo/Dockerfile` - CUDA 11.8 → 12.1
+- `packages/bytebot-holo/src/server.py` - Enhanced startup diagnostics
 - `scripts/README.md` - Added troubleshooting section
 
 ### Created
-- `packages/bytebot-omniparser/scripts/verify-gpu.py` - GPU diagnostic tool
+- `packages/bytebot-holo/scripts/verify-gpu.py` - GPU diagnostic tool
 - `docs/GPU_FIX_SUMMARY.md` - This document
 
 ### Unchanged (Working as Designed)
 - `docker/docker-compose.override.yml` - GPU passthrough already configured
-- `packages/bytebot-omniparser/src/config.py` - Device detection logic correct
+- `packages/bytebot-holo/src/config.py` - Device detection logic correct
 - `scripts/setup-holo.sh` - Platform detection unchanged
 
 ## Next Steps
@@ -154,7 +154,7 @@ curl -X POST http://localhost:9989/parse \
 Users on x86_64/NVIDIA systems should:
 
 1. Pull latest code
-2. Rebuild OmniParser container: `docker compose build --no-cache bytebot-omniparser`
+2. Rebuild OmniParser container: `docker compose build --no-cache bytebot-holo`
 3. Restart stack: `./scripts/start-stack.sh`
 4. Verify GPU detection in logs
 5. Enjoy 13x faster UI element detection! 🚀

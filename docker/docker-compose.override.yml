@@ -7,7 +7,7 @@
 #    - On x86_64 systems: Native performance, no emulation
 #    - Benefits: Consistent OpenCV binaries, no platform-specific build issues
 #
-# 2. GPU Configuration for OmniParser
+# 2. GPU Configuration for Holo 1.5-7B
 #    - Supports both modern CDI and legacy nvidia-docker runtime
 #    - Automatically enables NVIDIA GPU if nvidia-container-toolkit is installed
 #    - Falls back to CPU if GPU not available (no errors)
@@ -23,7 +23,7 @@ services:
   bytebot-ui:
     platform: linux/amd64
 
-  bytebot-omniparser:
+  bytebot-holo:
     platform: linux/amd64
 
     # GPU Support - Multiple fallback strategies for maximum compatibility

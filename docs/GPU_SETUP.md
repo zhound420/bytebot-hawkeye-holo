@@ -91,7 +91,7 @@ The override file includes:
 
 ```yaml
 services:
-  bytebot-omniparser:
+  bytebot-holo:
     platform: linux/amd64
     deploy:
       resources:
@@ -108,7 +108,7 @@ services:
 
 ```bash
 # View container logs
-docker logs bytebot-omniparser 2>&1 | grep -i "cuda\|gpu\|device"
+docker logs bytebot-holo 2>&1 | grep -i "cuda\|gpu\|device"
 
 # Expected output with GPU:
 # ✓ CUDA available: 1 GPU(s) - NVIDIA GeForce RTX 3090
@@ -134,8 +134,8 @@ If you see the OmniParser container running on Mac:
 
 ```bash
 # Stop and remove the container
-docker compose -f docker/docker-compose.proxy.yml stop bytebot-omniparser
-docker compose -f docker/docker-compose.proxy.yml rm -f bytebot-omniparser
+docker compose -f docker/docker-compose.proxy.yml stop bytebot-holo
+docker compose -f docker/docker-compose.proxy.yml rm -f bytebot-holo
 
 # Verify only native OmniParser is running
 lsof -i :9989  # Should show Python process, not Docker
@@ -178,12 +178,12 @@ docker compose -f docker/docker-compose.proxy.yml -f docker/docker-compose.gpu.y
 2. Restart Docker daemon: `sudo systemctl restart docker`
 3. Rebuild OmniParser container to apply GPU config:
    ```bash
-   docker compose -f docker/docker-compose.proxy.yml down bytebot-omniparser
-   docker compose -f docker/docker-compose.proxy.yml up -d bytebot-omniparser
+   docker compose -f docker/docker-compose.proxy.yml down bytebot-holo
+   docker compose -f docker/docker-compose.proxy.yml up -d bytebot-holo
    ```
 4. Check if GPU is being used:
    ```bash
-   docker exec bytebot-omniparser python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+   docker exec bytebot-holo python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
    # Should output: CUDA available: True
    ```
 
@@ -192,7 +192,7 @@ docker compose -f docker/docker-compose.proxy.yml -f docker/docker-compose.gpu.y
 Check which device OmniParser is using:
 
 ```bash
-docker logs bytebot-omniparser 2>&1 | grep "Auto-detected device"
+docker logs bytebot-holo 2>&1 | grep "Auto-detected device"
 ```
 
 - `device: cuda` → GPU-accelerated ✅

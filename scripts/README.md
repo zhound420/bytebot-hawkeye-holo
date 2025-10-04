@@ -66,7 +66,7 @@ This comprehensive script:
 - Activates Python environment
 - Starts OmniParser FastAPI server on port 9989
 - Uses MPS GPU for ~1-2s/frame performance
-- Runs in background with logs at `packages/bytebot-omniparser/omniparser.log`
+- Runs in background with logs at `packages/bytebot-holo/omniparser.log`
 
 **Usage:**
 ```bash
@@ -178,7 +178,7 @@ cd packages/bytebot-ui && npm run build
 **Configuration:**
 - OmniParser: Docker container with CUDA
 - Performance: ~0.6s per frame
-- URL: `http://bytebot-omniparser:9989`
+- URL: `http://bytebot-holo:9989`
 
 **Benefits:**
 - Production-ready containerized setup
@@ -190,7 +190,7 @@ cd packages/bytebot-ui && npm run build
 **Configuration:**
 - OmniParser: Docker container, CPU-only
 - Performance: ~8-15s per frame
-- URL: `http://bytebot-omniparser:9989`
+- URL: `http://bytebot-holo:9989`
 
 **Fallback mode** - works everywhere but slower.
 
@@ -247,7 +247,7 @@ tail logs/omniparser.log | grep dtype
 **Solution:**
 This is fixed automatically by the setup script. If you installed manually:
 ```bash
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 bash scripts/patch-paddleocr.sh
 ./scripts/start-holo.sh  # from project root
 ```
@@ -290,7 +290,7 @@ docker builder prune -f
 **Diagnosis:**
 ```bash
 # Check if container has GPU access
-docker exec bytebot-omniparser python /app/scripts/verify-gpu.py
+docker exec bytebot-holo python /app/scripts/verify-gpu.py
 
 # Check nvidia-container-toolkit
 docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
@@ -316,12 +316,12 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 **Solution:** Rebuild OmniParser container:
 ```bash
 cd docker
-docker compose down bytebot-omniparser
-docker compose build --no-cache bytebot-omniparser
-docker compose up -d bytebot-omniparser
+docker compose down bytebot-holo
+docker compose build --no-cache bytebot-holo
+docker compose up -d bytebot-holo
 
 # Verify GPU access
-docker logs bytebot-omniparser | grep -A 5 "GPU Diagnostics"
+docker logs bytebot-holo | grep -A 5 "GPU Diagnostics"
 ```
 
 ---
@@ -342,10 +342,10 @@ docker logs bytebot-omniparser | grep -A 5 "GPU Diagnostics"
 
 ```bash
 # OmniParser Integration
-BYTEBOT_CV_USE_OMNIPARSER=true
-OMNIPARSER_URL=http://host.docker.internal:9989  # Apple Silicon
-OMNIPARSER_DEVICE=auto  # auto, cuda, mps, cpu
-OMNIPARSER_MIN_CONFIDENCE=0.3
+BYTEBOT_CV_USE_HOLO=true
+HOLO_URL=http://host.docker.internal:9989  # Apple Silicon
+HOLO_DEVICE=auto  # auto, cuda, mps, cpu
+HOLO_MIN_CONFIDENCE=0.3
 
 # API Keys
 ANTHROPIC_API_KEY=sk-...

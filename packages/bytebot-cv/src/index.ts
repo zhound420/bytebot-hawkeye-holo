@@ -9,7 +9,7 @@ export * from './services/visual-pattern-detector.service';
 export * from './services/text-semantic-analyzer.service';
 export * from './services/enhanced-visual-detector.service';
 export * from './services/cv-activity-indicator.service';
-export * from './services/omniparser-client.service'; // Exports HoloClientService and related types
+export * from './services/holo-client.service'; // Exports HoloClientService and related types
 
 // Detectors
 export * from './detectors/ocr/ocr-detector';

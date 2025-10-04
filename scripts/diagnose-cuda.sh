@@ -78,9 +78,9 @@ echo ""
 
 # Check OmniParser container status
 echo -e "${BLUE}4. Checking OmniParser Container...${NC}"
-if docker ps -a | grep -q bytebot-omniparser; then
-    STATUS=$(docker inspect bytebot-omniparser --format='{{.State.Status}}')
-    HEALTH=$(docker inspect bytebot-omniparser --format='{{.State.Health.Status}}' 2>/dev/null || echo "none")
+if docker ps -a | grep -q bytebot-holo; then
+    STATUS=$(docker inspect bytebot-holo --format='{{.State.Status}}')
+    HEALTH=$(docker inspect bytebot-holo --format='{{.State.Health.Status}}' 2>/dev/null || echo "none")
 
     echo "  Container Status: $STATUS"
     echo "  Health Status: $HEALTH"
@@ -89,11 +89,11 @@ if docker ps -a | grep -q bytebot-omniparser; then
         echo ""
         echo -e "${BLUE}Checking OmniParser GPU detection...${NC}"
         echo ""
-        docker logs bytebot-omniparser 2>&1 | grep -A 15 "GPU Diagnostics" || echo "  (GPU diagnostics not found - may need rebuild)"
+        docker logs bytebot-holo 2>&1 | grep -A 15 "GPU Diagnostics" || echo "  (GPU diagnostics not found - may need rebuild)"
 
         echo ""
         echo -e "${BLUE}Running GPU verification script...${NC}"
-        if docker exec bytebot-omniparser python /app/scripts/verify-gpu.py 2>/dev/null; then
+        if docker exec bytebot-holo python /app/scripts/verify-gpu.py 2>/dev/null; then
             echo -e "${GREEN}✓ GPU verification passed${NC}"
         else
             echo -e "${RED}✗ GPU verification failed${NC}"
@@ -107,7 +107,7 @@ if docker ps -a | grep -q bytebot-omniparser; then
         echo -e "${YELLOW}⚠ Container not running${NC}"
         echo ""
         echo "Check logs:"
-        echo -e "  ${BLUE}docker logs bytebot-omniparser${NC}"
+        echo -e "  ${BLUE}docker logs bytebot-holo${NC}"
     fi
 else
     echo -e "${RED}✗ OmniParser container not found${NC}"
@@ -123,8 +123,8 @@ echo -e "${BLUE}   Summary & Recommendations${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
-if docker ps | grep -q bytebot-omniparser; then
-    if docker exec bytebot-omniparser python /app/scripts/verify-gpu.py &>/dev/null; then
+if docker ps | grep -q bytebot-holo; then
+    if docker exec bytebot-holo python /app/scripts/verify-gpu.py &>/dev/null; then
         echo -e "${GREEN}✓ GPU acceleration working correctly!${NC}"
         echo ""
         echo "Performance: ~0.6s per frame"
@@ -133,8 +133,8 @@ if docker ps | grep -q bytebot-omniparser; then
         echo ""
         echo "Rebuild OmniParser with CUDA 12.1:"
         echo -e "  ${BLUE}cd docker${NC}"
-        echo -e "  ${BLUE}docker compose down bytebot-omniparser${NC}"
-        echo -e "  ${BLUE}docker compose build --no-cache bytebot-omniparser${NC}"
+        echo -e "  ${BLUE}docker compose down bytebot-holo${NC}"
+        echo -e "  ${BLUE}docker compose build --no-cache bytebot-holo${NC}"
         echo -e "  ${BLUE}docker compose up -d${NC}"
         echo ""
         echo "Then verify:"

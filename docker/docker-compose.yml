@@ -35,12 +35,12 @@ services:
       - BYTEBOT_CLICK_VERIFY_RADIUS=12
       - BYTEBOT_CLICK_VERIFY_THRESHOLD=4.0
       - BYTEBOT_CLICK_RETRY_MAX=1
-      # OmniParser integration
-      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
-      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
+      # Holo 1.5-7B integration
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
-      bytebot-omniparser:
+      bytebot-holo:
         condition: service_healthy
     networks:
       - bytebot-network
@@ -83,14 +83,14 @@ services:
       - BYTEBOT_CLICK_VERIFY=true
       - BYTEBOT_POST_ACTION_SCREENSHOT=true
       - BYTEBOT_INCLUDE_FULL_AFTER_VERIFY=true
-      # OmniParser integration
-      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
-      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
+      # Holo 1.5-7B integration
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
       postgres:
         condition: service_started
-      bytebot-omniparser:
+      bytebot-holo:
         condition: service_healthy
     networks:
       - bytebot-network
@@ -118,27 +118,27 @@ services:
     networks:
       - bytebot-network
 
-  bytebot-omniparser:
+  bytebot-holo:
     build:
-      context: ../packages/bytebot-omniparser
+      context: ../packages/bytebot-holo
       dockerfile: Dockerfile
-    container_name: bytebot-omniparser
+    container_name: bytebot-holo
     restart: unless-stopped
     ports:
       - "9989:9989"
     environment:
-      - OMNIPARSER_HOST=0.0.0.0
-      - OMNIPARSER_PORT=9989
+      - HOLO_HOST=0.0.0.0
+      - HOLO_PORT=9989
       # Device auto-detection: 'auto' detects cuda/cpu in container
       # On Apple Silicon: Docker uses CPU (MPS not available in containers)
       # On NVIDIA: Docker uses CUDA if nvidia-docker runtime available
       # Override with: cpu, cuda
-      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-auto}
-      - OMNIPARSER_MIN_CONFIDENCE=${OMNIPARSER_MIN_CONFIDENCE:-0.3}
-      - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
+      - HOLO_DEVICE=${HOLO_DEVICE:-auto}
+      - HOLO_MIN_CONFIDENCE=${HOLO_MIN_CONFIDENCE:-0.3}
+      - HOLO_MODEL_DTYPE=${HOLO_MODEL_DTYPE:-float16}
     volumes:
       # Optional: mount weights to persist across rebuilds
-      - omniparser_weights:/app/weights
+      - holo_weights:/app/weights
     networks:
       - bytebot-network
     # GPU support configured in docker-compose.override.yml (automatically loaded)
@@ -157,4 +157,4 @@ networks:
 
 volumes:
   postgres_data:
-  omniparser_weights:
+  holo_weights:

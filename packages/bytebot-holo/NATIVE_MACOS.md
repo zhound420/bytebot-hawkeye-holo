@@ -15,7 +15,7 @@ Docker Desktop on macOS doesn't support Metal Performance Shaders (MPS) passthro
 ### 1. Install Dependencies
 
 ```bash
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 
 # Option A: Using Conda (Recommended)
 bash scripts/setup.sh
@@ -37,10 +37,10 @@ bash scripts/download_models.sh
 
 ```bash
 # Set MPS (Apple Silicon GPU)
-export OMNIPARSER_DEVICE=mps
+export HOLO_DEVICE=mps
 
 # Or use auto-detection (recommended)
-export OMNIPARSER_DEVICE=auto
+export HOLO_DEVICE=auto
 ```
 
 ### 4. Start OmniParser Service
@@ -58,7 +58,7 @@ Update `docker/.env`:
 
 ```bash
 # Point to native OmniParser instead of container
-OMNIPARSER_URL=http://host.docker.internal:9989
+HOLO_URL=http://host.docker.internal:9989
 ```
 
 **On Linux:** Use `http://172.17.0.1:9989` instead of `host.docker.internal`
@@ -68,7 +68,7 @@ OMNIPARSER_URL=http://host.docker.internal:9989
 ```bash
 cd docker
 
-# Standard stack (excludes bytebot-omniparser service)
+# Standard stack (excludes bytebot-holo service)
 docker compose up -d bytebot-desktop bytebot-agent bytebot-ui postgres
 
 # Proxy stack
@@ -111,7 +111,7 @@ python3 -c "import torch; print(f'MPS available: {torch.backends.mps.is_availabl
 **Solution:** Reduce model precision or batch size:
 
 ```bash
-export OMNIPARSER_MODEL_DTYPE=float32  # Use float32 instead of float16
+export HOLO_MODEL_DTYPE=float32  # Use float32 instead of float16
 ```
 
 ### Port Conflict
@@ -121,7 +121,7 @@ export OMNIPARSER_MODEL_DTYPE=float32  # Use float32 instead of float16
 **Solution:** Change port or kill existing process:
 
 ```bash
-export OMNIPARSER_PORT=9988
+export HOLO_PORT=9988
 # Or find and kill:
 lsof -ti:9989 | xargs kill -9
 ```
@@ -132,20 +132,20 @@ lsof -ti:9989 | xargs kill -9
 
 ```bash
 # float16 (default) - faster, less memory
-export OMNIPARSER_MODEL_DTYPE=float16
+export HOLO_MODEL_DTYPE=float16
 
 # float32 - slower, more accurate
-export OMNIPARSER_MODEL_DTYPE=float32
+export HOLO_MODEL_DTYPE=float32
 ```
 
 ### Confidence Threshold
 
 ```bash
 # Lower = more detections (slower)
-export OMNIPARSER_MIN_CONFIDENCE=0.2
+export HOLO_MIN_CONFIDENCE=0.2
 
 # Higher = fewer detections (faster)
-export OMNIPARSER_MIN_CONFIDENCE=0.5
+export HOLO_MIN_CONFIDENCE=0.5
 ```
 
 ## Autostart with launchd (Optional)
@@ -166,7 +166,7 @@ Create `~/Library/LaunchAgents/com.bytebot.omniparser.plist`:
         <string>src.server</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/YOUR_USERNAME/path/to/bytebot-hawkeye-cv/packages/bytebot-omniparser</string>
+    <string>/Users/YOUR_USERNAME/path/to/bytebot-hawkeye-cv/packages/bytebot-holo</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -177,7 +177,7 @@ Create `~/Library/LaunchAgents/com.bytebot.omniparser.plist`:
     <string>/tmp/omniparser.err</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>OMNIPARSER_DEVICE</key>
+        <key>HOLO_DEVICE</key>
         <string>auto</string>
     </dict>
 </dict>

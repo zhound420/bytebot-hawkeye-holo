@@ -59,19 +59,19 @@ export class ComputerUseService {
     private readonly focusRegion: FocusRegionService,
     private readonly progressBroadcaster: ProgressBroadcaster,
     private readonly telemetryService: TelemetryService,
-    @Optional() private readonly omniParserClient?: HoloClientService,
+    @Optional() private readonly holoClient?: HoloClientService,
   ) {
-    // Check OmniParser availability on startup
-    if (this.omniParserClient) {
-      this.omniParserClient.isAvailable().then((available) => {
+    // Check Holo 1.5-7B availability on startup
+    if (this.holoClient) {
+      this.holoClient.isAvailable().then((available) => {
         if (available) {
-          this.logger.log('✓ OmniParser integration enabled');
+          this.logger.log('✓ Holo 1.5-7B integration enabled');
         } else {
-          this.logger.warn('⚠ OmniParser client registered but service unavailable');
+          this.logger.warn('⚠ Holo 1.5-7B client registered but service unavailable');
         }
       });
     } else {
-      this.logger.log('OmniParser integration disabled (BYTEBOT_CV_USE_OMNIPARSER=false or service not available)');
+      this.logger.log('Holo 1.5-7B integration disabled (BYTEBOT_CV_USE_HOLO=false or service not available)');
     }
   }
 
@@ -140,21 +140,21 @@ export class ComputerUseService {
 
     let elements: any[] | undefined;
 
-    // Call OmniParser if available
-    if (this.omniParserClient) {
+    // Call Holo 1.5-7B if available
+    if (this.holoClient) {
       try {
-        const isAvailable = await this.omniParserClient.isAvailable();
+        const isAvailable = await this.holoClient.isAvailable();
         if (isAvailable) {
-          this.logger.log('Calling OmniParser for element detection...');
-          const result = await this.omniParserClient.parseScreenshot(buffer);
-          const universalElements = this.omniParserClient.convertToUniversalElements(result.elements);
+          this.logger.log('Calling Holo 1.5-7B for element detection...');
+          const result = await this.holoClient.parseScreenshot(buffer);
+          const universalElements = this.holoClient.convertToUniversalElements(result.elements);
           elements = universalElements;
-          this.logger.log(`OmniParser detected ${elements?.length || 0} elements`);
+          this.logger.log(`Holo 1.5-7B detected ${elements?.length || 0} elements`);
         } else {
-          this.logger.warn('OmniParser service unavailable, skipping element detection');
+          this.logger.warn('Holo 1.5-7B service unavailable, skipping element detection');
         }
       } catch (error) {
-        this.logger.error(`OmniParser detection failed: ${error.message}`, error.stack);
+        this.logger.error(`Holo 1.5-7B detection failed: ${error.message}`, error.stack);
         // Continue without elements - agent can still work with screenshot
       }
     }

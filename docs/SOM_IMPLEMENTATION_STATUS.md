@@ -13,7 +13,7 @@ Set-of-Mark (SOM) is a visual grounding technique where UI elements are annotate
 ### ✅ Phase 1: Backend SOM Generation (COMPLETED)
 
 #### 1.1 Python Service Updates
-**File:** `packages/bytebot-omniparser/src/omniparser_wrapper.py`
+**File:** `packages/bytebot-holo/src/omniparser_wrapper.py`
 - ✅ Added `generate_som_image()` method to `OmniParserV2` class
 - ✅ Imports `BoxAnnotator` from OmniParser's `util/box_annotator.py`
 - ✅ Converts detections to supervision format (xyxy bounding boxes)
@@ -23,14 +23,14 @@ Set-of-Mark (SOM) is a visual grounding technique where UI elements are annotate
 - ✅ Updated `parse_screenshot()` to accept `include_som` parameter (default: True)
 
 #### 1.2 API Updates
-**File:** `packages/bytebot-omniparser/src/server.py`
+**File:** `packages/bytebot-holo/src/server.py`
 - ✅ Added `include_som` field to `ParseRequest` model (default: True)
 - ✅ Added `som_image` field to `ParseResponse` model (optional base64 string)
 - ✅ Updated `/parse` endpoint to pass `include_som` to wrapper
 - ✅ Updated `/parse/upload` endpoint to support `include_som` parameter
 
 #### 1.3 Dependencies
-**File:** `packages/bytebot-omniparser/requirements.txt`
+**File:** `packages/bytebot-holo/requirements.txt`
 - ✅ Added `supervision==0.18.0` for BoxAnnotator support
 
 #### 1.4 TypeScript Client Updates
@@ -150,9 +150,9 @@ computer_click_element({
 BYTEBOT_USE_SOM_SCREENSHOTS=true
 
 # OmniParser configuration (already supported)
-BYTEBOT_CV_USE_OMNIPARSER=true
-OMNIPARSER_URL=http://localhost:9989
-OMNIPARSER_MIN_CONFIDENCE=0.3
+BYTEBOT_CV_USE_HOLO=true
+HOLO_URL=http://localhost:9989
+HOLO_MIN_CONFIDENCE=0.3
 ```
 
 ### Feature Flags
@@ -244,4 +244,4 @@ OMNIPARSER_MIN_CONFIDENCE=0.3
 
 - OmniParser Paper: https://arxiv.org/abs/2408.00203
 - OmniParser Demo: Uses SOM for ~85% accuracy on ScreenSpot benchmark
-- Original BoxAnnotator: `packages/bytebot-omniparser/OmniParser/util/box_annotator.py`
+- Original BoxAnnotator: `packages/bytebot-holo/OmniParser/util/box_annotator.py`

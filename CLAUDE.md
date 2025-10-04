@@ -35,7 +35,7 @@ Bytebot Hawkeye is a precision-enhanced fork of the open-source AI Desktop Agent
 3. **bytebot-ui** - Next.js frontend with desktop dashboard and task management
 4. **bytebotd** - Desktop daemon providing computer control with enhanced coordinate accuracy
 5. **bytebot-cv** - Computer vision package with OmniParser + Tesseract.js for element detection
-6. **bytebot-omniparser** - Python FastAPI service for semantic UI detection via OmniParser v2.0
+6. **bytebot-holo** - Python FastAPI service for semantic UI detection via OmniParser v2.0
 7. **bytebot-llm-proxy** - LiteLLM proxy service for multi-provider model routing
 8. **shared** - Common TypeScript types, utilities, and universal coordinate mappings
 
@@ -184,9 +184,9 @@ cd packages/bytebot-llm-proxy
 # Environment variables: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
 ```
 
-### bytebot-omniparser (Python Service)
+### bytebot-holo (Python Service)
 ```bash
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 
 # Setup (one-time)
 bash scripts/setup.sh       # Creates conda env, downloads models (~850MB)
@@ -207,7 +207,7 @@ curl http://localhost:9989/models/status
 
 All stacks now include OmniParser v2.0 for semantic UI detection by default.
 
-> **Note**: To disable OmniParser (e.g., on systems without GPU), set `BYTEBOT_CV_USE_OMNIPARSER=false` in `docker/.env`
+> **Note**: To disable OmniParser (e.g., on systems without GPU), set `BYTEBOT_CV_USE_HOLO=false` in `docker/.env`
 
 ### Full Stack (Standard)
 ```bash
@@ -230,7 +230,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.omniparser.
 - bytebot-ui: 9992 (web interface)
 - bytebot-agent: 9991 (API server)
 - bytebotd: 9990 (desktop daemon + noVNC)
-- bytebot-omniparser: 9989 (OmniParser service)
+- bytebot-holo: 9989 (OmniParser service)
 - PostgreSQL: 5432
 
 ## OmniParser Platform Support
@@ -245,14 +245,14 @@ OmniParser v2.0 provides semantic UI detection using YOLOv8 + Florence-2 models.
 | x86_64 (Intel/AMD) CPU-only | CPU | ~8-15s/frame | Works but slow |
 | ARM64 (Apple Silicon) in Docker | CPU | ~8-15s/frame ⚠️ | **MPS not available in containers** |
 
-**Auto-detection**: Set `OMNIPARSER_DEVICE=auto` (default) to automatically use the best available device.
+**Auto-detection**: Set `HOLO_DEVICE=auto` (default) to automatically use the best available device.
 
 ### Native Execution (Apple Silicon)
 
 For GPU acceleration on Apple Silicon (M1-M4), run OmniParser **natively outside Docker**:
 
 - **Performance**: ~1-2s/frame with MPS (Metal Performance Shaders)
-- **Setup Guide**: See `packages/bytebot-omniparser/NATIVE_MACOS.md`
+- **Setup Guide**: See `packages/bytebot-holo/NATIVE_MACOS.md`
 - **Architecture**: Run OmniParser natively, connect from Docker via `host.docker.internal:9989`
 
 **Why native?** Docker Desktop on macOS doesn't pass through MPS/Metal GPU access to containers.
@@ -261,9 +261,9 @@ For GPU acceleration on Apple Silicon (M1-M4), run OmniParser **natively outside
 
 ```bash
 # docker/.env
-OMNIPARSER_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
-# OMNIPARSER_DEVICE=cpu   # Force CPU (slower but works everywhere)
-# OMNIPARSER_DEVICE=cuda  # Force NVIDIA GPU (x86_64 only)
+HOLO_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
+# HOLO_DEVICE=cpu   # Force CPU (slower but works everywhere)
+# HOLO_DEVICE=cuda  # Force NVIDIA GPU (x86_64 only)
 ```
 
 ### Disabling OmniParser
@@ -272,7 +272,7 @@ To disable OmniParser (will fall back to Tesseract.js OCR only):
 
 ```bash
 # docker/.env
-BYTEBOT_CV_USE_OMNIPARSER=false
+BYTEBOT_CV_USE_HOLO=false
 ```
 
 **Note:** Classical OpenCV-based CV methods (template matching, feature detection, contour detection) have been removed. OmniParser + Tesseract.js provide superior detection accuracy.
@@ -367,13 +367,13 @@ OmniParser v2.0 provides semantic UI element detection with **full pipeline inte
 Configuration:
 ```bash
 # Core OmniParser
-BYTEBOT_CV_USE_OMNIPARSER=true
-OMNIPARSER_URL=http://localhost:9989
-OMNIPARSER_DEVICE=cuda  # cuda, mps (Apple Silicon), or cpu
-OMNIPARSER_MIN_CONFIDENCE=0.3
+BYTEBOT_CV_USE_HOLO=true
+HOLO_URL=http://localhost:9989
+HOLO_DEVICE=cuda  # cuda, mps (Apple Silicon), or cpu
+HOLO_MIN_CONFIDENCE=0.3
 
 # Full Pipeline Features
-BYTEBOT_CV_USE_OMNIPARSER_OCR=true  # Enable OCR integration
+BYTEBOT_CV_USE_HOLO_OCR=true  # Enable OCR integration
 OMNIPARSER_IOU_THRESHOLD=0.7  # Overlap filtering
 OMNIPARSER_BATCH_SIZE=128  # Caption batch size (GPU: 128, CPU: 16)
 ```
@@ -401,7 +401,7 @@ All NestJS packages use Jest:
 
 ## Key Technical Notes
 
-- Node.js ≥20.0.0 required for all packages (Python 3.12 for bytebot-omniparser)
+- Node.js ≥20.0.0 required for all packages (Python 3.12 for bytebot-holo)
 - TypeScript strict mode enabled
 - Monorepo structure requires building shared package first
 - **OpenCV removed** - system now uses OmniParser (primary) + Tesseract.js (fallback)
@@ -456,7 +456,7 @@ SOM is a visual grounding technique where UI elements are annotated with numbere
 
 ### Current Implementation (Phase 1 - DONE)
 
-**Python Service (bytebot-omniparser):**
+**Python Service (bytebot-holo):**
 - `generate_som_image()` method overlays numbered boxes on screenshots
 - API returns `som_image` field with base64-encoded annotated images
 - BoxAnnotator from OmniParser's util library handles rendering
@@ -488,7 +488,7 @@ SOM is a visual grounding technique where UI elements are annotated with numbere
 
 ```bash
 # Start OmniParser service
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 python src/server.py
 
 # Test SOM endpoint

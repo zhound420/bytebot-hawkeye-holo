@@ -35,7 +35,7 @@ OmniParser v2.0 integration for Bytebot Hawkeye CV pipeline. Provides semantic U
 ### 1. Run Setup Script (Recommended)
 
 ```bash
-cd packages/bytebot-omniparser
+cd packages/bytebot-holo
 bash scripts/setup.sh
 ```
 
@@ -131,19 +131,19 @@ Environment variables (prefix with `OMNIPARSER_`):
 
 ```bash
 # Service
-OMNIPARSER_HOST=0.0.0.0
-OMNIPARSER_PORT=9989
+HOLO_HOST=0.0.0.0
+HOLO_PORT=9989
 OMNIPARSER_WORKERS=1
 
 # Device
-OMNIPARSER_DEVICE=cuda  # cuda, mps, cpu (auto-detected)
+HOLO_DEVICE=cuda  # cuda, mps, cpu (auto-detected)
 
 # Detection
-OMNIPARSER_MIN_CONFIDENCE=0.3
+HOLO_MIN_CONFIDENCE=0.3
 OMNIPARSER_MAX_DETECTIONS=100
 
 # Performance
-OMNIPARSER_MODEL_DTYPE=float16  # float16, float32, bfloat16
+HOLO_MODEL_DTYPE=float16  # float16, float32, bfloat16
                                  # Note: Automatically uses float32 on Apple Silicon MPS
 OMNIPARSER_CACHE_MODELS=true
 ```
@@ -192,7 +192,7 @@ bash scripts/download_models.sh
 
 ### CUDA out of memory
 ```bash
-export OMNIPARSER_MODEL_DTYPE=float32
+export HOLO_MODEL_DTYPE=float32
 export OMNIPARSER_MAX_DETECTIONS=50
 ```
 

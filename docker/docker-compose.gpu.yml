@@ -16,7 +16,7 @@
 # - NVIDIA drivers installed
 
 services:
-  bytebot-omniparser:
+  bytebot-holo:
     deploy:
       resources:
         reservations:

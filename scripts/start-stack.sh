@@ -47,21 +47,21 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${GREEN}✓ Native OmniParser detected on port 9989${NC}"
 
         # Update .env.defaults (system defaults) to use native OmniParser
-        if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
+        if grep -q "HOLO_URL=http://bytebot-holo:9989" .env.defaults 2>/dev/null; then
             echo -e "${BLUE}Updating system configuration to use native OmniParser...${NC}"
-            sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
+            sed -i.bak 's|HOLO_URL=http://bytebot-holo:9989|HOLO_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
         fi
 
         # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
         if [ -f ".env" ]; then
             echo -e "${BLUE}Syncing OmniParser settings to .env...${NC}"
-            # Update or add OMNIPARSER_URL in .env
-            if grep -q "^OMNIPARSER_URL=" .env; then
-                sed -i.bak 's|^OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+            # Update or add HOLO_URL in .env
+            if grep -q "^HOLO_URL=" .env; then
+                sed -i.bak 's|^HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' .env
                 rm .env.bak
             else
-                echo "OMNIPARSER_URL=http://host.docker.internal:9989" >> .env
+                echo "HOLO_URL=http://host.docker.internal:9989" >> .env
             fi
         fi
 
@@ -69,7 +69,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
 
         # Start all services except OmniParser container
-        # --no-deps prevents starting dependent services (bytebot-omniparser)
+        # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
         docker compose -f $COMPOSE_FILE up -d --build --no-deps \
             bytebot-desktop \
@@ -83,7 +83,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo ""
 
         # Check if it's been set up
-        if [[ ! -d "../packages/bytebot-omniparser/venv" ]] && [[ ! -d "../packages/bytebot-omniparser/weights/icon_detect" ]]; then
+        if [[ ! -d "../packages/bytebot-holo/venv" ]] && [[ ! -d "../packages/bytebot-holo/weights/icon_detect" ]]; then
             echo -e "${BLUE}→ Setting up native Holo 1.5-7B automatically (recommended for M4 GPU)...${NC}"
             echo ""
             cd ..
@@ -106,26 +106,26 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         fi
 
         # Update .env.defaults (system defaults) to use native OmniParser
-        if grep -q "OMNIPARSER_URL=http://bytebot-omniparser:9989" .env.defaults 2>/dev/null; then
-            sed -i.bak 's|OMNIPARSER_URL=http://bytebot-omniparser:9989|OMNIPARSER_URL=http://host.docker.internal:9989|' .env.defaults
+        if grep -q "HOLO_URL=http://bytebot-holo:9989" .env.defaults 2>/dev/null; then
+            sed -i.bak 's|HOLO_URL=http://bytebot-holo:9989|HOLO_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
         fi
 
         # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
         if [ -f ".env" ]; then
-            # Update or add OMNIPARSER_URL in .env
-            if grep -q "^OMNIPARSER_URL=" .env; then
-                sed -i.bak 's|^OMNIPARSER_URL=.*|OMNIPARSER_URL=http://host.docker.internal:9989|' .env
+            # Update or add HOLO_URL in .env
+            if grep -q "^HOLO_URL=" .env; then
+                sed -i.bak 's|^HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' .env
                 rm .env.bak
             else
-                echo "OMNIPARSER_URL=http://host.docker.internal:9989" >> .env
+                echo "HOLO_URL=http://host.docker.internal:9989" >> .env
             fi
         fi
 
         # Start stack without container
         echo ""
         echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
-        # --no-deps prevents starting dependent services (bytebot-omniparser)
+        # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
         docker compose -f $COMPOSE_FILE up -d --build --no-deps \
             bytebot-desktop \

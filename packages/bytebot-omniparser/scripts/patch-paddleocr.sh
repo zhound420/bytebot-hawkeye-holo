@@ -20,34 +20,78 @@ if [ ! -f "$UTILS_FILE" ]; then
 fi
 
 # Check if already patched
-if grep -q "Simplified init for PaddleOCR 3.2.0" "$UTILS_FILE" && grep -q "paddle_ocr.ocr(image_np)\[0\]" "$UTILS_FILE"; then
+if grep -q "PaddleOCR 3.x API compatibility" "$UTILS_FILE"; then
     echo -e "${GREEN}✓ Already patched${NC}"
     exit 0
 fi
 
 echo -e "${BLUE}Applying PaddleOCR 3.x compatibility patches...${NC}"
 
-# Patch 1: PaddleOCR initialization
-# Remove deprecated parameters: use_gpu, use_angle_cls, show_log, max_batch_size, use_dilation, det_db_score_mode, rec_batch_num
-echo -e "${BLUE}  - Fixing PaddleOCR initialization...${NC}"
-sed -i.bak '/^paddle_ocr = PaddleOCR(/,/)$/{
-    s/paddle_ocr = PaddleOCR(/paddle_ocr = PaddleOCR(/
-    s/^    lang=.*/    lang='\''en'\''  # Simplified init for PaddleOCR 3.2.0 compatibility/
-    /use_angle_cls/d
-    /use_gpu/d
-    /show_log/d
-    /max_batch_size/d
-    /use_dilation/d
-    /det_db_score_mode/d
-    /rec_batch_num/d
-}' "$UTILS_FILE"
+# Create comprehensive patch using Python to rewrite check_ocr_box function
+python3 << EOF
+import re
+import sys
 
-# Patch 2: Remove cls parameter from paddle_ocr.ocr() call
-# PaddleOCR 3.x doesn't support the cls parameter
-echo -e "${BLUE}  - Fixing paddle_ocr.ocr() call...${NC}"
-sed -i.bak2 's/paddle_ocr\.ocr(image_np, cls=False)/paddle_ocr.ocr(image_np)/g' "$UTILS_FILE"
+utils_file = "${UTILS_FILE}"
 
-# Clean up backups
-rm -f "$UTILS_FILE.bak" "$UTILS_FILE.bak2"
+with open(utils_file, 'r') as f:
+    content = f.read()
 
-echo -e "${GREEN}✓ Patched PaddleOCR initialization and ocr() call${NC}"
+# Patch 1: Fix PaddleOCR initialization (remove deprecated params)
+init_pattern = r'paddle_ocr = PaddleOCR\([^)]+\)'
+init_replacement = "paddle_ocr = PaddleOCR(lang='en')  # PaddleOCR 3.x API compatibility"
+content = re.sub(init_pattern, init_replacement, content, flags=re.DOTALL)
+
+# Patch 2: Fix check_ocr_box function to handle new OCRResult format
+old_ocr_logic = r'''    if use_paddleocr:
+        if easyocr_args is None:
+            text_threshold = 0.5
+        else:
+            text_threshold = easyocr_args\['text_threshold'\]
+        result = paddle_ocr\.ocr\(image_np\)(\[0\])?
+        coord = \[item\[0\] for item in result if item\[1\]\[1\] > text_threshold\]
+        text = \[item\[1\]\[0\] for item in result if item\[1\]\[1\] > text_threshold\]'''
+
+new_ocr_logic = '''    if use_paddleocr:
+        if easyocr_args is None:
+            text_threshold = 0.5
+        else:
+            text_threshold = easyocr_args['text_threshold']
+
+        # PaddleOCR 3.x returns OCRResult object, not nested lists
+        result = paddle_ocr.ocr(image_np)
+        if result and len(result) > 0:
+            ocr_result = result[0]
+            # Handle new OCRResult format
+            if hasattr(ocr_result, 'rec_boxes') and hasattr(ocr_result, 'rec_texts') and hasattr(ocr_result, 'rec_scores'):
+                # Extract polygons, texts, and scores from OCRResult
+                polygons = ocr_result.rec_boxes if len(ocr_result.rec_boxes) > 0 else ocr_result.dt_polys
+                texts = ocr_result.rec_texts
+                scores = ocr_result.rec_scores
+
+                # Filter by confidence threshold
+                coord = []
+                text = []
+                for i, score in enumerate(scores):
+                    if score > text_threshold:
+                        # Convert polygon to 4-point format if needed
+                        poly = polygons[i] if i < len(polygons) else None
+                        if poly is not None and len(poly) > 0:
+                            coord.append(poly)
+                            text.append(texts[i] if i < len(texts) else '')
+            else:
+                coord = []
+                text = []
+        else:
+            coord = []
+            text = []'''
+
+content = re.sub(old_ocr_logic, new_ocr_logic, content, flags=re.DOTALL)
+
+with open(utils_file, 'w') as f:
+    f.write(content)
+
+print("✓ Patched check_ocr_box function for PaddleOCR 3.x")
+EOF
+
+echo -e "${GREEN}✓ Patched PaddleOCR 3.x compatibility${NC}"

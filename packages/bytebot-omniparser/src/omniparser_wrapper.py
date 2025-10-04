@@ -367,6 +367,7 @@ class OmniParserV2:
                 }
 
                 # Run full pipeline: OCR + icon detection + captioning + SOM
+                # Use DETAILED_CAPTION for functional UI descriptions (e.g., "settings button with gear icon")
                 som_image_b64, label_coordinates, parsed_content_list = get_som_labeled_img(
                     pil_image,
                     model=self.icon_detector,
@@ -379,6 +380,7 @@ class OmniParserV2:
                     use_local_semantics=include_captions,
                     iou_threshold=iou_threshold,
                     scale_img=False,
+                    prompt="<DETAILED_CAPTION>",  # Balanced detail without being too verbose
                     batch_size=128  # Batch processing for speed
                 )
 

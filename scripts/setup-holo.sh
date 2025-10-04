@@ -8,6 +8,17 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Parse command line arguments
+FORCE_REINSTALL=false
+for arg in "$@"; do
+  case $arg in
+    --force|-f)
+      FORCE_REINSTALL=true
+      shift
+      ;;
+  esac
+done
+
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   Holo 1.5-7B Platform Detection & Setup${NC}"
 echo -e "${BLUE}================================================${NC}"
@@ -22,6 +33,42 @@ echo "  OS: $OS"
 echo "  Architecture: $ARCH"
 echo ""
 
+# Function to validate model cache is complete
+validate_model_cache() {
+    local cache_dir="$1"
+
+    # Check if directory exists
+    if [[ ! -d "$cache_dir" ]]; then
+        return 1
+    fi
+
+    # Check cache size (should be at least 10GB for full model)
+    local cache_size_mb=$(du -sm "$cache_dir" 2>/dev/null | awk '{print $1}' || echo "0")
+    if [[ $cache_size_mb -lt 10000 ]]; then
+        echo -e "${YELLOW}⚠ Incomplete cache detected: ${cache_size_mb}MB (expected ~15,400MB)${NC}" >&2
+        return 1
+    fi
+
+    # Check for actual model weight files
+    local weight_files=$(find "$cache_dir" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l)
+    if [[ $weight_files -eq 0 ]]; then
+        echo -e "${YELLOW}⚠ No model weight files found in cache${NC}" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+# Function to clean incomplete cache
+clean_incomplete_cache() {
+    local cache_dir="$1"
+    if [[ -d "$cache_dir" ]]; then
+        echo -e "${YELLOW}Cleaning incomplete cache...${NC}"
+        rm -rf "$cache_dir"
+        echo -e "${GREEN}✓ Cache cleaned${NC}"
+    fi
+}
+
 # Detect if running on Apple Silicon
 if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${GREEN}✓ Apple Silicon detected (M1/M2/M3/M4)${NC}"
@@ -30,23 +77,56 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     # Check if already set up (venv + model cached)
     MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
-    if [[ -d "packages/bytebot-omniparser/venv" ]] && [[ -d "$MODEL_CACHE" ]]; then
+
+    # Check if force reinstall requested
+    if [[ "$FORCE_REINSTALL" == "true" ]]; then
+        echo -e "${YELLOW}Force reinstall requested${NC}"
+        if [[ -d "packages/bytebot-omniparser/venv" ]]; then
+            echo "Removing existing Python environment..."
+            rm -rf packages/bytebot-omniparser/venv
+        fi
+        clean_incomplete_cache "$MODEL_CACHE"
+        echo ""
+    fi
+
+    # Validate existing setup
+    if [[ -d "packages/bytebot-omniparser/venv" ]] && validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
         echo -e "${GREEN}✓ Holo 1.5-7B already set up${NC}"
         echo ""
         echo "Setup includes:"
         echo "  ✓ Python environment (venv)"
         echo "  ✓ Model cached (~15.4 GB at ~/.cache/huggingface/)"
         echo ""
+        # Show actual cache size
+        CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+        CACHE_SIZE_GB=$(echo "scale=1; $CACHE_SIZE_MB/1024" | bc)
+        echo "  Cache size: ${CACHE_SIZE_GB}GB"
+        echo ""
         echo "To start Holo 1.5-7B natively:"
         echo -e "  ${BLUE}./scripts/start-holo.sh${NC}"
         echo ""
+        echo "To force reinstall:"
+        echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
+        echo ""
         exit 0
-    elif [[ -d "packages/bytebot-omniparser/venv" ]] && [[ ! -d "$MODEL_CACHE" ]]; then
+    elif [[ -d "packages/bytebot-omniparser/venv" ]]; then
         echo -e "${YELLOW}⚠ Partial setup detected${NC}"
         echo "  ✓ Python environment exists"
-        echo "  ✗ Model not cached"
+        echo "  ✗ Model not cached or incomplete"
         echo ""
-        echo -e "${BLUE}Re-running model download...${NC}"
+
+        # Show diagnostic info
+        if [[ -d "$MODEL_CACHE" ]]; then
+            CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+            echo "  Current cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
+            WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
+            echo "  Model weight files: $WEIGHT_COUNT (expected: >0)"
+        fi
+
+        echo ""
+        clean_incomplete_cache "$MODEL_CACHE"
+        echo ""
+        echo -e "${BLUE}Re-running full setup...${NC}"
         echo ""
         # Don't exit - continue to model download section
         # Skip venv creation, go straight to model download
@@ -73,10 +153,13 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     # Download Holo 1.5-7B model (~15.4 GB) - only if not cached
     MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
-    if [[ -d "$MODEL_CACHE" ]]; then
+    if validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
         echo ""
         echo -e "${GREEN}✓ Model already cached${NC}"
         echo "  Location: $MODEL_CACHE"
+        CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+        CACHE_SIZE_GB=$(echo "scale=1; $CACHE_SIZE_MB/1024" | bc)
+        echo "  Size: ${CACHE_SIZE_GB}GB"
         echo "  Skipping download"
         echo ""
     else
@@ -134,14 +217,54 @@ except Exception as e:
     sys.exit(1)
 EOFDL
 
-    if [ $? -eq 0 ]; then
+    DOWNLOAD_EXIT_CODE=$?
+    if [ $DOWNLOAD_EXIT_CODE -eq 0 ]; then
         echo ""
         echo -e "${GREEN}✓ Model downloaded and cached${NC}"
+
+        # Validate the download was actually complete
+        if ! validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
+            echo ""
+            echo -e "${RED}✗ Model validation failed after download${NC}"
+            echo ""
+            echo "The model directory exists but appears incomplete:"
+            CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+            echo "  Cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
+            WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
+            echo "  Weight files: $WEIGHT_COUNT (expected: >0)"
+            echo ""
+            echo "Possible causes:"
+            echo "  - Network interruption during download"
+            echo "  - Insufficient disk space"
+            echo "  - HuggingFace API rate limiting"
+            echo ""
+            echo "To retry:"
+            echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
+            echo ""
+            deactivate
+            exit 1
+        fi
     else
         echo ""
-        echo -e "${YELLOW}⚠ Model download incomplete${NC}"
-        echo "  The model will download on first start instead."
-        echo "  This is not a fatal error - setup will continue."
+        echo -e "${RED}✗ Model download failed (exit code: $DOWNLOAD_EXIT_CODE)${NC}"
+        echo ""
+        echo "Common causes:"
+        echo "  1. Transformers version too old (needs >= 4.49.0)"
+        echo "  2. Network connectivity issues"
+        echo "  3. HuggingFace authentication required"
+        echo "  4. Insufficient disk space"
+        echo ""
+
+        # Clean up incomplete cache
+        clean_incomplete_cache "$MODEL_CACHE"
+
+        echo "Please check the error messages above and try again."
+        echo ""
+        echo "To retry setup:"
+        echo -e "  ${BLUE}./scripts/setup-holo.sh${NC}"
+        echo ""
+        deactivate
+        exit 1
     fi
     fi  # End of model cache check
 

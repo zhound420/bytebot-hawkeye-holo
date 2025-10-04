@@ -20,6 +20,30 @@ if [[ "$ARCH" != "arm64" ]] || [[ "$OS" != "Darwin" ]]; then
     exit 1
 fi
 
+# Function to validate model cache is complete (same as setup script)
+validate_model_cache() {
+    local cache_dir="$1"
+
+    # Check if directory exists
+    if [[ ! -d "$cache_dir" ]]; then
+        return 1
+    fi
+
+    # Check cache size (should be at least 10GB for full model)
+    local cache_size_mb=$(du -sm "$cache_dir" 2>/dev/null | awk '{print $1}' || echo "0")
+    if [[ $cache_size_mb -lt 10000 ]]; then
+        return 1
+    fi
+
+    # Check for actual model weight files
+    local weight_files=$(find "$cache_dir" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l)
+    if [[ $weight_files -eq 0 ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   Starting Holo 1.5-7B (Native with MPS GPU)${NC}"
 echo -e "${BLUE}================================================${NC}"
@@ -31,6 +55,32 @@ if [[ ! -d "packages/bytebot-omniparser/venv" ]]; then
     echo ""
     echo "Run setup first:"
     echo -e "  ${BLUE}./scripts/setup-holo.sh${NC}"
+    exit 1
+fi
+
+# Validate model cache is complete (pre-flight check)
+MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+if ! validate_model_cache "$MODEL_CACHE"; then
+    echo -e "${RED}✗ Holo 1.5-7B model not found or incomplete${NC}"
+    echo ""
+
+    if [[ -d "$MODEL_CACHE" ]]; then
+        CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+        WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
+
+        echo "Model cache is incomplete:"
+        echo "  Cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
+        echo "  Weight files: $WEIGHT_COUNT (expected: >0)"
+        echo ""
+        echo "This usually means the model download failed or was interrupted."
+    else
+        echo "Model cache directory does not exist."
+    fi
+
+    echo ""
+    echo "To fix, run setup with force flag:"
+    echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
+    echo ""
     exit 1
 fi
 
@@ -94,14 +144,8 @@ echo "Service: http://localhost:9989"
 echo "Logs: logs/holo.log"
 echo ""
 
-# Check if model is cached
-MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
-if [ -d "$MODEL_CACHE" ]; then
-    echo "Model cached: Loading from cache (~60 seconds)..."
-else
-    echo -e "${YELLOW}First run: Downloading model (~15.4 GB, 5-30 minutes)${NC}"
-    echo "  Follow progress: tail -f logs/holo.log"
-fi
+# Model is validated by pre-flight check above, so it's always cached at this point
+echo "Model cached: Loading from cache (~60 seconds)..."
 echo ""
 
 # Wait and check health

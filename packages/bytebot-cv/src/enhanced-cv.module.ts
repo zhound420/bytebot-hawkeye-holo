@@ -1,22 +1,22 @@
 import { Module, Global } from '@nestjs/common';
 import { EnhancedVisualDetectorService } from './services/enhanced-visual-detector.service';
 import { CVActivityIndicatorService } from './services/cv-activity-indicator.service';
-import { OmniParserClientService } from './services/omniparser-client.service';
+import { HoloClientService } from './omniparser-client.service';
 
 /**
- * Enhanced CV Module - OmniParser + OCR detection only
- * OpenCV-based detectors removed
+ * Enhanced CV Module - Holo 1.5-7B + OCR detection
+ * Provides precision UI localization via Holo 1.5-7B VLM
  */
 @Global()
 @Module({
   providers: [
     CVActivityIndicatorService,
-    OmniParserClientService,
+    HoloClientService,
     EnhancedVisualDetectorService,
   ],
   exports: [
     CVActivityIndicatorService,
-    OmniParserClientService,
+    HoloClientService,
     EnhancedVisualDetectorService,
   ],
 })

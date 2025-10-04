@@ -2,9 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { UniversalUIElement } from '../interfaces/universal-element.interface';
 
 /**
- * OmniParser detection result from the Python service
+ * Holo 1.5-7B detection result from the Python service
  */
-export interface OmniParserElement {
+export interface HoloElement {
   bbox: [number, number, number, number]; // [x, y, width, height]
   center: [number, number]; // [x, y]
   confidence: number;
@@ -17,10 +17,10 @@ export interface OmniParserElement {
 }
 
 /**
- * OmniParser API response
+ * Holo 1.5-7B API response
  */
-export interface OmniParserResponse {
-  elements: OmniParserElement[];
+export interface HoloResponse {
+  elements: HoloElement[];
   count: number;
   processing_time_ms: number;
   image_size: {
@@ -38,20 +38,27 @@ export interface OmniParserResponse {
 /**
  * Parse request options
  */
-export interface OmniParserOptions {
+export interface HoloOptions {
   includeCaptions?: boolean;
   includeSom?: boolean;
-  includeOcr?: boolean; // Run OCR text detection (default: true)
-  useFullPipeline?: boolean; // Use full OmniParser pipeline (default: true)
+  includeOcr?: boolean; // Deprecated - maintained for compatibility
+  useFullPipeline?: boolean; // Deprecated - maintained for compatibility
   minConfidence?: number;
-  iouThreshold?: number; // IoU threshold for overlap removal (default: 0.7)
-  usePaddleOcr?: boolean; // Use PaddleOCR vs EasyOCR (default: true)
+  iouThreshold?: number; // Deprecated - maintained for compatibility
+  usePaddleOcr?: boolean; // Deprecated - maintained for compatibility
 }
 
+// Backward compatibility aliases
+export type OmniParserElement = HoloElement;
+export type OmniParserResponse = HoloResponse;
+export type OmniParserOptions = HoloOptions;
+export type OmniParserModelStatus = HoloModelStatus;
+export const OmniParserClientService = HoloClientService;
+
 /**
- * OmniParser model status
+ * Holo 1.5-7B model status
  */
-export interface OmniParserModelStatus {
+export interface HoloModelStatus {
   icon_detector: {
     loaded: boolean;
     type: string; // "YOLOv8"
@@ -66,38 +73,41 @@ export interface OmniParserModelStatus {
 }
 
 /**
- * Client service for OmniParser REST API
+ * Client service for Holo 1.5-7B REST API
  *
- * Integrates with the Python FastAPI service to provide semantic UI element detection
- * using YOLOv8 icon detection and Florence-2 captioning.
+ * Integrates with the Python FastAPI service to provide UI element localization
+ * using Holo 1.5-7B (Qwen2.5-VL base) for precision coordinate prediction.
+ *
+ * Note: Maintained as "OmniParserClientService" for backward compatibility,
+ * but now uses Holo 1.5-7B for improved localization accuracy.
  */
 @Injectable()
-export class OmniParserClientService {
-  private readonly logger = new Logger(OmniParserClientService.name);
+export class HoloClientService {
+  private readonly logger = new Logger('HoloClientService');
   private readonly baseUrl: string;
   private readonly timeout: number;
   private readonly enabled: boolean;
   private isHealthy: boolean = false;
-  private modelStatus: OmniParserModelStatus | null = null;
+  private modelStatus: HoloModelStatus | null = null;
 
   constructor() {
-    this.baseUrl = process.env.OMNIPARSER_URL || 'http://localhost:9989';
-    this.timeout = parseInt(process.env.OMNIPARSER_TIMEOUT || '30000', 10);
-    this.enabled = process.env.BYTEBOT_CV_USE_OMNIPARSER === 'true';
+    this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
+    this.timeout = parseInt(process.env.HOLO_TIMEOUT || '30000', 10);
+    this.enabled = process.env.BYTEBOT_CV_USE_HOLO === 'true';
 
     if (this.enabled) {
-      this.logger.log(`OmniParser client initialized: ${this.baseUrl}`);
+      this.logger.log(`Holo 1.5-7B client initialized: ${this.baseUrl}`);
       // Check health on startup
       this.checkHealth().catch((err) => {
-        this.logger.warn(`OmniParser health check failed: ${err.message}`);
+        this.logger.warn(`Holo 1.5-7B health check failed: ${err.message}`);
       });
     } else {
-      this.logger.log('OmniParser integration disabled');
+      this.logger.log('Holo 1.5-7B integration disabled');
     }
   }
 
   /**
-   * Check if OmniParser service is available
+   * Check if Holo 1.5-7B service is available
    */
   async isAvailable(): Promise<boolean> {
     if (!this.enabled) {
@@ -113,7 +123,7 @@ export class OmniParserClientService {
   }
 
   /**
-   * Check health of OmniParser service
+   * Check health of Holo 1.5-7B service
    */
   async checkHealth(): Promise<boolean> {
     try {
@@ -150,9 +160,9 @@ export class OmniParserClientService {
   }
 
   /**
-   * Fetch model status from OmniParser service
+   * Fetch model status from Holo 1.5-7B service
    */
-  async fetchModelStatus(): Promise<OmniParserModelStatus | null> {
+  async fetchModelStatus(): Promise<HoloModelStatus | null> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -178,23 +188,23 @@ export class OmniParserClientService {
   /**
    * Get cached model status
    */
-  getModelStatus(): OmniParserModelStatus | null {
+  getModelStatus(): HoloModelStatus | null {
     return this.modelStatus;
   }
 
   /**
-   * Parse screenshot using OmniParser
+   * Parse screenshot using Holo 1.5-7B
    *
    * @param imageBuffer - Screenshot image buffer
    * @param options - Parsing options
-   * @returns Detected UI elements with semantic information
+   * @returns Detected UI elements with localized coordinates
    */
   async parseScreenshot(
     imageBuffer: Buffer,
-    options: OmniParserOptions = {},
-  ): Promise<OmniParserResponse> {
+    options: HoloOptions = {},
+  ): Promise<HoloResponse> {
     if (!this.enabled) {
-      throw new Error('OmniParser is disabled');
+      throw new Error('Holo 1.5-7B is disabled');
     }
 
     const startTime = Date.now();
@@ -215,7 +225,7 @@ export class OmniParserClientService {
         use_paddleocr: options.usePaddleOcr ?? true,
       };
 
-      // Send request to OmniParser service
+      // Send request to Holo 1.5-7B service
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -233,49 +243,43 @@ export class OmniParserClientService {
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `OmniParser request failed: ${response.status} ${errorText}`,
+          `Holo 1.5-7B request failed: ${response.status} ${errorText}`,
         );
       }
 
-      const result: OmniParserResponse = await response.json();
+      const result: HoloResponse = await response.json();
 
       const elapsed = Date.now() - startTime;
 
-      // Log detailed stats if full pipeline was used
-      if (options.useFullPipeline !== false && result.ocr_detected !== undefined) {
-        this.logger.debug(
-          `OmniParser detected ${result.count} elements (${result.icon_detected} icons, ${result.text_detected} text, ${result.interactable_count} interactable) in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
-        );
-      } else {
-        this.logger.debug(
-          `OmniParser detected ${result.count} elements in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
-        );
-      }
+      // Log detection stats
+      this.logger.debug(
+        `Holo 1.5-7B localized ${result.count} elements in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
+      );
 
       return result;
     } catch (error) {
       const elapsed = Date.now() - startTime;
       this.logger.error(
-        `OmniParser error after ${elapsed}ms: ${error.message}`,
+        `Holo 1.5-7B error after ${elapsed}ms: ${error.message}`,
       );
       throw error;
     }
   }
 
   /**
-   * Convert OmniParser elements to UniversalUIElement format
+   * Convert Holo 1.5 elements to UniversalUIElement format
    *
-   * @param elements - OmniParser elements
+   * @param elements - Holo 1.5 localized elements
    * @returns Universal UI elements
    */
   convertToUniversalElements(
-    elements: OmniParserElement[],
+    elements: HoloElement[],
   ): UniversalUIElement[] {
     return elements.map((element, index) => {
       const [x, y, width, height] = element.bbox;
       const [centerX, centerY] = element.center;
 
-      // Infer element type from caption if available
+      // Infer element type from caption/task if available
       let elementType: 'button' | 'text_input' | 'clickable' | 'menu_item' = 'clickable';
       let semanticRole = 'interactive';
 
@@ -307,10 +311,10 @@ export class OmniParserClientService {
       // Create description from caption or element type
       const description = element.caption
         ? `${elementType}: ${element.caption}`
-        : `${elementType} element detected by OmniParser`;
+        : `${elementType} element localized by Holo 1.5-7B`;
 
       return {
-        id: `omniparser_${index}`,
+        id: `holo_${index}`,
         type: elementType,
         bounds: {
           x,
@@ -331,7 +335,7 @@ export class OmniParserClientService {
   }
 
   /**
-   * Get OmniParser service status
+   * Get Holo 1.5-7B service status
    */
   async getStatus(): Promise<{
     enabled: boolean;

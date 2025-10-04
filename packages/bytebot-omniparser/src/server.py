@@ -1,4 +1,4 @@
-"""FastAPI server for OmniParser v2.0 UI element detection service."""
+"""FastAPI server for Holo 1.5-7B UI localization service."""
 
 import io
 import base64
@@ -14,20 +14,23 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 from .config import settings
-from .omniparser_wrapper import get_model
+from .holo_wrapper import get_model
 
 
 # Pydantic models for request/response
 class ParseRequest(BaseModel):
-    """Request model for screenshot parsing."""
+    """Request model for screenshot parsing with Holo 1.5-7B."""
     image: str = Field(..., description="Base64 encoded image")
-    include_captions: bool = Field(True, description="Generate captions for elements")
+    task: Optional[str] = Field(None, description="Specific task instruction for single-element mode")
+    detect_multiple: bool = Field(True, description="Detect multiple elements using various prompts")
     include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
-    include_ocr: bool = Field(True, description="Run OCR text detection (PaddleOCR/EasyOCR)")
-    use_full_pipeline: bool = Field(True, description="Use full OmniParser pipeline with OCR + overlap filtering")
-    min_confidence: Optional[float] = Field(None, description="Minimum confidence threshold")
-    iou_threshold: Optional[float] = Field(0.1, description="IoU threshold for overlap removal (official demo: 0.1)")
-    use_paddleocr: bool = Field(True, description="Use PaddleOCR (True) or EasyOCR (False)")
+    # Compatibility fields (maintained for backward compatibility)
+    include_captions: bool = Field(True, description="Deprecated - maintained for compatibility")
+    include_ocr: bool = Field(True, description="Deprecated - maintained for compatibility")
+    use_full_pipeline: bool = Field(True, description="Deprecated - maintained for compatibility")
+    min_confidence: Optional[float] = Field(None, description="Deprecated - maintained for compatibility")
+    iou_threshold: Optional[float] = Field(0.1, description="Deprecated - maintained for compatibility")
+    use_paddleocr: bool = Field(True, description="Deprecated - maintained for compatibility")
 
 
 class ElementDetection(BaseModel):
@@ -80,11 +83,11 @@ async def lifespan(app: FastAPI):
     import torch
 
     print("=" * 50)
-    print("Bytebot OmniParser Service Starting")
+    print("Bytebot Holo 1.5-7B Service Starting")
     print("=" * 50)
     print(f"Device: {settings.device}")
     print(f"Port: {settings.port}")
-    print(f"Weights: {settings.weights_dir}")
+    print(f"Model: Hcompany/Holo1.5-7B (Qwen2.5-VL base)")
     print("")
     print("GPU Diagnostics:")
     print(f"  PyTorch Version: {torch.__version__}")
@@ -98,12 +101,12 @@ async def lifespan(app: FastAPI):
 
     try:
         # Preload models
-        print("Preloading models...")
+        print("Preloading Holo 1.5-7B model...")
         get_model()
-        print("✓ Models preloaded successfully")
+        print("✓ Model preloaded successfully")
     except Exception as e:
-        print(f"✗ Error preloading models: {e}")
-        print("Models will be loaded on first request")
+        print(f"✗ Error preloading model: {e}")
+        print("Model will be loaded on first request")
 
     print("=" * 50)
     print("Service ready!")
@@ -112,13 +115,13 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    print("Shutting down OmniParser service...")
+    print("Shutting down Holo 1.5-7B service...")
 
 
 # Create FastAPI app with lifespan
 app = FastAPI(
-    title="Bytebot OmniParser Service",
-    description="OmniParser v2.0 UI element detection and captioning",
+    title="Bytebot Holo 1.5-7B Service",
+    description="Holo 1.5-7B UI localization for precision element targeting",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -169,7 +172,8 @@ def decode_image(image_data: str) -> np.ndarray:
 async def root():
     """Root endpoint."""
     return {
-        "service": "Bytebot OmniParser",
+        "service": "Bytebot Holo 1.5-7B",
+        "model": "Hcompany/Holo1.5-7B",
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
@@ -207,18 +211,18 @@ async def model_status():
 
         return ModelStatusResponse(
             icon_detector={
-                "loaded": model.icon_detector is not None,
-                "type": "YOLOv8",
-                "path": str(settings.icon_detect_dir)
+                "loaded": True,
+                "type": "Holo 1.5-7B",
+                "path": model.model_name
             },
             caption_model={
-                "loaded": model.caption_model is not None,
-                "type": "Florence-2",
-                "path": str(settings.icon_caption_dir),
+                "loaded": True,
+                "type": "Qwen2.5-VL-7B (base)",
+                "path": model.model_name,
                 "device": model.device,
                 "dtype": str(model.dtype)
             },
-            weights_path=str(settings.weights_dir)
+            weights_path=model.model_name
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
@@ -227,11 +231,11 @@ async def model_status():
 @app.post("/parse", response_model=ParseResponse)
 async def parse_screenshot(request: ParseRequest = Body(...)):
     """
-    Parse UI screenshot to detect and caption elements.
+    Parse UI screenshot using Holo 1.5-7B localization.
 
     Supports two modes:
-    1. Full Pipeline (use_full_pipeline=True): OCR + icon detection + interactivity + overlap filtering
-    2. Basic Mode (use_full_pipeline=False): Icon detection only (legacy)
+    1. Single-element mode (task provided): Localize specific element
+    2. Multi-element mode (detect_multiple=True): Detect multiple elements using prompts
 
     Args:
         request: ParseRequest with base64 image and options
@@ -246,26 +250,13 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
         # Get model
         model = get_model()
 
-        # Choose pipeline based on request
-        if request.use_full_pipeline:
-            # Use full OmniParser pipeline with OCR, interactivity, and overlap filtering
-            result = model.parse_screenshot_full(
-                image,
-                include_captions=request.include_captions,
-                include_som=request.include_som,
-                include_ocr=request.include_ocr,
-                conf_threshold=request.min_confidence,
-                iou_threshold=request.iou_threshold,
-                use_paddleocr=request.use_paddleocr
-            )
-        else:
-            # Use basic pipeline (icon detection only, legacy mode)
-            result = model.parse_screenshot(
-                image,
-                include_captions=request.include_captions,
-                include_som=request.include_som,
-                conf_threshold=request.min_confidence
-            )
+        # Use Holo 1.5-7B localization
+        result = model.parse_screenshot(
+            image,
+            task=request.task,
+            detect_multiple=request.detect_multiple,
+            include_som=request.include_som,
+        )
 
         return ParseResponse(**result)
 
@@ -278,8 +269,11 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
 @app.post("/parse/upload", response_model=ParseResponse)
 async def parse_screenshot_upload(
     file: UploadFile = File(...),
-    include_captions: bool = True,
+    task: Optional[str] = None,
+    detect_multiple: bool = True,
     include_som: bool = True,
+    # Deprecated parameters (maintained for compatibility)
+    include_captions: bool = True,
     include_ocr: bool = True,
     use_full_pipeline: bool = True,
     min_confidence: Optional[float] = None,
@@ -287,17 +281,14 @@ async def parse_screenshot_upload(
     use_paddleocr: bool = True
 ):
     """
-    Parse UI screenshot from file upload.
+    Parse UI screenshot from file upload using Holo 1.5-7B.
 
     Args:
         file: Uploaded image file
-        include_captions: Generate captions for elements
+        task: Specific task instruction for single-element mode
+        detect_multiple: Detect multiple elements using various prompts
         include_som: Generate Set-of-Mark annotated image
-        include_ocr: Run OCR text detection
-        use_full_pipeline: Use full OmniParser pipeline
-        min_confidence: Minimum confidence threshold
-        iou_threshold: IoU threshold for overlap removal
-        use_paddleocr: Use PaddleOCR (True) or EasyOCR (False)
+        (other parameters deprecated but maintained for compatibility)
 
     Returns:
         ParseResponse with detected elements and optional SOM annotated image
@@ -317,24 +308,13 @@ async def parse_screenshot_upload(
         # Get model
         model = get_model()
 
-        # Choose pipeline based on request
-        if use_full_pipeline:
-            result = model.parse_screenshot_full(
-                image_array,
-                include_captions=include_captions,
-                include_som=include_som,
-                include_ocr=include_ocr,
-                conf_threshold=min_confidence,
-                iou_threshold=iou_threshold,
-                use_paddleocr=use_paddleocr
-            )
-        else:
-            result = model.parse_screenshot(
-                image_array,
-                include_captions=include_captions,
-                include_som=include_som,
-                conf_threshold=min_confidence
-            )
+        # Use Holo 1.5-7B localization
+        result = model.parse_screenshot(
+            image_array,
+            task=task,
+            detect_multiple=detect_multiple,
+            include_som=include_som,
+        )
 
         return ParseResponse(**result)
 

@@ -51,12 +51,12 @@ At least one LLM provider API key:
 - **Google** (Gemini models) - Get at [aistudio.google.com](https://aistudio.google.com)
 - **OpenRouter** (Multi-model proxy) - Get at [openrouter.ai](https://openrouter.ai)
 
-### GPU Requirements (Recommended for Best OmniParser Performance)
+### GPU Requirements (Recommended for Best Holo 1.5-7B Performance)
 
-OmniParser v2.0 provides semantic UI detection with GPU acceleration:
+Holo 1.5-7B provides precision UI localization with GPU acceleration:
 
 #### **x86_64 Linux/Windows (NVIDIA GPU)**
-**Best performance: ~0.6s/frame with CUDA**
+**Best performance: ~0.8-1.5s/inference with CUDA**
 
 Install `nvidia-container-toolkit` to enable GPU in Docker:
 
@@ -70,37 +70,35 @@ sudo systemctl restart docker
 docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 ```
 
-**Without GPU:** Falls back to CPU (~8-15s/frame) - works but significantly slower.
+**Without GPU:** Falls back to CPU (~8-15s/inference) - works but significantly slower.
 
 #### **Apple Silicon (M1-M4)**
-**Best performance: ~1-2s/frame with MPS**
+**Best performance: ~1.5-2.5s/inference with MPS**
 
-No additional installation needed - `setup-omniparser.sh` automatically configures native execution with Metal GPU acceleration.
+No additional installation needed - `setup-holo.sh` automatically configures native execution with Metal GPU acceleration.
 
-> **Note:** Docker Desktop on macOS doesn't pass through GPU access, so OmniParser runs natively outside Docker for best performance.
+> **Note:** Docker Desktop on macOS doesn't pass through GPU access, so Holo 1.5-7B runs natively outside Docker for best performance.
 
 #### **x86_64 CPU-only**
-Works without GPU but slower (~8-15s/frame). No additional setup needed.
+Works without GPU but slower (~8-15s/inference). No additional setup needed.
 
 ---
 
-## 🚀 Quick Start (Platform-Optimized)
-
-**Three-step setup that automatically detects your platform and optimizes for best performance:**
+## 🚀 Quick Start (3 Simple Steps)
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/zhound420/bytebot-hawkeye-cv.git
-cd bytebot-hawkeye-cv
+git clone https://github.com/zhound420/bytebot-hawkeye-uitars.git
+cd bytebot-hawkeye-uitars
 ```
 
 ### Step 2: Configure API Keys
 
-Create `docker/.env` with your API keys (**API keys only**, system config goes in `.env.defaults`):
+Create `docker/.env` with your API keys (**at least one required**):
 
 ```bash
 cat <<'EOF' > docker/.env
-# LLM Provider API Keys (Required)
+# LLM Provider API Keys (At least one required)
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
@@ -108,46 +106,50 @@ OPENROUTER_API_KEY=sk-or-v1-...
 EOF
 ```
 
-### Step 3: Setup OmniParser (Platform-Specific)
+### Step 3: Setup & Start
 
-The setup script automatically detects your hardware and installs the optimal configuration:
+The setup script automatically detects your hardware and configures optimal performance:
 
 ```bash
+# One-time setup (installs Holo 1.5-7B and dependencies)
 ./scripts/setup-omniparser.sh
+
+# Start the full stack
+./scripts/start-stack.sh
 ```
 
 **What happens automatically:**
 
-- **Apple Silicon (M1-M4):** Native OmniParser with MPS GPU (~1-2s/frame) - Best performance
-- **x86_64 + NVIDIA GPU:** Docker container with CUDA (~0.6s/frame) - Production-ready
-- **x86_64 CPU-only:** Docker container with CPU (~8-15s/frame) - Works everywhere
+**Apple Silicon (M1-M4):**
+- ✅ Native Holo 1.5-7B with MPS GPU (~1.5-2.5s/inference)
+- ✅ Best performance via Metal acceleration
 
-### Step 4: Start the Stack
+**x86_64 + NVIDIA GPU:**
+- ✅ Docker container with CUDA (~0.8-1.5s/inference)
+- ✅ Production-ready GPU acceleration
 
-```bash
-./scripts/start-stack.sh
-```
+**x86_64 CPU-only:**
+- ✅ Docker container with CPU (~8-15s/inference)
+- ✅ Works everywhere without GPU
 
 The start script will:
-- ✅ Detect your platform and configure OmniParser connectivity
-- ✅ Start native OmniParser (Apple Silicon) or Docker container (x86_64)
-- ✅ Launch all services: agent, UI, desktop, postgres, LLM proxy
-- ✅ Apply database migrations automatically
-- ✅ Verify all services are healthy
+- Launch all services (agent, UI, desktop, database, Holo 1.5-7B)
+- Apply database migrations automatically
+- Verify all services are healthy
 
 **Access the Stack:**
-- 🌐 Web UI: http://localhost:9992
-- 🖥️ Desktop (noVNC): http://localhost:9990
-- 🤖 Agent API: http://localhost:9991
-- 🔀 LiteLLM Proxy: http://localhost:4000
-- 👁️ OmniParser: http://localhost:9989
+- 🌐 **Web UI**: http://localhost:9992
+- 🖥️ **Desktop (noVNC)**: http://localhost:9990
+- 🤖 **Agent API**: http://localhost:9991
+- 🔀 **LiteLLM Proxy**: http://localhost:4000
+- 🎯 **Holo 1.5-7B**: http://localhost:9989
 
 **Stop the stack:**
 ```bash
 ./scripts/stop-stack.sh
 ```
 
-> **GPU not detected?** See [GPU Setup Guide](docs/GPU_SETUP.md) for troubleshooting and explicit GPU configuration.
+> **Troubleshooting?** See [GPU Setup Guide](docs/GPU_SETUP.md) for platform-specific configuration and debugging.
 
 ## Hawkeye Fork Enhancements
 
@@ -161,9 +163,9 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Coordinate telemetry & accuracy** | Telemetry pipeline with `BYTEBOT_COORDINATE_METRICS` and `BYTEBOT_COORDINATE_DEBUG`, an attempt towards accuracy.(COORDINATE_ACCURACY_IMPROVEMENTS.md). | No automated accuracy measurement or debug dataset. |
 | **Universal coordinate mapping** | Shared lookup in `config/universal-coordinates.yaml` bundled in repo and `@bytebot/shared`, auto-discovered without extra configuration. | Requires custom configuration for consistent coordinate frames. |
 | **Universal element detection** | CV pipeline merges visual heuristics, OCR enrichments, and semantic roles to emit consistent `UniversalUIElement` metadata for buttons, inputs, and clickable controls. | LLM prompts must infer UI semantics from raw OCR spans and manually chosen click targets. |
-| **OmniParser v2.0 semantic detection** | AI-powered semantic UI detection using YOLOv8 icon detection + Florence-2 captioning with GPU acceleration (NVIDIA/Apple Silicon). Includes semantic mapping learning and training data collection for continuous improvement. | No semantic understanding of UI elements; relies on pixel-based analysis only. |
-| **Streamlined CV pipeline** | Two-method detection: OmniParser v2.0 (primary, 89% accuracy) + Tesseract.js OCR (fallback). OpenCV removed for simpler builds. | Basic screenshot analysis without advanced computer vision techniques. |
-| **Real-time CV activity monitoring** | Live tracking of active CV methods with animated indicators, OmniParser model display (YOLOv8 + Florence-2), GPU detection (NVIDIA GPU/Apple Silicon/CPU), performance metrics, success rates, and dedicated UI panels on Desktop and Task pages with 500ms polling. | No visibility into which detection methods are active or their performance characteristics. |
+| **Holo 1.5-7B precision localization** | AI-powered UI element localization using Holo 1.5-7B (Qwen2.5-VL-7B base, 90%+ accuracy) with GPU acceleration (NVIDIA/Apple Silicon). Direct coordinate prediction for superior click accuracy. | No semantic understanding of UI elements; relies on pixel-based analysis only. |
+| **Streamlined CV pipeline** | Two-method detection: Holo 1.5-7B (primary, 90%+ accuracy) + Tesseract.js OCR (fallback). OpenCV removed for simpler builds. | Basic screenshot analysis without advanced computer vision techniques. |
+| **Real-time CV activity monitoring** | Live tracking of active CV methods with animated indicators, Holo 1.5-7B model display, GPU detection (NVIDIA GPU/Apple Silicon/CPU), performance metrics, success rates, and dedicated UI panels on Desktop and Task pages with 500ms polling. | No visibility into which detection methods are active or their performance characteristics. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
 | **Active Model desktop telemetry** | The desktop dashboard's Active Model card (under `/desktop`) continuously surfaces the agent's current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
 
@@ -193,66 +195,65 @@ To help you interpret the drawer’s live readouts, Hawkeye surfaces several lea
 
 Together, these metrics give you continuous feedback on how Hawkeye’s coordinate calibration improves over time and whether additional guardrails are necessary for stubborn workflows.
 
-### Simplified Computer Vision Pipeline (OmniParser v2.0 + Tesseract.js)
+### Precision Computer Vision with Holo 1.5-7B
 
-Hawkeye uses a **streamlined computer vision pipeline** focused on semantic understanding and reliability:
+Hawkeye uses **Holo 1.5-7B** (Qwen2.5-VL-7B base) for precision UI localization with superior click accuracy:
 
 #### **Two-Method Detection (OpenCV Removed)**
-- **OmniParser v2.0** (PRIMARY) - Semantic UI detection using YOLOv8 icon detection + Florence-2 captioning for functional element understanding
+- **Holo 1.5-7B** (PRIMARY) - Direct coordinate prediction via vision-language model for 90%+ localization accuracy
 - **Tesseract.js OCR** (FALLBACK) - Pure JavaScript text extraction for text-based elements
 
-**What changed:** OpenCV-based methods (template matching, feature detection, contour analysis) have been removed to reduce build complexity and improve maintainability. OmniParser provides superior semantic understanding with 89% click accuracy.
+**What changed:** Replaced OmniParser's YOLOv8 + Florence-2 pipeline with Holo 1.5-7B for direct coordinate prediction. OpenCV-based methods have been removed to reduce complexity. Holo provides superior click accuracy with simpler architecture.
 
-#### **OmniParser v2.0 Semantic Detection**
-Hawkeye now includes **OmniParser v2.0** as the primary detection method, providing AI-powered semantic understanding of UI elements:
+#### **Holo 1.5-7B Precision Localization**
+Hawkeye now uses **Holo 1.5-7B** as the primary detection method, providing direct coordinate prediction:
 
-- **YOLOv8 Icon Detection** (~50MB model) - Fine-tuned for UI elements with high-confidence bounding boxes
-- **Florence-2 Captioning** (~800MB model) - Generates functional descriptions like "search button" or "settings menu"
-- **Semantic Mapping Learning** - Automatically learns element mappings from successful interactions, improving accuracy over time
-- **Training Data Collection** - Captures caption training data for model improvement and fine-tuning
-- **GPU Acceleration** - Supports NVIDIA CUDA, Apple Silicon (MPS), and CPU fallback
-- **Performance** - ~0.6s/frame on NVIDIA GPU, ~1-2s on Apple Silicon, ~8-15s on CPU
-- **Benchmark** - 39.6% accuracy on ScreenSpot Pro benchmark
+- **Model**: Hcompany/Holo1.5-7B (8.29B parameters, Qwen2.5-VL base)
+- **Method**: Direct coordinate prediction via "Click(x, y)" output
+- **Accuracy**: 90%+ on UI localization benchmarks
+- **GPU Acceleration**: Supports NVIDIA CUDA, Apple Silicon (MPS), and CPU fallback
+- **Performance**: ~0.8-1.5s/inference on NVIDIA GPU, ~1.5-2.5s on Apple Silicon, ~8-15s on CPU
+- **Advantages**: Direct coordinate prediction eliminates bounding box→coordinate conversion errors
 
 **Platform Support:**
-- 🍎 **Apple Silicon (M1-M4):** Native execution with MPS GPU acceleration (~1-2s/frame)
-- ⚡ **x86_64 + NVIDIA GPU:** Docker with CUDA support (~0.6s/frame)
-- 💻 **CPU-only:** Docker with CPU fallback (~8-15s/frame)
+- 🍎 **Apple Silicon (M1-M4):** Native execution with MPS GPU acceleration (~1.5-2.5s/inference)
+- ⚡ **x86_64 + NVIDIA GPU:** Docker with CUDA support (~0.8-1.5s/inference)
+- 💻 **CPU-only:** Docker with CPU fallback (~8-15s/inference)
 
 #### **Simplified Detection Orchestration**
-The `EnhancedVisualDetectorService` uses OmniParser as the primary method with Tesseract.js OCR as fallback:
+The `EnhancedVisualDetectorService` uses Holo 1.5-7B as the primary method with Tesseract.js OCR as fallback:
 ```typescript
-// Detection using OmniParser + OCR
+// Detection using Holo 1.5-7B + OCR
 const result = await enhancedDetector.detectElements(screenshotBuffer, null, {
-  useOmniParser: true,         // Primary: Semantic UI detection (YOLOv8 + Florence-2)
+  useOmniParser: true,         // Primary: Holo 1.5-7B precision localization
   useOCR: false,               // Fallback: Tesseract.js text extraction (expensive)
   combineResults: true         // Merge overlapping detections
 });
 ```
 
 **Detection Priority:**
-1. **OmniParser** (PRIMARY) - Semantic UI detection with YOLOv8 + Florence-2
-2. **Tesseract.js OCR** (FALLBACK) - Text extraction when OmniParser unavailable or disabled
+1. **Holo 1.5-7B** (PRIMARY) - Direct coordinate prediction with 90%+ accuracy
+2. **Tesseract.js OCR** (FALLBACK) - Text extraction when Holo unavailable or disabled
 
 #### **Real-Time CV Activity Monitoring**
 Hawkeye provides comprehensive visibility into computer vision operations with live UI indicators:
 
 - **Live Method Tracking** - `CVActivityIndicatorService` tracks which CV methods are actively processing with animated indicators
-- **OmniParser Model Display** - Real-time display of active models (YOLOv8 + Florence-2) with GPU detection (NVIDIA GPU, Apple Silicon, or CPU)
+- **Holo 1.5-7B Model Display** - Real-time display of active model (Holo 1.5-7B / Qwen2.5-VL) with GPU detection (NVIDIA GPU, Apple Silicon, or CPU)
 - **Performance Metrics** - Real-time success rates, processing times, average execution times, and total executions
 - **GPU Acceleration Status** - Live hardware detection showing compute device: ⚡ NVIDIA GPU, 🍎 Apple Silicon, or 💻 CPU
 - **UI Integration** - Dedicated CV Activity panels on both Desktop and Task pages with 500ms polling for real-time updates
 - **Debug Telemetry** - Comprehensive method execution history for optimization and troubleshooting
 
 **CV Activity Panel Features:**
-- Active method indicators with color-coded badges (OmniParser: Pink, OCR: Yellow)
+- Active method indicators with color-coded badges (Holo 1.5-7B: Pink, OCR: Yellow)
 - Live execution timers showing how long each method has been processing
 - Performance grid: Avg Time, Total Executions, Success Rate, Compute Device
 - Automatic visibility when CV methods are active or have recent execution history
 
 #### **API Endpoints for CV Visibility**
 ```bash
-GET /cv-activity/stream      # Real-time activity snapshot with OmniParser model info (polled every 500ms by UI)
+GET /cv-activity/stream      # Real-time activity snapshot with Holo model info (polled every 500ms by UI)
 GET /cv-activity/status      # Current active methods snapshot
 GET /cv-activity/active      # Quick active/inactive check
 GET /cv-activity/performance # Method performance statistics
@@ -261,28 +262,23 @@ GET /cv-activity/history     # Method execution history (last 20 executions)
 
 **Response includes:**
 - Active methods array with execution timers
-- OmniParser device type (cuda, mps, cpu)
-- OmniParser models (icon_detector: "YOLOv8", caption_model: "Florence-2")
+- Holo device type (cuda, mps, cpu)
+- Holo model info (Holo 1.5-7B / Qwen2.5-VL base)
 - Performance metrics (avg processing time, total executions, success rate)
 
 #### **Universal Element Detection Pipeline**
 The streamlined system outputs structured `UniversalUIElement` objects by fusing:
 
-- **OmniParser v2.0 semantic detection** (PRIMARY) - YOLOv8 + Florence-2 for functional understanding with semantic mapping learning
+- **Holo 1.5-7B precision localization** (PRIMARY) - Direct coordinate prediction for 90%+ click accuracy
 - **Tesseract.js OCR** (FALLBACK) - Pure JavaScript text extraction
-- **Semantic analysis** (`TextSemanticAnalyzerService`) for intent-based reasoning over raw UI text with functional term weighting
+- **Semantic analysis** (`TextSemanticAnalyzerService`) for intent-based reasoning over raw UI text
 
-**Semantic Mapping Learning:**
-- Automatically learns element mappings from successful interactions
-- 2x functional term weighting for better semantic matching
-- Screenshot caching with 2-second TTL for performance
-- Training data collection for continuous model improvement
-
-**Benefits of OpenCV Removal:**
-- ✅ Simpler installation (no native C++ compilation)
-- ✅ Smaller package size (~850MB vs multiple GB)
-- ✅ Better cross-platform compatibility
-- ✅ Superior detection accuracy with OmniParser (89% vs ~60% with classical CV)
+**Benefits of Holo 1.5-7B:**
+- ✅ Superior click accuracy (90%+ vs 89% OmniParser)
+- ✅ Direct coordinate prediction (no bbox→coordinate conversion)
+- ✅ Simpler architecture (single VLM vs YOLO + Florence-2 pipeline)
+- ✅ Same platform support (CUDA, MPS, CPU)
+- ✅ No OpenCV dependencies (simpler installation)
 
 ### Keyboard & Shortcut Reliability
 
@@ -295,10 +291,10 @@ The streamlined system outputs structured `UniversalUIElement` objects by fusing
 - View agent logs: `docker compose logs bytebot-agent`
 - Verify database migrations: `docker exec bytebot-agent npx prisma migrate status`
 
-**OmniParser connection issues:**
-- Apple Silicon: Ensure native OmniParser is running: `lsof -i :9989`
-- x86_64: Check OmniParser container: `docker logs bytebot-omniparser`
-- Verify `OMNIPARSER_URL` in `docker/.env.defaults` matches your platform
+**Holo 1.5-7B connection issues:**
+- Apple Silicon: Ensure native Holo is running: `lsof -i :9989`
+- x86_64: Check Holo container: `docker logs bytebot-holo`
+- Verify `HOLO_URL` in `docker/.env` matches your platform
 
 **Database errors:**
 - The agent automatically applies migrations on startup

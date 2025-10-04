@@ -1,119 +1,58 @@
-"""Configuration management for OmniParser service."""
+"""Configuration management for Holo 1.5-7B service."""
 
 import os
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from pydantic_settings import BaseSettings
 
 
-class PerformanceProfile:
-    """Performance profile configurations for OmniParser."""
-
-    SPEED = {
-        "enable_ocr": False,
-        "max_captions": 15,
-        "caption_prompt": "CAPTION",
-        "batch_size_mps": 16,
-        "batch_size_gpu": 64,
-        "description": "Fast mode (2-3s) - No OCR, limited captions"
-    }
-
-    BALANCED = {
-        "enable_ocr": True,
-        "max_captions": 25,
-        "caption_prompt": "DETAILED_CAPTION",
-        "batch_size_mps": 32,
-        "batch_size_gpu": 128,
-        "description": "Balanced mode (4-6s) - Selective OCR, detailed captions (RECOMMENDED)"
-    }
-
-    QUALITY = {
-        "enable_ocr": True,
-        "max_captions": 100,
-        "caption_prompt": "DETAILED_CAPTION",
-        "batch_size_mps": 32,
-        "batch_size_gpu": 128,
-        "description": "Quality mode (10-16s) - Full OCR, maximum accuracy"
-    }
-
-
 class Settings(BaseSettings):
-    """OmniParser service configuration."""
+    """Holo 1.5-7B service configuration."""
 
     # Service settings
     host: str = "0.0.0.0"
     port: int = 9989
     workers: int = 1
 
-    # Model paths
-    weights_dir: Path = Path(__file__).parent.parent / "weights"
-    icon_detect_dir: Path = weights_dir / "icon_detect"
-    icon_caption_dir: Path = weights_dir / "icon_caption_florence"
-
     # Device settings (auto = auto-detect, cuda = NVIDIA, mps = Apple Silicon, cpu = CPU)
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
 
-    # Performance profile
-    performance_profile: Literal["SPEED", "BALANCED", "QUALITY"] = "BALANCED"
-
-    # Detection settings (aligned with official OmniParser demo defaults)
-    min_confidence: float = 0.05  # Official demo default: 0.05 (was 0.3 - too high!)
-    max_detections: int = 100
-
-    # Performance tuning (can override profile defaults)
-    enable_ocr: Optional[bool] = None
-    max_captions: Optional[int] = None
-    caption_prompt: Optional[str] = None
-    batch_size: Optional[int] = None
-    iou_threshold: float = 0.1  # Overlap removal threshold
-
     # Model settings
     cache_models: bool = True
-    model_dtype: str = "float16"  # float16, float32, bfloat16
+    model_dtype: str = "bfloat16"  # float16, float32, bfloat16 (recommended for Holo)
+
+    # Holo 1.5 inference settings
+    max_new_tokens: int = 128  # Maximum tokens for coordinate generation
+    default_confidence: float = 0.85  # Default confidence (Holo doesn't provide confidence scores)
+
+    # Coordinate-to-bbox conversion settings
+    click_box_size: int = 40  # Size of bounding box around click point (pixels)
+    deduplication_radius: int = 30  # Radius for deduplicating similar coordinates (pixels)
+
+    # Guidelines and prompts for Holo 1.5
+    holo_guidelines: str = (
+        "You are a GUI automation assistant. Analyze the screenshot and provide "
+        "the exact pixel coordinates to click for the requested action. "
+        "Respond with Click(x, y) format."
+    )
+
+    # Detection prompts for multi-element mode
+    detection_prompts: List[str] = [
+        "Click on any interactive button",
+        "Click on any text input field",
+        "Click on any clickable link",
+        "Click on any menu item or dropdown",
+        "Click on any icon or control element",
+    ]
+
+    # Max detections limit
+    max_detections: int = 100
 
     model_config = {
-        "env_prefix": "OMNIPARSER_",
+        "env_prefix": "HOLO_",
         "env_file": ".env",
         "protected_namespaces": ()  # Disable protected namespace warning for model_dtype
     }
-
-    def get_profile_settings(self) -> dict:
-        """Get active performance profile settings."""
-        # Get base profile
-        profile_map = {
-            "SPEED": PerformanceProfile.SPEED,
-            "BALANCED": PerformanceProfile.BALANCED,
-            "QUALITY": PerformanceProfile.QUALITY,
-        }
-        profile = profile_map.get(self.performance_profile, PerformanceProfile.BALANCED)
-
-        # Apply overrides if specified
-        result = profile.copy()
-        if self.enable_ocr is not None:
-            result["enable_ocr"] = self.enable_ocr
-        if self.max_captions is not None:
-            result["max_captions"] = self.max_captions
-        if self.caption_prompt is not None:
-            result["caption_prompt"] = self.caption_prompt
-        if self.batch_size is not None:
-            result["batch_size_mps"] = self.batch_size
-            result["batch_size_gpu"] = self.batch_size
-
-        return result
-
-    def get_batch_size(self, device: str) -> int:
-        """Get optimal batch size for device."""
-        profile = self.get_profile_settings()
-
-        # Use explicit batch_size if set
-        if self.batch_size is not None:
-            return self.batch_size
-
-        # Otherwise use profile defaults
-        if device == "mps":
-            return profile["batch_size_mps"]
-        else:  # cuda or cpu
-            return profile["batch_size_gpu"]
 
 
 def get_device() -> Literal["cuda", "mps", "cpu"]:
@@ -121,9 +60,9 @@ def get_device() -> Literal["cuda", "mps", "cpu"]:
     Auto-detect best available device.
 
     Priority order:
-    1. CUDA (NVIDIA GPU) - best performance
-    2. MPS (Apple Silicon GPU) - good performance, native macOS only
-    3. CPU - fallback, slower but works everywhere
+    1. CUDA (NVIDIA GPU) - best performance (~0.8-1.5s/inference)
+    2. MPS (Apple Silicon GPU) - good performance (~1.5-2.5s/inference), native macOS only
+    3. CPU - fallback, slower (~8-15s/inference) but works everywhere
 
     Note: MPS is NOT available in Docker containers on macOS.
     """
@@ -147,7 +86,7 @@ def get_device() -> Literal["cuda", "mps", "cpu"]:
     print(f"⚠ No GPU acceleration available - using CPU on {arch}")
     if arch == "arm64" or arch == "aarch64":
         print("  Note: MPS (Apple Silicon GPU) is not available in Docker containers")
-        print("  For GPU acceleration on Apple Silicon, run OmniParser natively")
+        print("  For GPU acceleration on Apple Silicon, run Holo 1.5 natively")
     return "cpu"
 
 
@@ -161,8 +100,8 @@ if settings.device == "auto":
 else:
     print(f"→ Using configured device: {settings.device}")
 
-# Print active performance profile
-profile_settings = settings.get_profile_settings()
-print(f"→ Performance profile: {settings.performance_profile}")
-print(f"  {profile_settings['description']}")
-print(f"  OCR: {profile_settings['enable_ocr']}, Max captions: {profile_settings['max_captions']}, Batch size (MPS/GPU): {profile_settings['batch_size_mps']}/{profile_settings['batch_size_gpu']}")
+# Print Holo 1.5 configuration
+print(f"→ Model: Holo 1.5-7B (Qwen2.5-VL base)")
+print(f"  Dtype: {settings.model_dtype}, Max tokens: {settings.max_new_tokens}")
+print(f"  Detection prompts: {len(settings.detection_prompts)} prompts")
+print(f"  Click box size: {settings.click_box_size}px, Dedup radius: {settings.deduplication_radius}px")

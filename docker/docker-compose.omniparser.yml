@@ -1,4 +1,4 @@
-# OmniParser service extension for Bytebot Hawkeye
+# Holo 1.5-7B service extension for Bytebot Hawkeye
 # Usage: docker compose -f docker-compose.yml -f docker-compose.omniparser.yml up -d
 
 services:
@@ -6,19 +6,21 @@ services:
     build:
       context: ../packages/bytebot-omniparser
       dockerfile: Dockerfile
-    container_name: bytebot-omniparser
+    container_name: bytebot-holo
     restart: unless-stopped
     ports:
       - "9989:9989"
     environment:
-      - OMNIPARSER_HOST=0.0.0.0
-      - OMNIPARSER_PORT=9989
-      - OMNIPARSER_DEVICE=${OMNIPARSER_DEVICE:-auto}  # auto, cuda, mps, or cpu
-      - OMNIPARSER_MIN_CONFIDENCE=0.3
-      - OMNIPARSER_MODEL_DTYPE=${OMNIPARSER_MODEL_DTYPE:-float16}
+      - HOLO_HOST=0.0.0.0
+      - HOLO_PORT=9989
+      - HOLO_DEVICE=${HOLO_DEVICE:-auto}  # auto, cuda, mps, or cpu
+      - HOLO_MODEL_DTYPE=${HOLO_MODEL_DTYPE:-bfloat16}
+      - HOLO_MAX_NEW_TOKENS=128
+      - HOLO_CLICK_BOX_SIZE=40
+      - HOLO_DEDUPLICATION_RADIUS=30
     volumes:
-      # Optional: mount weights to persist across rebuilds
-      - omniparser_weights:/app/weights
+      # HuggingFace cache for Holo 1.5-7B model
+      - holo_cache:/root/.cache/huggingface
     networks:
       - bytebot-network
     # GPU support: Automatically detected (no config needed for most users)
@@ -28,28 +30,28 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s  # Longer startup for model loading
 
-  # Update bytebot-desktop to use OmniParser
+  # Update bytebot-desktop to use Holo 1.5-7B
   bytebot-desktop:
     environment:
-      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
-      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
       bytebot-omniparser:
         condition: service_healthy
 
-  # Update bytebot-agent to use OmniParser
+  # Update bytebot-agent to use Holo 1.5-7B
   bytebot-agent:
     environment:
-      - BYTEBOT_CV_USE_OMNIPARSER=${BYTEBOT_CV_USE_OMNIPARSER:-true}
-      - OMNIPARSER_URL=${OMNIPARSER_URL:-http://bytebot-omniparser:9989}
-      - OMNIPARSER_TIMEOUT=${OMNIPARSER_TIMEOUT:-30000}
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
     depends_on:
       bytebot-omniparser:
         condition: service_healthy
 
 volumes:
-  omniparser_weights:
+  holo_cache:
     driver: local

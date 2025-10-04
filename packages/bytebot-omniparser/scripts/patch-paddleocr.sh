@@ -20,13 +20,16 @@ if [ ! -f "$UTILS_FILE" ]; then
 fi
 
 # Check if already patched
-if grep -q "Simplified init for PaddleOCR 3.2.0" "$UTILS_FILE"; then
+if grep -q "Simplified init for PaddleOCR 3.2.0" "$UTILS_FILE" && grep -q "paddle_ocr.ocr(image_np)\[0\]" "$UTILS_FILE"; then
     echo -e "${GREEN}✓ Already patched${NC}"
     exit 0
 fi
 
-# Patch PaddleOCR initialization for 3.x compatibility
+echo -e "${BLUE}Applying PaddleOCR 3.x compatibility patches...${NC}"
+
+# Patch 1: PaddleOCR initialization
 # Remove deprecated parameters: use_gpu, use_angle_cls, show_log, max_batch_size, use_dilation, det_db_score_mode, rec_batch_num
+echo -e "${BLUE}  - Fixing PaddleOCR initialization...${NC}"
 sed -i.bak '/^paddle_ocr = PaddleOCR(/,/)$/{
     s/paddle_ocr = PaddleOCR(/paddle_ocr = PaddleOCR(/
     s/^    lang=.*/    lang='\''en'\''  # Simplified init for PaddleOCR 3.2.0 compatibility/
@@ -39,7 +42,12 @@ sed -i.bak '/^paddle_ocr = PaddleOCR(/,/)$/{
     /rec_batch_num/d
 }' "$UTILS_FILE"
 
-# Clean up backup
-rm -f "$UTILS_FILE.bak"
+# Patch 2: Remove cls parameter from paddle_ocr.ocr() call
+# PaddleOCR 3.x doesn't support the cls parameter
+echo -e "${BLUE}  - Fixing paddle_ocr.ocr() call...${NC}"
+sed -i.bak2 's/paddle_ocr\.ocr(image_np, cls=False)/paddle_ocr.ocr(image_np)/g' "$UTILS_FILE"
 
-echo -e "${GREEN}✓ Patched PaddleOCR initialization${NC}"
+# Clean up backups
+rm -f "$UTILS_FILE.bak" "$UTILS_FILE.bak2"
+
+echo -e "${GREEN}✓ Patched PaddleOCR initialization and ocr() call${NC}"

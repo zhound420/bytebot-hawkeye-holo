@@ -1,13 +1,13 @@
 /**
- * Semantic mapping between visual captions (what OmniParser sees)
+ * Semantic mapping between visual captions (what Holo 1.5-7B sees)
  * and functional names (what users call elements)
  *
- * This bridges the gap between Florence-2's visual descriptions
+ * This bridges the gap between Holo 1.5-7B's visual understanding
  * and user's functional intent.
  */
 
 export interface SemanticMapping {
-  visualPatterns: string[];  // Patterns to match in OmniParser captions
+  visualPatterns: string[];  // Patterns to match in Holo 1.5-7B captions
   functionalNames: string[]; // What users actually call this element
   applications?: string[];   // Specific to certain apps (optional)
 }
@@ -178,12 +178,14 @@ export function expandFunctionalQuery(
 }
 
 /**
- * Score how well an OmniParser caption matches a user query
+ * Score how well a Holo 1.5-7B caption matches a user query
  * Takes into account both visual and functional synonyms
  * Weights functional terms 2x higher than visual terms for better matching
+ *
+ * @param omniparserCaption - Caption from Holo 1.5-7B (param name kept for backward compat)
  */
 export function scoreSemanticMatch(
-  omniparserCaption: string,
+  omniparserCaption: string,  // Note: param name kept for backward compatibility
   userQuery: string,
   applicationContext: string = 'desktop',
   options: { weightFunctionalTerms?: number } = {}

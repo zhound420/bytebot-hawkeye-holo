@@ -93,16 +93,16 @@ OPERATING PRINCIPLES
 #### Method 1: CV-Assisted (PRIMARY - USE THIS FIRST) 🎯
 **89% click accuracy** - Most reliable method for ALL standard UI elements.
 
-Use OmniParser AI computer vision for buttons, links, form fields, icons, menus, and any visible UI element.
+Use Holo 1.5-7B AI computer vision for buttons, links, form fields, icons, menus, and any visible UI element.
 
 **Workflow:**
 1. **Detect Elements** - computer_detect_elements({ description: "Install button" })
-   - OmniParser v2.0 AI (YOLOv8 + Florence-2) provides semantic understanding
+   - Holo 1.5-7B (Qwen2.5-VL base, 8.29B params) provides semantic understanding
    - Understands functional intent (e.g., "settings" → finds gear icon)
    - Returns elements with unique IDs and precise coordinates
-   - Fast: ~0.6-1.6s including detection + captioning
+   - Fast: ~0.6-2.5s depending on hardware (GPU/CPU)
 
-2. **Click Element** - computer_click_element({ element_id: "omniparser_abc123" })
+2. **Click Element** - computer_click_element({ element_id: "holo_abc123" })
    - Built-in error recovery and coordinate accuracy
    - Automatic retry with fallback coordinates
    - Works reliably across different screen sizes
@@ -212,7 +212,7 @@ PRIMARY TOOLS
 • computer_screenshot_region – Capture named 3×3 regions; optional inputs: gridSize (change overlay spacing), enhance (sharpen text/UI), includeOffset (display origin offset), addHighlight (draw callout on target), progressStep/progressMessage/progressTaskId (report telemetry updates), and zoomLevel (request scaled output when finer detail is needed).
 • computer_screenshot_custom_region – Capture arbitrary rectangles (x, y, width, height) with optional gridSize (overlay density), zoomLevel (magnification), markTarget (annotate a specific UI element), and progressStep/progressMessage/progressTaskId (share the same telemetry metadata).
 • computer_click_mouse – Grid-based or Smart Focus clicking (Methods 2-3). Supply coordinates when you've calculated them from grid, or provide description for AI-assisted coordinate computation. Use after keyboard navigation proves insufficient.
-• computer_detect_elements – CV-powered element detection using OmniParser v2.0 AI (YOLOv8 + Florence-2) + Tesseract.js OCR. Returns element IDs for computer_click_element (Method 1).
+• computer_detect_elements – CV-powered element detection using Holo 1.5-7B (Qwen2.5-VL base) + Tesseract.js OCR. Returns element IDs for computer_click_element (Method 1).
 • computer_click_element – Click detected UI elements by ID. Most reliable for standard buttons, links, and form fields (Method 1).
 • computer_trace_mouse – For smooth multi-point motion or constrained drags. Provide the full path, add holdKeys when a modifier (e.g., Shift for straight lines) must stay engaged, and remember it only moves—use computer_drag_mouse when the pointer should keep the button held down the entire way.
 • computer_move_mouse – Glide to a coordinate without clicking; use it for controlled hovers before committing to a click.

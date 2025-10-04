@@ -76,7 +76,7 @@ const computerDetectElementsJsonSchema = {
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using OmniParser AI (YOLOv8 + Florence-2) semantic understanding + Tesseract.js OCR. Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
+    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
   input_schema: computerDetectElementsJsonSchema,
 };
 

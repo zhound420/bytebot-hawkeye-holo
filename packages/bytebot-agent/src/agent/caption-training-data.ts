@@ -1,5 +1,5 @@
 /**
- * Data collection system for fine-tuning OmniParser captions
+ * Data collection system for fine-tuning Holo 1.5-7B captions
  *
  * Collects training data from:
  * 1. LLM-provided descriptions when CV fails
@@ -7,7 +7,7 @@
  * 3. User corrections
  *
  * This data can be used to:
- * - Fine-tune Florence-2 model
+ * - Fine-tune Holo 1.5-7B model
  * - Train a secondary classifier
  * - Build better semantic mappings
  */
@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface CaptionTrainingEntry {
-  // OmniParser's visual caption
+  // Holo 1.5-7B's visual caption
   visualCaption: string;
 
   // Functional names (what users call it)

@@ -2023,16 +2023,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       // Get recent CV activity from the activity service
       const methodHistory = this.cvActivityService.getMethodHistory();
 
-      // Check for recent OmniParser detections (within last 30 seconds - increased from 5s)
+      // Check for recent Holo 1.5-7B detections (within last 30 seconds - increased from 5s)
       const now = Date.now();
       const recentDetections = methodHistory.filter(entry => {
         const age = entry.startTime ? (now - entry.startTime) : Infinity;
-        return entry.method === 'omniparser' && age < 30000;
+        return entry.method === 'holo-1.5-7b' && age < 30000;
       });
 
-      this.logger.debug(`CV Activity Check: ${recentDetections.length} recent OmniParser detections in last 30s`);
+      this.logger.debug(`CV Activity Check: ${recentDetections.length} recent Holo 1.5-7B detections in last 30s`);
 
-      // If there were internal OmniParser detections, create an informational message
+      // If there were internal Holo 1.5-7B detections, create an informational message
       if (recentDetections.length > 0) {
         const latestDetection = recentDetections[recentDetections.length - 1];
         const elementCount = latestDetection.metadata?.elementCount || 0;
@@ -2040,14 +2040,14 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         this.logger.debug(`Latest detection: ${elementCount} elements, age: ${now - (latestDetection.startTime || 0)}ms`);
 
         if (elementCount > 0) {
-          this.logger.log(`📊 Surfacing internal OmniParser detection: ${elementCount} elements`);
+          this.logger.log(`📊 Surfacing internal Holo 1.5-7B detection: ${elementCount} elements`);
 
           // Create system activity message
           await this.messagesService.create({
             content: [
               {
                 type: MessageContentType.Text,
-                text: `🔍 **Internal OmniParser Activity**\n\nDetected ${elementCount} UI elements during internal processing\n\n_This detection was performed automatically for caching/optimization and did not use \`computer_detect_elements\`. To interact with these elements, use \`computer_detect_elements\` followed by \`computer_click_element\`._`
+                text: `🔍 **Internal Holo 1.5-7B Activity**\n\nDetected ${elementCount} UI elements during internal processing\n\n_This detection was performed automatically for caching/optimization and did not use \`computer_detect_elements\`. To interact with these elements, use \`computer_detect_elements\` followed by \`computer_click_element\`._`
               }
             ],
             role: Role.ASSISTANT,

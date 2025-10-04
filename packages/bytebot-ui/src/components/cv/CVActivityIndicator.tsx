@@ -66,7 +66,7 @@ const methodDisplayNames: Record<string, string> = {
   "feature-matching": "Feature Match",
   "contour-detection": "Contour Detect",
   "ocr-detection": "OCR",
-  "omniparser": "OmniParser",
+  "omniparser": "AI Vision (OmniParser)",
 };
 
 const methodColors: Record<string, string> = {
@@ -79,17 +79,17 @@ const methodColors: Record<string, string> = {
 
 // Helper function to get device badge and styling
 const getDeviceBadge = (device?: string): { icon: string; label: string; color: string } => {
-  if (!device) return { icon: "💻", label: "Local", color: "text-blue-500" };
+  if (!device) return { icon: "💻", label: "Native", color: "text-blue-500" };
 
   const deviceLower = device.toLowerCase();
   if (deviceLower.includes("cuda")) {
     return { icon: "⚡", label: "NVIDIA GPU", color: "text-green-500" };
   } else if (deviceLower.includes("mps")) {
-    return { icon: "🍎", label: "Apple Silicon", color: "text-green-500" };
+    return { icon: "🍎", label: "Apple GPU", color: "text-green-500" };
   } else if (deviceLower.includes("cpu")) {
     return { icon: "💻", label: "CPU", color: "text-blue-500" };
   }
-  return { icon: "💻", label: "Local", color: "text-blue-500" };
+  return { icon: "💻", label: "Native", color: "text-blue-500" };
 };
 
 interface CVActivityIndicatorProps {
@@ -205,11 +205,11 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-medium text-foreground">
-                {hasOmniParser ? "🔍 OmniParser" : "🔍 CV Detection"}
+                {hasOmniParser ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
               </span>
               {activity?.omniparserModels && (
                 <span className="text-[9px] text-muted-foreground">
-                  {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
+                  {activity.omniparserModels.iconDetector} Detection + {activity.omniparserModels.captionModel} Captions
                 </span>
               )}
             </div>
@@ -344,7 +344,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium text-foreground">
-              {hasOmniParser ? "OmniParser" : "CV"} Active
+              {hasOmniParser ? "AI Vision" : "CV"} Active
             </span>
             {hasOmniParser && activity?.omniparserDevice && (
               <span className={cn("text-xs font-medium", deviceBadge.color)}>
@@ -354,7 +354,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
           </div>
           {models && (
             <span className="text-[10px] text-muted-foreground">
-              {models.iconDetector} + {models.captionModel}
+              {models.iconDetector} Detection + {models.captionModel} Captions
             </span>
           )}
         </div>
@@ -371,7 +371,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1">
             <h3 className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {hasOmniParser ? "OmniParser" : "CV Detection"}
+              {hasOmniParser ? "AI Computer Vision" : "CV Detection"}
             </h3>
             {hasOmniParser && (
               <span className={cn("text-[9px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
@@ -382,7 +382,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
           </div>
           {activity?.omniparserModels && (
             <div className="text-[8px] text-muted-foreground">
-              {activity.omniparserModels.iconDetector} + {activity.omniparserModels.captionModel}
+              {activity.omniparserModels.iconDetector} Detection + {activity.omniparserModels.captionModel} Captions
             </div>
           )}
         </div>

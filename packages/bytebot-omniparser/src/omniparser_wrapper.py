@@ -4,6 +4,7 @@ import time
 import sys
 import io
 import base64
+import traceback
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import torch
@@ -51,7 +52,9 @@ class OmniParserV2:
         self.device = settings.device
         self.dtype = self._get_dtype()
 
-        print(f"Loading OmniParser models on {self.device}...")
+        print(f"Loading OmniParser models on {self.device} with dtype={self.dtype}...")
+        if self.device == "mps":
+            print("  ℹ️  MPS detected: Using float32 to avoid dtype mismatch issues")
 
         # Load YOLO icon detection model
         self.icon_detector = self._load_icon_detector()
@@ -59,10 +62,15 @@ class OmniParserV2:
         # Load Florence-2 caption model
         self.caption_model, self.caption_processor = self._load_caption_model()
 
-        print("✓ OmniParser models loaded successfully")
+        print(f"✓ OmniParser models loaded successfully (device={self.device}, dtype={self.dtype})")
 
     def _get_dtype(self) -> torch.dtype:
         """Get torch dtype from config."""
+        # Force float32 for MPS to avoid dtype mismatch issues
+        # MPS doesn't handle mixed precision well (float16 model + float32 inputs)
+        if self.device == "mps":
+            return torch.float32
+
         dtype_map = {
             "float16": torch.float16,
             "float32": torch.float32,
@@ -457,7 +465,8 @@ class OmniParserV2:
                     caption = self.caption_element(image, detection["bbox"])
                     detection["caption"] = caption
                 except Exception as e:
-                    print(f"Warning: Failed to caption element: {e}")
+                    print(f"Error: Failed to caption element: {e}")
+                    print(f"Full traceback:\n{traceback.format_exc()}")
                     detection["caption"] = "interactive element"
 
         # Generate SOM annotated image if requested

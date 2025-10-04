@@ -1858,7 +1858,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         null,
         {
           confidenceThreshold: 0.5,
-          maxResults: 20,
+          maxResults: 100,  // Higher limit for background enrichment to improve cache coverage
         }
       );
 

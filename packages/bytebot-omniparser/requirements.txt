@@ -14,6 +14,7 @@ numpy>=1.24.0
 pydantic==2.9.0
 pydantic-settings==2.6.0
 supervision==0.18.0
+openai>=1.0.0
 easyocr
 paddlepaddle
 paddleocr

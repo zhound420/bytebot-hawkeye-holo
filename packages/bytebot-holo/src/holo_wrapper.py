@@ -106,24 +106,28 @@ class Holo15:
         """
         original_size = image.size  # (width, height)
 
-        # Smart resize from Qwen2-VL image processing
-        # This ensures coordinates align with model's internal representation
-        resized_image = smart_resize(
-            image,
-            max_pixels=1280 * 28 * 28,  # Qwen2.5-VL default
-            min_pixels=256 * 28 * 28
+        # Calculate optimal dimensions using smart_resize
+        # Note: PIL uses (width, height), but smart_resize expects (height, width)
+        # and returns (new_height, new_width)
+        new_height, new_width = smart_resize(
+            height=original_size[1],  # Convert PIL width,height to height,width
+            width=original_size[0],
+            factor=28,  # Qwen2.5-VL uses 28x28 patches
+            min_pixels=256 * 28 * 28,  # Minimum resolution
+            max_pixels=1280 * 28 * 28  # Maximum resolution (Qwen2.5-VL default)
         )
 
-        new_size = resized_image.size
+        # Actually resize the image to calculated dimensions
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
         # Calculate scale factors for coordinate conversion
         scale_factors = {
-            'width_scale': original_size[0] / new_size[0],
-            'height_scale': original_size[1] / new_size[1],
+            'width_scale': original_size[0] / new_width,
+            'height_scale': original_size[1] / new_height,
             'original_width': original_size[0],
             'original_height': original_size[1],
-            'resized_width': new_size[0],
-            'resized_height': new_size[1],
+            'resized_width': new_width,
+            'resized_height': new_height,
         }
 
         return resized_image, scale_factors
@@ -179,108 +183,116 @@ class Holo15:
         Returns:
             Detection dict with coordinates, or None if localization fails
         """
-        # Convert to PIL Image
-        pil_image = Image.fromarray(image)
+        try:
+            # Convert to PIL Image
+            pil_image = Image.fromarray(image)
 
-        # Apply smart resize for coordinate alignment
-        resized_image, scale_factors = self._smart_resize_image(pil_image)
-
-        # Prepare prompt with guidelines
-        if guidelines is None:
-            guidelines = settings.holo_guidelines
-
-        prompt_text = f"{guidelines}\n{task_instruction}" if guidelines else task_instruction
-
-        # Prepare messages for chat template
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "image", "image": resized_image},
-                {"type": "text", "text": prompt_text}
-            ]
-        }]
-
-        # Apply chat template
-        text = self.processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
-        )
-
-        # Process inputs
-        inputs = self.processor(
-            text=[text],
-            images=[resized_image],
-            return_tensors="pt",
-            padding=True
-        ).to(self.model.device)
-
-        # Generate coordinates
-        with torch.no_grad():
-            generated_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=settings.max_new_tokens,
-                do_sample=False,  # Deterministic
-            )
-
-        # Decode output
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        output_text = self.processor.batch_decode(
-            generated_ids_trimmed,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False
-        )[0]
-
-        # Parse coordinates from output
-        coords = self._parse_coordinates(output_text)
-
-        if coords is None:
-            print(f"  Warning: Failed to parse coordinates from output: {output_text}")
+            # Apply smart resize for coordinate alignment
+            resized_image, scale_factors = self._smart_resize_image(pil_image)
+        except Exception as e:
+            print(f"✗ Holo error in image preprocessing: {e}")
             return None
 
-        # Scale coordinates back to original image size
-        x, y = coords
-        original_x = int(x * scale_factors['width_scale'])
-        original_y = int(y * scale_factors['height_scale'])
+        try:
+            # Prepare prompt with guidelines
+            if guidelines is None:
+                guidelines = settings.holo_guidelines
 
-        # Validate coordinates are within bounds
-        if not (0 <= original_x <= scale_factors['original_width'] and
-                0 <= original_y <= scale_factors['original_height']):
-            print(f"  Warning: Coordinates out of bounds: ({original_x}, {original_y})")
-            # Clamp to bounds
-            original_x = max(0, min(original_x, int(scale_factors['original_width'])))
-            original_y = max(0, min(original_y, int(scale_factors['original_height'])))
+            prompt_text = f"{guidelines}\n{task_instruction}" if guidelines else task_instruction
 
-        # Create bounding box around click point (configurable size)
-        box_size = settings.click_box_size
-        half_size = box_size // 2
+            # Prepare messages for chat template
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": resized_image},
+                    {"type": "text", "text": prompt_text}
+                ]
+            }]
 
-        bbox_x = max(0, original_x - half_size)
-        bbox_y = max(0, original_y - half_size)
-        bbox_width = box_size
-        bbox_height = box_size
+            # Apply chat template
+            text = self.processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
 
-        # Ensure bbox doesn't exceed image bounds
-        if bbox_x + bbox_width > scale_factors['original_width']:
-            bbox_width = int(scale_factors['original_width']) - bbox_x
-        if bbox_y + bbox_height > scale_factors['original_height']:
-            bbox_height = int(scale_factors['original_height']) - bbox_y
+            # Process inputs
+            inputs = self.processor(
+                text=[text],
+                images=[resized_image],
+                return_tensors="pt",
+                padding=True
+            ).to(self.model.device)
 
-        detection = {
-            "bbox": [bbox_x, bbox_y, bbox_width, bbox_height],
-            "center": [original_x, original_y],
-            "confidence": settings.default_confidence,  # Holo doesn't provide confidence
-            "type": "clickable",
-            "caption": task_instruction,
-            "interactable": True,
-            "content": task_instruction,
-            "source": "holo-localization",
-            "raw_output": output_text,
-        }
+            # Generate coordinates
+            with torch.no_grad():
+                generated_ids = self.model.generate(
+                    **inputs,
+                    max_new_tokens=settings.max_new_tokens,
+                    do_sample=False,  # Deterministic
+                )
 
-        return detection
+            # Decode output
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self.processor.batch_decode(
+                generated_ids_trimmed,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False
+            )[0]
+
+            # Parse coordinates from output
+            coords = self._parse_coordinates(output_text)
+
+            if coords is None:
+                print(f"  Warning: Failed to parse coordinates from output: {output_text}")
+                return None
+
+            # Scale coordinates back to original image size
+            x, y = coords
+            original_x = int(x * scale_factors['width_scale'])
+            original_y = int(y * scale_factors['height_scale'])
+
+            # Validate coordinates are within bounds
+            if not (0 <= original_x <= scale_factors['original_width'] and
+                    0 <= original_y <= scale_factors['original_height']):
+                print(f"  Warning: Coordinates out of bounds: ({original_x}, {original_y})")
+                # Clamp to bounds
+                original_x = max(0, min(original_x, int(scale_factors['original_width'])))
+                original_y = max(0, min(original_y, int(scale_factors['original_height'])))
+
+            # Create bounding box around click point (configurable size)
+            box_size = settings.click_box_size
+            half_size = box_size // 2
+
+            bbox_x = max(0, original_x - half_size)
+            bbox_y = max(0, original_y - half_size)
+            bbox_width = box_size
+            bbox_height = box_size
+
+            # Ensure bbox doesn't exceed image bounds
+            if bbox_x + bbox_width > scale_factors['original_width']:
+                bbox_width = int(scale_factors['original_width']) - bbox_x
+            if bbox_y + bbox_height > scale_factors['original_height']:
+                bbox_height = int(scale_factors['original_height']) - bbox_y
+
+            detection = {
+                "bbox": [bbox_x, bbox_y, bbox_width, bbox_height],
+                "center": [original_x, original_y],
+                "confidence": settings.default_confidence,  # Holo doesn't provide confidence
+                "type": "clickable",
+                "caption": task_instruction,
+                "interactable": True,
+                "content": task_instruction,
+                "source": "holo-localization",
+                "raw_output": output_text,
+            }
+
+            return detection
+        except Exception as e:
+            print(f"✗ Holo error during localization (task: '{task_instruction}'): {e}")
+            return None
 
     def detect_multiple_elements(
         self,
@@ -423,6 +435,12 @@ class Holo15:
             som_image = self.generate_som_image(image, detections)
 
         processing_time = (time.time() - start_time) * 1000  # Convert to ms
+
+        # Log detection result for visibility
+        if detections:
+            print(f"✓ Holo detected {len(detections)} element(s) in {processing_time:.1f}ms")
+        else:
+            print(f"⚠ Holo found 0 elements (task: {task}, detect_multiple: {detect_multiple})")
 
         result = {
             "elements": detections,

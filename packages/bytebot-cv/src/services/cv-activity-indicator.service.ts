@@ -213,12 +213,7 @@ export class CVActivityIndicatorService extends EventEmitter {
       }
     }
 
-    // Debug logging for persistence issues
-    if (this.methodHistory.length > 0 || this.activeMethods.size > 0) {
-      this.logger.debug(
-        `CV Activity Snapshot: ${this.activeMethods.size} active, ${this.methodHistory.length} in history, device: ${omniparserDevice || 'unknown'}`
-      );
-    }
+    // Removed noisy debug log - activity is tracked via /cv-activity endpoints instead
 
     // Get OmniParser model info if available
     const modelStatus = this.omniParserClient?.getModelStatus();

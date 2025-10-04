@@ -2,8 +2,39 @@
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 from pydantic_settings import BaseSettings
+
+
+class PerformanceProfile:
+    """Performance profile configurations for OmniParser."""
+
+    SPEED = {
+        "enable_ocr": False,
+        "max_captions": 15,
+        "caption_prompt": "CAPTION",
+        "batch_size_mps": 16,
+        "batch_size_gpu": 64,
+        "description": "Fast mode (2-3s) - No OCR, limited captions"
+    }
+
+    BALANCED = {
+        "enable_ocr": True,
+        "max_captions": 25,
+        "caption_prompt": "DETAILED_CAPTION",
+        "batch_size_mps": 32,
+        "batch_size_gpu": 128,
+        "description": "Balanced mode (4-6s) - Selective OCR, detailed captions (RECOMMENDED)"
+    }
+
+    QUALITY = {
+        "enable_ocr": True,
+        "max_captions": 100,
+        "caption_prompt": "DETAILED_CAPTION",
+        "batch_size_mps": 32,
+        "batch_size_gpu": 128,
+        "description": "Quality mode (10-16s) - Full OCR, maximum accuracy"
+    }
 
 
 class Settings(BaseSettings):
@@ -22,11 +53,21 @@ class Settings(BaseSettings):
     # Device settings (auto = auto-detect, cuda = NVIDIA, mps = Apple Silicon, cpu = CPU)
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
 
+    # Performance profile
+    performance_profile: Literal["SPEED", "BALANCED", "QUALITY"] = "BALANCED"
+
     # Detection settings (aligned with official OmniParser demo defaults)
     min_confidence: float = 0.05  # Official demo default: 0.05 (was 0.3 - too high!)
     max_detections: int = 100
 
-    # Performance settings
+    # Performance tuning (can override profile defaults)
+    enable_ocr: Optional[bool] = None
+    max_captions: Optional[int] = None
+    caption_prompt: Optional[str] = None
+    batch_size: Optional[int] = None
+    iou_threshold: float = 0.1  # Overlap removal threshold
+
+    # Model settings
     cache_models: bool = True
     model_dtype: str = "float16"  # float16, float32, bfloat16
 
@@ -35,6 +76,44 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "protected_namespaces": ()  # Disable protected namespace warning for model_dtype
     }
+
+    def get_profile_settings(self) -> dict:
+        """Get active performance profile settings."""
+        # Get base profile
+        profile_map = {
+            "SPEED": PerformanceProfile.SPEED,
+            "BALANCED": PerformanceProfile.BALANCED,
+            "QUALITY": PerformanceProfile.QUALITY,
+        }
+        profile = profile_map.get(self.performance_profile, PerformanceProfile.BALANCED)
+
+        # Apply overrides if specified
+        result = profile.copy()
+        if self.enable_ocr is not None:
+            result["enable_ocr"] = self.enable_ocr
+        if self.max_captions is not None:
+            result["max_captions"] = self.max_captions
+        if self.caption_prompt is not None:
+            result["caption_prompt"] = self.caption_prompt
+        if self.batch_size is not None:
+            result["batch_size_mps"] = self.batch_size
+            result["batch_size_gpu"] = self.batch_size
+
+        return result
+
+    def get_batch_size(self, device: str) -> int:
+        """Get optimal batch size for device."""
+        profile = self.get_profile_settings()
+
+        # Use explicit batch_size if set
+        if self.batch_size is not None:
+            return self.batch_size
+
+        # Otherwise use profile defaults
+        if device == "mps":
+            return profile["batch_size_mps"]
+        else:  # cuda or cpu
+            return profile["batch_size_gpu"]
 
 
 def get_device() -> Literal["cuda", "mps", "cpu"]:
@@ -81,3 +160,9 @@ if settings.device == "auto":
     print(f"→ Auto-detected device: {detected}")
 else:
     print(f"→ Using configured device: {settings.device}")
+
+# Print active performance profile
+profile_settings = settings.get_profile_settings()
+print(f"→ Performance profile: {settings.performance_profile}")
+print(f"  {profile_settings['description']}")
+print(f"  OCR: {profile_settings['enable_ocr']}, Max captions: {profile_settings['max_captions']}, Batch size (MPS/GPU): {profile_settings['batch_size_mps']}/{profile_settings['batch_size_gpu']}")

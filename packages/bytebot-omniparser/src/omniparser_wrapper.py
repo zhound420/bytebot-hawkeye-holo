@@ -324,14 +324,40 @@ class OmniParserV2:
         start_time = time.time()
         conf_threshold = conf_threshold or settings.min_confidence
 
+        # Get performance profile settings
+        profile_settings = settings.get_profile_settings()
+
+        # Apply profile: OCR enable/disable
+        if not profile_settings["enable_ocr"]:
+            include_ocr = False
+            print("OCR disabled by performance profile")
+
         # Convert numpy array to PIL Image for OmniParser
         pil_image = Image.fromarray(image)
         h, w = image.shape[:2]
 
-        # Step 1: Run OCR if requested
+        # Selective OCR: Pre-detect icons to decide if OCR is necessary
+        should_run_ocr = include_ocr
+        if include_ocr and profile_settings["enable_ocr"]:
+            # Quick icon detection to assess if OCR is needed
+            try:
+                quick_detections = self.detect_icons(image, conf_threshold)
+                num_icons = len(quick_detections)
+
+                # Skip OCR if we have sufficient high-quality icon detections
+                # This is a smart optimization for BALANCED mode
+                if num_icons >= 15:  # Plenty of elements already
+                    should_run_ocr = False
+                    print(f"Selective OCR: Skipping OCR (found {num_icons} icons, sufficient coverage)")
+                else:
+                    print(f"Selective OCR: Running OCR (only {num_icons} icons detected, need text detection)")
+            except Exception as e:
+                print(f"Warning: Pre-detection failed, will attempt OCR anyway: {e}")
+
+        # Step 1: Run OCR if determined necessary
         ocr_bbox = None
         ocr_text = []
-        if include_ocr and check_ocr_box:
+        if should_run_ocr and check_ocr_box:
             try:
                 ocr_result, _ = check_ocr_box(
                     pil_image,
@@ -366,8 +392,13 @@ class OmniParserV2:
                     'processor': self.caption_processor
                 }
 
+                # Get optimal batch size for current device and profile
+                batch_size = settings.get_batch_size(self.device)
+
+                # Get caption prompt from profile
+                caption_prompt = f"<{profile_settings['caption_prompt']}>"
+
                 # Run full pipeline: OCR + icon detection + captioning + SOM
-                # Use DETAILED_CAPTION for functional UI descriptions (e.g., "settings button with gear icon")
                 som_image_b64, label_coordinates, parsed_content_list = get_som_labeled_img(
                     pil_image,
                     model=self.icon_detector,
@@ -380,8 +411,8 @@ class OmniParserV2:
                     use_local_semantics=include_captions,
                     iou_threshold=iou_threshold,
                     scale_img=False,
-                    prompt="<DETAILED_CAPTION>",  # Balanced detail without being too verbose
-                    batch_size=128  # Batch processing for speed
+                    prompt=caption_prompt,  # Profile-based caption detail level
+                    batch_size=batch_size  # Profile-optimized batch size (MPS: 32, GPU: 128)
                 )
 
                 # Convert parsed_content_list to our format
@@ -425,11 +456,28 @@ class OmniParserV2:
                     }
                     elements.append(element)
 
+                # Apply max_captions limit from profile
+                # Prioritize interactable elements and those with captions
+                max_captions = profile_settings['max_captions']
+                if len(elements) > max_captions:
+                    # Sort by interactability (True first) and then by having caption content
+                    elements_sorted = sorted(
+                        elements,
+                        key=lambda e: (not e['interactable'], not bool(e.get('caption') or e.get('content'))),
+                        reverse=False
+                    )
+                    total_detected = len(elements)
+                    elements = elements_sorted[:max_captions]
+                    print(f"Performance profile limit: returning top {max_captions} of {total_detected} elements")
+                else:
+                    total_detected = len(elements)
+
                 processing_time = (time.time() - start_time) * 1000
 
                 result = {
                     "elements": elements,
                     "count": len(elements),
+                    "total_detected": total_detected,
                     "processing_time_ms": round(processing_time, 2),
                     "image_size": {"width": w, "height": h},
                     "device": self.device,

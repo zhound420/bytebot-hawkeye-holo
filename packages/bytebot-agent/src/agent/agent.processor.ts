@@ -1105,6 +1105,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         });
       }
 
+      // Surface internal CV activity (OmniParser detections) that aren't from explicit tool calls
+      await this.surfaceInternalCVActivity(taskId, messageContentBlocks);
+
       // Update the task status after all tool results have been generated if we have a set task status tool use block
       if (setTaskStatusToolUseBlock) {
         const desired = setTaskStatusToolUseBlock.input.status;
@@ -1953,6 +1956,61 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
    * (click/type/paste/press_keys/drag/application/write/read_file), optionally
    * with verification (document or screenshot present in history).
    */
+  /**
+   * Surface internal CV activity (OmniParser detections) that happened but weren't explicit tool calls
+   * This shows the user what OmniParser detected even for internal operations like caching/smart focus
+   */
+  private async surfaceInternalCVActivity(
+    taskId: string,
+    messageContentBlocks: MessageContentBlock[]
+  ): Promise<void> {
+    try {
+      // Check if there were any explicit computer_detect_elements calls
+      const hadExplicitDetection = messageContentBlocks.some(
+        block => isComputerDetectElementsToolUseBlock(block)
+      );
+
+      // If there was an explicit detection call, it already created messages
+      if (hadExplicitDetection) {
+        return;
+      }
+
+      // Get recent CV activity from the activity service
+      const methodHistory = this.cvActivityService.getMethodHistory();
+
+      // Check for recent OmniParser detections (within last 5 seconds)
+      const now = Date.now();
+      const recentDetections = methodHistory.filter(entry => {
+        const age = entry.startTime ? (now - entry.startTime) : Infinity;
+        return entry.method === 'omniparser' && age < 5000;
+      });
+
+      // If there were internal OmniParser detections, create an informational message
+      if (recentDetections.length > 0) {
+        const latestDetection = recentDetections[recentDetections.length - 1];
+        const elementCount = latestDetection.metadata?.elementCount || 0;
+
+        if (elementCount > 0) {
+          this.logger.log(`📊 Surfacing internal OmniParser detection: ${elementCount} elements`);
+
+          // Create system activity message
+          await this.messagesService.create({
+            content: [
+              {
+                type: MessageContentType.Text,
+                text: `🔍 **Internal OmniParser Activity**\n\nDetected ${elementCount} UI elements during internal processing\n\n_This detection was performed automatically for caching/optimization and did not use \`computer_detect_elements\`. To interact with these elements, use \`computer_detect_elements\` followed by \`computer_click_element\`._`
+              }
+            ],
+            role: Role.ASSISTANT,
+            taskId,
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to surface internal CV activity: ${error.message}`);
+    }
+  }
+
   private async canMarkCompleted(taskId: string): Promise<boolean> {
     try {
       const history = await this.messagesService.findEvery(taskId);

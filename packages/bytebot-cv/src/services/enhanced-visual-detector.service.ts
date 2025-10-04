@@ -108,7 +108,8 @@ export class EnhancedVisualDetectorService {
       if (omniParserResults.length > 0) {
         methodsUsed.push('omniparser');
         allElements.push(...omniParserResults);
-        this.logger.debug(`OmniParser detected ${omniParserResults.length} semantic elements`);
+        // Log at INFO level so it's visible in logs (not just DEBUG)
+        this.logger.log(`🔍 OmniParser detected ${omniParserResults.length} semantic elements`);
       }
 
       if (ocrResults.length > 0) {

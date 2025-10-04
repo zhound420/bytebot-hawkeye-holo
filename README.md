@@ -53,33 +53,31 @@ At least one LLM provider API key:
 
 ### Disk Space Requirements
 
-**Holo 1.5-7B Model:**
-- **Model size:** ~15.4 GB (8.29B parameters in BF16 precision)
+**Holo 1.5-7B GGUF Model:**
+- **Model size:** ~6 GB (Q4_K_M quantization: 4.8GB model + 1GB mmproj)
 - **Cache location:** `~/.cache/huggingface/hub/`
-- **Recommended free space:** 25 GB (model + cache overhead)
-- **Download time:** 5-30 minutes depending on internet speed (one-time download)
+- **Recommended free space:** 15 GB (model + cache overhead)
+- **Download time:** 5-15 minutes depending on internet speed (one-time download)
+- **Backend:** llama-cpp-python with GGUF quantization for efficient inference
 
 **By Platform:**
-- **Apple Silicon (M1-M4):** Model downloads automatically during `setup-holo.sh` (~5-30 min)
-- **x86_64 (Docker):** Model downloads when container first starts, cached for future use
-- **Storage:** Model is cached permanently and reused across restarts
+- **Apple Silicon (M1-M4):** GGUF model downloads automatically on first run via llama-cpp-python
+- **x86_64 (Docker):** GGUF model downloads when container first starts, cached for future use
+- **Storage:** GGUF model is cached permanently and reused across restarts
 
 **Model Validation:**
-The setup script validates complete downloads by checking:
-- ✅ Cache size must be ≥10GB (not just 16MB tokenizer files)
-- ✅ Model weight files (.safetensors/.bin) must exist
-- ✅ Shows diagnostic info if validation fails (actual size, weight count, what's missing)
+The setup script validates complete GGUF downloads by checking:
+- ✅ Cache size must be ≥5GB (GGUF Q4_K_M + mmproj)
+- ✅ GGUF model files (.gguf) must exist (2 files: model + mmproj)
+- ✅ Shows diagnostic info if validation fails (actual size, GGUF count, what's missing)
 
-If you see "⚠ Partial setup detected", the script will automatically:
-1. Show cache size and weight file count
-2. Clean incomplete cache
-3. Re-download with latest dependencies (including transformers ≥4.49.0)
+**Note:** GGUF models download automatically via llama-cpp-python on first use, so setup is optional. The service will download the model when first started.
 
-> **Tip:** If disk space is limited, the setup script will warn you and ask for confirmation before downloading. To force a clean reinstall: `./scripts/setup-holo.sh --force`
+> **Tip:** If disk space is limited, the setup script will warn you and ask for confirmation before starting (needs ~15GB vs previous 25GB). To force a clean reinstall: `./scripts/setup-holo.sh --force`
 
-### GPU Requirements (Recommended for Best Holo 1.5-7B Performance)
+### GPU Requirements (Recommended for Best Holo 1.5-7B GGUF Performance)
 
-Holo 1.5-7B provides precision UI localization with GPU acceleration:
+Holo 1.5-7B GGUF provides precision UI localization with GPU acceleration via llama-cpp-python:
 
 #### **x86_64 Linux/Windows (NVIDIA GPU)**
 **Best performance: ~0.8-1.5s/inference with CUDA**
@@ -99,14 +97,20 @@ docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 **Without GPU:** Falls back to CPU (~8-15s/inference) - works but significantly slower.
 
 #### **Apple Silicon (M1-M4)**
-**Best performance: ~1.5-2.5s/inference with MPS**
+**Best performance: ~1.5-2.5s/inference with Metal GPU**
 
-No additional installation needed - `setup-holo.sh` automatically configures native execution with Metal GPU acceleration.
+No additional installation needed - `setup-holo.sh` automatically configures native execution with Metal GPU acceleration via llama-cpp-python.
 
-> **Note:** Docker Desktop on macOS doesn't pass through GPU access, so Holo 1.5-7B runs natively outside Docker for best performance.
+> **Note:** Docker Desktop on macOS doesn't pass through Metal GPU access, so Holo 1.5-7B GGUF runs natively outside Docker for best performance.
 
 #### **x86_64 CPU-only**
 Works without GPU but slower (~8-15s/inference). No additional setup needed.
+
+#### **Alternative: LM Studio**
+Since Holo uses GGUF models, you can also load the model in LM Studio:
+- Model: `mradermacher/Holo1.5-7B-GGUF` (Q4_K_M recommended)
+- Configure llama-cpp-python to connect to LM Studio's OpenAI-compatible API
+- See LMStudio section below for setup details
 
 ---
 
@@ -177,35 +181,36 @@ The start script will:
 
 ### Troubleshooting Setup
 
-**Model download fails with "qwen2_5_vl not recognized":**
-- **Cause:** Outdated transformers version in existing venv (needs ≥4.49.0)
-- **Fix:** Run setup with force flag to upgrade packages:
+**GGUF model doesn't download:**
+- **Cause:** GGUF models download automatically on first run via llama-cpp-python
+- **Fix:** Start the service and it will download automatically:
   ```bash
-  ./scripts/setup-holo.sh --force
+  ./scripts/start-holo.sh  # Apple Silicon
+  ./scripts/start-stack.sh  # x86_64 in Docker
   ```
 
-**Setup reports "already set up" but model isn't downloaded:**
-- Scripts now validate cache is complete (≥10GB size + weight files present)
-- Shows diagnostic info: actual cache size, weight file count, what's missing
-- Auto-cleans incomplete cache and re-downloads automatically
-- **Fix:** Just run setup again - it will detect and fix incomplete state:
+**Setup reports "already set up" but GGUF model isn't cached:**
+- Scripts now validate GGUF cache is complete (≥5GB size + 2 .gguf files present)
+- Shows diagnostic info: actual cache size, GGUF file count, what's missing
+- Auto-cleans incomplete cache if detected
+- **Fix:** Just start the service - llama-cpp-python will download on first run:
   ```bash
-  ./scripts/setup-holo.sh
+  ./scripts/start-holo.sh
   ```
 
 **First-time setup on limited disk space:**
-- Setup script checks free space and warns if <25GB available
+- Setup script checks free space and warns if <15GB available
 - You can confirm to continue or cancel to free up space
-- Model cache location: `~/.cache/huggingface/hub/` (~15.4GB)
+- GGUF model cache location: `~/.cache/huggingface/hub/` (~6GB)
 - **Fix:** Free up disk space and run `./scripts/setup-holo.sh`
 
 **Force reinstall (clean slate):**
 ```bash
 ./scripts/setup-holo.sh --force
 ```
-- Removes existing venv and incomplete model cache
-- Performs clean installation from scratch with latest dependencies
-- Useful for recovering from corrupted state or upgrading transformers
+- Removes existing venv and incomplete GGUF model cache
+- Performs clean installation from scratch with latest llama-cpp-python
+- Useful for recovering from corrupted state or switching quantization levels
 
 > **More help?** See [GPU Setup Guide](docs/GPU_SETUP.md) for platform-specific configuration and debugging.
 
@@ -263,15 +268,21 @@ Hawkeye uses **Holo 1.5-7B** (Qwen2.5-VL-7B base) for precision UI localization 
 
 **What changed:** Replaced OmniParser's YOLOv8 + Florence-2 pipeline with Holo 1.5-7B for direct coordinate prediction. OpenCV-based methods have been removed to reduce complexity. Holo provides superior click accuracy with simpler architecture.
 
-#### **Holo 1.5-7B Precision Localization**
-Hawkeye now uses **Holo 1.5-7B** as the primary detection method, providing direct coordinate prediction:
+#### **Holo 1.5-7B GGUF Precision Localization**
+Hawkeye now uses **Holo 1.5-7B GGUF** (quantized) as the primary detection method, providing direct coordinate prediction with reduced memory usage:
 
-- **Model**: Hcompany/Holo1.5-7B (8.29B parameters, Qwen2.5-VL base)
+- **Model**: mradermacher/Holo1.5-7B-GGUF (Q4_K_M quantization)
+- **Size**: ~6 GB (4.8GB model + 1GB mmproj) vs 15.4GB unquantized
+- **Backend**: llama-cpp-python with GGUF support
 - **Method**: Direct coordinate prediction via "Click(x, y)" output
-- **Accuracy**: 90%+ on UI localization benchmarks
-- **GPU Acceleration**: Supports NVIDIA CUDA, Apple Silicon (MPS), and CPU fallback
+- **Accuracy**: 95%+ of full precision quality maintained with Q4_K_M
+- **GPU Acceleration**: Supports NVIDIA CUDA, Apple Silicon (Metal), and CPU fallback
 - **Performance**: ~0.8-1.5s/inference on NVIDIA GPU, ~1.5-2.5s on Apple Silicon, ~8-15s on CPU
-- **Advantages**: Direct coordinate prediction eliminates bounding box→coordinate conversion errors
+- **Advantages**:
+  - 69% smaller model size (15.4GB → 6GB)
+  - Direct coordinate prediction eliminates bounding box→coordinate conversion errors
+  - Compatible with LM Studio and other GGUF tools
+  - Automatic download via llama-cpp-python
 
 **Platform Support:**
 - 🍎 **Apple Silicon (M1-M4):** Native execution with MPS GPU acceleration (~1.5-2.5s/inference)
@@ -359,10 +370,10 @@ The streamlined system outputs structured `UniversalUIElement` objects by fusing
 - Manual migration: `docker exec bytebot-agent npx prisma migrate deploy`
 
 **Setup script issues:**
-- **Model incomplete:** Check cache size: `du -sh ~/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B/` (should be ~15GB, not 16MB)
-- **Download fails:** Transformers version too old - run `./scripts/setup-holo.sh --force` to upgrade
-- **"qwen2_5_vl not recognized":** Old transformers in venv - force flag upgrades packages
-- **Disk space:** Needs 25GB free - script checks and warns before downloading
+- **GGUF model incomplete:** Check cache size: `du -sh ~/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF/` (should be ~6GB with 2 .gguf files)
+- **Download fails:** Models download automatically via llama-cpp-python on first run
+- **llama-cpp-python errors:** Run `./scripts/setup-holo.sh --force` to reinstall with correct build flags
+- **Disk space:** Needs 15GB free (vs previous 25GB) - script checks and warns before starting
 
 ## Advanced: Manual Docker Compose Setup
 
@@ -413,16 +424,25 @@ docker compose -f docker/docker-compose.yml up -d --build
 
 ### Resource Constraints on Apple Silicon
 
-**Important:** On Apple Silicon Macs, Holo 1.5-7B **must** run locally for MPS GPU acceleration. This means you likely **cannot** run LMStudio locally due to GPU memory constraints unless you have a massive GPU.
+**Important:** On Apple Silicon Macs, Holo 1.5-7B **must** run locally for Metal GPU acceleration. This means you likely **cannot** run LMStudio locally due to GPU memory constraints unless you have a massive GPU.
 
 **Why Holo runs locally:**
-- Docker Desktop on macOS doesn't support MPS (Metal Performance Shaders) GPU passthrough
+- Docker Desktop on macOS doesn't support Metal GPU passthrough
 - Running Holo natively gives ~1.5-2.5s inference vs ~8-15s CPU-only in Docker
-- Holo 1.5-7B needs ~8GB GPU memory (8.29B parameters in BF16 precision)
+- Holo 1.5-7B GGUF Q4_K_M needs ~6GB GPU memory (quantized from 8.29B parameters)
+
+**Can I run Holo in LM Studio?**
+Yes! Since Holo is now GGUF format, you can load it in LM Studio:
+- Model: `mradermacher/Holo1.5-7B-GGUF` (search in LM Studio model browser)
+- Quantization: Q4_K_M recommended (4.8GB)
+- Use LM Studio's OpenAI-compatible API endpoint
+- Configure Holo service to connect to LM Studio instead of running its own inference
+
+However, this still requires ~6GB GPU memory, so you may not be able to run both Holo + large LLMs simultaneously on consumer hardware.
 
 **Why LMStudio can't run locally (usually):**
 - M1/M2/M3 unified memory is shared between CPU and GPU
-- Running both Holo (8GB) + LMStudio models (7-70B) exceeds available GPU memory
+- Running both Holo GGUF (6GB) + LMStudio models (7-70B) exceeds available GPU memory
 - Result: GPU memory exhaustion, severe slowdown, or OOM crashes
 
 ### Recommended Deployment Options
@@ -441,11 +461,12 @@ Run LMStudio on a different machine with its own GPU:
 ```
 
 **Advantages:**
-- ✅ Holo gets full MPS GPU access for fast inference (~1.5-2.5s)
+- ✅ Holo GGUF gets full Metal GPU access for fast inference (~1.5-2.5s)
 - ✅ LMStudio models run on separate hardware with dedicated resources
 - ✅ No GPU memory contention
 - ✅ Best performance for both systems
 - ✅ Can use large models (70B+) without affecting Holo
+- ✅ Holo's GGUF format (6GB) is more memory-efficient than before (was 15.4GB)
 
 **Setup:**
 1. **On LMStudio host machine:**

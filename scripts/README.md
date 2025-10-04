@@ -39,8 +39,10 @@ This comprehensive script:
 - Detects platform (Apple Silicon vs x86_64)
 - **Apple Silicon (M1-M4):**
   - Sets up native Python environment (venv or conda)
+  - Installs dependencies (openai, supervision for SOM annotations)
   - Downloads OmniParser models (~850MB)
-  - Configures MPS GPU acceleration
+  - **Applies PaddleOCR 3.x compatibility patch** (automated)
+  - **Configures float32 dtype for MPS GPU** (automatic, prevents dtype errors)
   - Updates Docker config to use `host.docker.internal:9989`
 - **x86_64:**
   - Configures Docker to use containerized OmniParser
@@ -219,7 +221,35 @@ curl http://localhost:9989/health
 
 **Check logs:**
 ```bash
-tail -f packages/bytebot-omniparser/omniparser.log
+tail -f logs/omniparser.log
+```
+
+### OmniParser crashes with dtype errors (Apple Silicon)
+
+**Symptoms:**
+- Service crashes with "Input type (float) and bias type (c10::Half) should be the same"
+- Florence-2 caption generation fails
+
+**Solution:**
+This is fixed automatically! The service now uses float32 on MPS. If you still see errors:
+```bash
+# Verify logs show float32
+tail logs/omniparser.log | grep dtype
+# Should show: "Loading OmniParser models on mps with dtype=torch.float32..."
+```
+
+### OmniParser crashes with PaddleOCR errors
+
+**Symptoms:**
+- Service crashes with "ValueError: Unknown argument: use_gpu" or similar
+- PaddleOCR initialization fails
+
+**Solution:**
+This is fixed automatically by the setup script. If you installed manually:
+```bash
+cd packages/bytebot-omniparser
+bash scripts/patch-paddleocr.sh
+./scripts/start-omniparser.sh  # from project root
 ```
 
 ### Docker build fails with OpenCV errors

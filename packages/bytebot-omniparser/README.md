@@ -32,7 +32,7 @@ OmniParser v2.0 integration for Bytebot Hawkeye CV pipeline. Provides semantic U
 
 ## Setup
 
-### 1. Run Setup Script
+### 1. Run Setup Script (Recommended)
 
 ```bash
 cd packages/bytebot-omniparser
@@ -41,8 +41,9 @@ bash scripts/setup.sh
 
 This will:
 - Create conda environment or Python venv
-- Install dependencies
+- Install dependencies (including openai, supervision for SOM)
 - Clone OmniParser repository
+- **Apply PaddleOCR 3.x compatibility patch** (automated)
 - Download model weights (~850MB)
 
 ### 2. Manual Setup (Alternative)
@@ -60,9 +61,14 @@ pip install -r requirements.txt
 # Clone OmniParser
 git clone https://github.com/microsoft/OmniParser.git
 
+# IMPORTANT: Apply PaddleOCR 3.x compatibility patch
+bash scripts/patch-paddleocr.sh
+
 # Download models
 bash scripts/download_models.sh
 ```
+
+**Note:** The patch script fixes PaddleOCR initialization for version 3.x compatibility. Required if setting up manually.
 
 ## Usage
 
@@ -138,6 +144,7 @@ OMNIPARSER_MAX_DETECTIONS=100
 
 # Performance
 OMNIPARSER_MODEL_DTYPE=float16  # float16, float32, bfloat16
+                                 # Note: Automatically uses float32 on Apple Silicon MPS
 OMNIPARSER_CACHE_MODELS=true
 ```
 
@@ -189,9 +196,20 @@ export OMNIPARSER_MODEL_DTYPE=float32
 export OMNIPARSER_MAX_DETECTIONS=50
 ```
 
-### Apple Silicon MPS issues
+### Apple Silicon MPS dtype mismatch
+**Fixed automatically** - Service now uses float32 on MPS to avoid "Input type (float) and bias type (c10::Half)" errors. No configuration needed.
+
+### PaddleOCR "Unknown argument" errors
+**Fixed automatically** - The setup script now applies a compatibility patch for PaddleOCR 3.x. If you see `ValueError: Unknown argument: use_gpu`, run:
 ```bash
-export OMNIPARSER_DEVICE=cpu
+bash scripts/patch-paddleocr.sh
+```
+
+### Apple Silicon: Service crashes on startup
+If service fails with import errors, ensure all dependencies are installed:
+```bash
+source venv/bin/activate  # or: conda activate omniparser
+pip install -r requirements.txt  # includes openai, supervision
 ```
 
 ## API Documentation

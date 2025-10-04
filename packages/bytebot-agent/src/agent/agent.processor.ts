@@ -1972,23 +1972,28 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // If there was an explicit detection call, it already created messages
       if (hadExplicitDetection) {
+        this.logger.debug('Skipping internal CV activity surfacing: explicit detection call found');
         return;
       }
 
       // Get recent CV activity from the activity service
       const methodHistory = this.cvActivityService.getMethodHistory();
 
-      // Check for recent OmniParser detections (within last 5 seconds)
+      // Check for recent OmniParser detections (within last 30 seconds - increased from 5s)
       const now = Date.now();
       const recentDetections = methodHistory.filter(entry => {
         const age = entry.startTime ? (now - entry.startTime) : Infinity;
-        return entry.method === 'omniparser' && age < 5000;
+        return entry.method === 'omniparser' && age < 30000;
       });
+
+      this.logger.debug(`CV Activity Check: ${recentDetections.length} recent OmniParser detections in last 30s`);
 
       // If there were internal OmniParser detections, create an informational message
       if (recentDetections.length > 0) {
         const latestDetection = recentDetections[recentDetections.length - 1];
         const elementCount = latestDetection.metadata?.elementCount || 0;
+
+        this.logger.debug(`Latest detection: ${elementCount} elements, age: ${now - (latestDetection.startTime || 0)}ms`);
 
         if (elementCount > 0) {
           this.logger.log(`📊 Surfacing internal OmniParser detection: ${elementCount} elements`);

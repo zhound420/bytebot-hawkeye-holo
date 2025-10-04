@@ -26,11 +26,11 @@ docker compose -f $COMPOSE_FILE down
 echo ""
 echo -e "${GREEN}✓ Docker services stopped${NC}"
 
-# Check if native OmniParser is running
+# Check if native Holo is running
 if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo ""
-    echo -e "${YELLOW}Native OmniParser still running on port 9989${NC}"
-    read -p "Stop native OmniParser too? [Y/n] " -n 1 -r
+    echo -e "${YELLOW}Native Holo 1.5-7B still running on port 9989${NC}"
+    read -p "Stop native Holo too? [Y/n] " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         cd ..

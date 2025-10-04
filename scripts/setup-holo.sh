@@ -33,7 +33,7 @@ echo "  OS: $OS"
 echo "  Architecture: $ARCH"
 echo ""
 
-# Function to validate model cache is complete
+# Function to validate GGUF model cache is complete
 validate_model_cache() {
     local cache_dir="$1"
 
@@ -42,17 +42,17 @@ validate_model_cache() {
         return 1
     fi
 
-    # Check cache size (should be at least 10GB for full model)
+    # Check cache size (should be at least 5GB for GGUF Q4_K_M model + mmproj)
     local cache_size_mb=$(du -sm "$cache_dir" 2>/dev/null | awk '{print $1}' || echo "0")
-    if [[ $cache_size_mb -lt 10000 ]]; then
-        echo -e "${YELLOW}⚠ Incomplete cache detected: ${cache_size_mb}MB (expected ~15,400MB)${NC}" >&2
+    if [[ $cache_size_mb -lt 5000 ]]; then
+        echo -e "${YELLOW}⚠ Incomplete cache detected: ${cache_size_mb}MB (expected ~6,000MB for GGUF)${NC}" >&2
         return 1
     fi
 
-    # Check for actual model weight files
-    local weight_files=$(find "$cache_dir" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l)
-    if [[ $weight_files -eq 0 ]]; then
-        echo -e "${YELLOW}⚠ No model weight files found in cache${NC}" >&2
+    # Check for GGUF model files (both model and mmproj)
+    local gguf_files=$(find "$cache_dir" -type f -name "*.gguf" 2>/dev/null | wc -l)
+    if [[ $gguf_files -lt 2 ]]; then
+        echo -e "${YELLOW}⚠ Missing GGUF files (found ${gguf_files}, expected 2: model + mmproj)${NC}" >&2
         return 1
     fi
 
@@ -75,8 +75,8 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${YELLOW}→ Native setup recommended for GPU acceleration (MPS)${NC}"
     echo ""
 
-    # Check if already set up (venv + model cached)
-    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+    # Check if already set up (venv + GGUF model cached)
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF"
 
     # Check if force reinstall requested
     if [[ "$FORCE_REINSTALL" == "true" ]]; then
@@ -91,11 +91,11 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     # Validate existing setup
     if [[ -d "packages/bytebot-holo/venv" ]] && validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
-        echo -e "${GREEN}✓ Holo 1.5-7B already set up${NC}"
+        echo -e "${GREEN}✓ Holo 1.5-7B GGUF already set up${NC}"
         echo ""
         echo "Setup includes:"
         echo "  ✓ Python environment (venv)"
-        echo "  ✓ Model cached (~15.4 GB at ~/.cache/huggingface/)"
+        echo "  ✓ GGUF model cached (~6 GB at ~/.cache/huggingface/)"
         echo ""
         # Show actual cache size
         CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
@@ -112,15 +112,15 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     elif [[ -d "packages/bytebot-holo/venv" ]]; then
         echo -e "${YELLOW}⚠ Partial setup detected${NC}"
         echo "  ✓ Python environment exists"
-        echo "  ✗ Model not cached or incomplete"
+        echo "  ✗ GGUF model not cached or incomplete"
         echo ""
 
         # Show diagnostic info
         if [[ -d "$MODEL_CACHE" ]]; then
             CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
-            echo "  Current cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
-            WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
-            echo "  Model weight files: $WEIGHT_COUNT (expected: >0)"
+            echo "  Current cache size: ${CACHE_SIZE_MB}MB (expected: ~6,000MB for GGUF)"
+            GGUF_COUNT=$(find "$MODEL_CACHE" -type f -name "*.gguf" 2>/dev/null | wc -l | tr -d ' ')
+            echo "  GGUF files: $GGUF_COUNT (expected: 2 - model + mmproj)"
         fi
 
         echo ""
@@ -156,11 +156,11 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     pip install -r requirements.txt
     fi  # End of SKIP_VENV_CREATION check
 
-    # Download Holo 1.5-7B model (~15.4 GB) - only if not cached
-    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+    # Note about GGUF model auto-download
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF"
     if validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
         echo ""
-        echo -e "${GREEN}✓ Model already cached${NC}"
+        echo -e "${GREEN}✓ GGUF model already cached${NC}"
         echo "  Location: $MODEL_CACHE"
         CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
         CACHE_SIZE_GB=$(echo "scale=1; $CACHE_SIZE_MB/1024" | bc)
@@ -168,109 +168,31 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo "  Skipping download"
         echo ""
     else
-        # Download Holo 1.5-7B model (~15.4 GB)
-    echo ""
-    echo -e "${BLUE}Downloading Holo 1.5-7B model...${NC}"
-    echo "  Size: ~15.4 GB (one-time download)"
-    echo "  Location: ~/.cache/huggingface/"
-    echo "  This may take 5-30 minutes depending on your internet speed"
-    echo ""
-
-    # Check disk space first
-    available_gb=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "999")
-    if [ "$available_gb" != "999" ] && [ "$available_gb" -lt 25 ]; then
-        echo -e "${YELLOW}⚠ Warning: Less than 25GB free disk space${NC}"
-        echo "  Available: ${available_gb}GB"
-        echo "  Recommended: 25GB (model + cache)"
-        read -p "Continue anyway? [y/N] " -n 1 -r
         echo ""
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Setup cancelled. Free up disk space and try again."
-            deactivate
-            exit 1
+        echo -e "${BLUE}GGUF Model Download${NC}"
+        echo "  Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M quantization)"
+        echo "  Size: ~6 GB (model + mmproj)"
+        echo "  Location: ~/.cache/huggingface/"
+        echo ""
+        echo -e "${YELLOW}Note: GGUF models download automatically on first run${NC}"
+        echo "  llama-cpp-python will download the model when you start the service"
+        echo "  This may take 5-15 minutes depending on your internet speed"
+        echo ""
+
+        # Check disk space first
+        available_gb=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "999")
+        if [ "$available_gb" != "999" ] && [ "$available_gb" -lt 15 ]; then
+            echo -e "${YELLOW}⚠ Warning: Less than 15GB free disk space${NC}"
+            echo "  Available: ${available_gb}GB"
+            echo "  Recommended: 15GB (model + cache + overhead)"
+            read -p "Continue anyway? [y/N] " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Setup cancelled. Free up disk space and try again."
+                deactivate
+                exit 1
+            fi
         fi
-    fi
-
-    # Download with progress indication
-    python << 'EOFDL'
-from transformers import AutoModelForImageTextToText, AutoProcessor
-import sys
-
-print("📥 Downloading processor...")
-try:
-    processor = AutoProcessor.from_pretrained(
-        "Hcompany/Holo1.5-7B",
-        trust_remote_code=True
-    )
-    print("✓ Processor downloaded")
-except Exception as e:
-    print(f"✗ Processor download failed: {e}")
-    sys.exit(1)
-
-print("\n📥 Downloading model (this is the large file ~15.4 GB)...")
-print("   Progress: Check ~/.cache/huggingface/ for download status")
-try:
-    model = AutoModelForImageTextToText.from_pretrained(
-        "Hcompany/Holo1.5-7B",
-        trust_remote_code=True
-    )
-    print("✓ Model downloaded successfully!")
-    print("   Cached at: ~/.cache/huggingface/hub/")
-except Exception as e:
-    print(f"✗ Model download failed: {e}")
-    print("   The model will download on first start instead.")
-    sys.exit(1)
-EOFDL
-
-    DOWNLOAD_EXIT_CODE=$?
-    if [ $DOWNLOAD_EXIT_CODE -eq 0 ]; then
-        echo ""
-        echo -e "${GREEN}✓ Model downloaded and cached${NC}"
-
-        # Validate the download was actually complete
-        if ! validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
-            echo ""
-            echo -e "${RED}✗ Model validation failed after download${NC}"
-            echo ""
-            echo "The model directory exists but appears incomplete:"
-            CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
-            echo "  Cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
-            WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
-            echo "  Weight files: $WEIGHT_COUNT (expected: >0)"
-            echo ""
-            echo "Possible causes:"
-            echo "  - Network interruption during download"
-            echo "  - Insufficient disk space"
-            echo "  - HuggingFace API rate limiting"
-            echo ""
-            echo "To retry:"
-            echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
-            echo ""
-            deactivate
-            exit 1
-        fi
-    else
-        echo ""
-        echo -e "${RED}✗ Model download failed (exit code: $DOWNLOAD_EXIT_CODE)${NC}"
-        echo ""
-        echo "Common causes:"
-        echo "  1. Transformers version too old (needs >= 4.49.0)"
-        echo "  2. Network connectivity issues"
-        echo "  3. HuggingFace authentication required"
-        echo "  4. Insufficient disk space"
-        echo ""
-
-        # Clean up incomplete cache
-        clean_incomplete_cache "$MODEL_CACHE"
-
-        echo "Please check the error messages above and try again."
-        echo ""
-        echo "To retry setup:"
-        echo -e "  ${BLUE}./scripts/setup-holo.sh${NC}"
-        echo ""
-        deactivate
-        exit 1
-    fi
     fi  # End of model cache check
 
     deactivate
@@ -311,12 +233,13 @@ EOFDL
     echo ""
     echo "Next steps:"
     echo ""
-    echo "1. Start Holo 1.5-7B (native with Apple Silicon MPS GPU):"
+    echo "1. Start Holo 1.5-7B GGUF (native with Apple Silicon MPS GPU):"
     echo -e "   ${BLUE}./scripts/start-holo.sh${NC}"
     echo ""
     echo "2. In another terminal, start Docker stack:"
     echo -e "   ${BLUE}./scripts/start-stack.sh${NC}"
     echo ""
+    echo "Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M - 4.8GB)"
     echo "Performance: ~1.5-2.5s per inference with MPS GPU 🚀"
     echo ""
 
@@ -343,9 +266,10 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     echo ""
     echo "Next step:"
     echo ""
-    echo "Start the full Docker stack (includes Holo 1.5-7B):"
+    echo "Start the full Docker stack (includes Holo 1.5-7B GGUF):"
     echo -e "   ${BLUE}./scripts/start-stack.sh${NC}"
     echo ""
+    echo "Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M - 4.8GB)"
     if command -v nvidia-smi &> /dev/null; then
         echo "Performance: ~0.8-1.5s per inference with CUDA GPU 🚀"
     else

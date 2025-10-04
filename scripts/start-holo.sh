@@ -20,7 +20,7 @@ if [[ "$ARCH" != "arm64" ]] || [[ "$OS" != "Darwin" ]]; then
     exit 1
 fi
 
-# Function to validate model cache is complete (same as setup script)
+# Function to validate GGUF model cache is complete (same as setup script)
 validate_model_cache() {
     local cache_dir="$1"
 
@@ -29,15 +29,15 @@ validate_model_cache() {
         return 1
     fi
 
-    # Check cache size (should be at least 10GB for full model)
+    # Check cache size (should be at least 5GB for GGUF Q4_K_M model + mmproj)
     local cache_size_mb=$(du -sm "$cache_dir" 2>/dev/null | awk '{print $1}' || echo "0")
-    if [[ $cache_size_mb -lt 10000 ]]; then
+    if [[ $cache_size_mb -lt 5000 ]]; then
         return 1
     fi
 
-    # Check for actual model weight files
-    local weight_files=$(find "$cache_dir" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l)
-    if [[ $weight_files -eq 0 ]]; then
+    # Check for GGUF model files (both model and mmproj)
+    local gguf_files=$(find "$cache_dir" -type f -name "*.gguf" 2>/dev/null | wc -l)
+    if [[ $gguf_files -lt 2 ]]; then
         return 1
     fi
 
@@ -58,30 +58,17 @@ if [[ ! -d "packages/bytebot-holo/venv" ]]; then
     exit 1
 fi
 
-# Validate model cache is complete (pre-flight check)
-MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+# Validate GGUF model cache is complete (pre-flight check)
+MODEL_CACHE="$HOME/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF"
 if ! validate_model_cache "$MODEL_CACHE"; then
-    echo -e "${RED}✗ Holo 1.5-7B model not found or incomplete${NC}"
+    echo -e "${YELLOW}⚠ Holo 1.5-7B GGUF model not cached yet${NC}"
     echo ""
-
-    if [[ -d "$MODEL_CACHE" ]]; then
-        CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
-        WEIGHT_COUNT=$(find "$MODEL_CACHE" -type f \( -name "*.safetensors" -o -name "*.bin" \) 2>/dev/null | wc -l | tr -d ' ')
-
-        echo "Model cache is incomplete:"
-        echo "  Cache size: ${CACHE_SIZE_MB}MB (expected: ~15,400MB)"
-        echo "  Weight files: $WEIGHT_COUNT (expected: >0)"
-        echo ""
-        echo "This usually means the model download failed or was interrupted."
-    else
-        echo "Model cache directory does not exist."
-    fi
-
+    echo -e "${BLUE}The model will download automatically on first request (~6 GB)${NC}"
+    echo "This is normal for first-time setup with GGUF models."
     echo ""
-    echo "To fix, run setup with force flag:"
-    echo -e "  ${BLUE}./scripts/setup-holo.sh --force${NC}"
+    echo "If you want to pre-download the model, start the service and make a test request."
     echo ""
-    exit 1
+    # Don't exit - GGUF models download on first use
 fi
 
 cd packages/bytebot-holo
@@ -156,10 +143,10 @@ for i in {1..25}; do
         echo -e " ${GREEN}✓${NC}"
         echo ""
         echo -e "${GREEN}================================================${NC}"
-        echo -e "${GREEN}   Holo 1.5-7B Ready!${NC}"
+        echo -e "${GREEN}   Holo 1.5-7B GGUF Ready!${NC}"
         echo -e "${GREEN}================================================${NC}"
         echo ""
-        echo "Model: Hcompany/Holo1.5-7B (Qwen2.5-VL base)"
+        echo "Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M quantization)"
         echo "Device: MPS (Apple Silicon GPU)"
         echo "Performance: ~1.5-2.5s per inference 🚀"
         echo ""

@@ -42,20 +42,20 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${BLUE}Platform: Apple Silicon${NC}"
     echo ""
 
-    # Check if native OmniParser is running
+    # Check if native Holo is running
     if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Native OmniParser detected on port 9989${NC}"
+        echo -e "${GREEN}✓ Native Holo 1.5-7B detected on port 9989${NC}"
 
-        # Update .env.defaults (system defaults) to use native OmniParser
+        # Update .env.defaults (system defaults) to use native Holo
         if grep -q "HOLO_URL=http://bytebot-holo:9989" .env.defaults 2>/dev/null; then
-            echo -e "${BLUE}Updating system configuration to use native OmniParser...${NC}"
+            echo -e "${BLUE}Updating system configuration to use native Holo...${NC}"
             sed -i.bak 's|HOLO_URL=http://bytebot-holo:9989|HOLO_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
         fi
 
-        # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
+        # Copy Holo settings from .env.defaults to .env (Docker Compose reads .env)
         if [ -f ".env" ]; then
-            echo -e "${BLUE}Syncing OmniParser settings to .env...${NC}"
+            echo -e "${BLUE}Syncing Holo settings to .env...${NC}"
             # Update or add HOLO_URL in .env
             if grep -q "^HOLO_URL=" .env; then
                 sed -i.bak 's|^HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' .env
@@ -66,9 +66,9 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         fi
 
         echo ""
-        echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
+        echo -e "${BLUE}Starting Docker stack (without Holo container)...${NC}"
 
-        # Start all services except OmniParser container
+        # Start all services except Holo container
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
         docker compose -f $COMPOSE_FILE up -d --build --no-deps \
@@ -79,7 +79,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
             $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
 
     else
-        echo -e "${YELLOW}⚠ Native OmniParser not running${NC}"
+        echo -e "${YELLOW}⚠ Native Holo 1.5-7B not running${NC}"
         echo ""
 
         # Check if it's been set up
@@ -100,18 +100,18 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
             cd ..
             ./scripts/start-holo.sh
             echo ""
-            echo "Waiting for OmniParser to be ready..."
+            echo "Waiting for Holo to be ready..."
             sleep 3
             cd docker
         fi
 
-        # Update .env.defaults (system defaults) to use native OmniParser
+        # Update .env.defaults (system defaults) to use native Holo
         if grep -q "HOLO_URL=http://bytebot-holo:9989" .env.defaults 2>/dev/null; then
             sed -i.bak 's|HOLO_URL=http://bytebot-holo:9989|HOLO_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
         fi
 
-        # Copy OMNIPARSER settings from .env.defaults to .env (Docker Compose reads .env)
+        # Copy Holo settings from .env.defaults to .env (Docker Compose reads .env)
         if [ -f ".env" ]; then
             # Update or add HOLO_URL in .env
             if grep -q "^HOLO_URL=" .env; then
@@ -124,7 +124,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
         # Start stack without container
         echo ""
-        echo -e "${BLUE}Starting Docker stack (without OmniParser container)...${NC}"
+        echo -e "${BLUE}Starting Docker stack (without Holo container)...${NC}"
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
         docker compose -f $COMPOSE_FILE up -d --build --no-deps \
@@ -137,7 +137,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         # Exit here so we don't run the code below
         echo ""
         echo -e "${BLUE}Service Status:${NC}"
-        services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990" "OmniParser:9989")
+        services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990" "Holo:9989")
         for service_port in "${services[@]}"; do
             IFS=: read -r service port <<< "$service_port"
             if nc -z localhost $port 2>/dev/null; then
@@ -147,13 +147,13 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
             fi
         done
         echo ""
-        echo -e "${GREEN}Stack ready with native OmniParser (MPS GPU)!${NC}"
+        echo -e "${GREEN}Stack ready with native Holo 1.5-7B (MPS GPU)!${NC}"
         echo ""
         echo "Services:"
         echo "  • UI:       http://localhost:9992"
         echo "  • Agent:    http://localhost:9991"
         echo "  • Desktop:  http://localhost:9990"
-        echo "  • OmniParser: http://localhost:9989 (native MPS)"
+        echo "  • Holo 1.5-7B: http://localhost:9989 (native MPS)"
         echo ""
         exit 0
     fi
@@ -168,7 +168,7 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     fi
 
     echo ""
-    echo -e "${BLUE}Starting full Docker stack (includes OmniParser container)...${NC}"
+    echo -e "${BLUE}Starting full Docker stack (includes Holo container)...${NC}"
     docker compose -f $COMPOSE_FILE up -d --build
 fi
 
@@ -184,7 +184,7 @@ echo -e "${BLUE}Service Status:${NC}"
 # Check each service
 services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990")
 if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    services+=("OmniParser:9989")
+    services+=("Holo:9989")
 fi
 
 all_healthy=true
@@ -214,7 +214,7 @@ echo "Services:"
 echo "  • UI:       http://localhost:9992"
 echo "  • Agent:    http://localhost:9991"
 echo "  • Desktop:  http://localhost:9990"
-echo "  • OmniParser: http://localhost:9989"
+echo "  • Holo 1.5-7B: http://localhost:9989"
 echo ""
 echo "View logs:"
 echo -e "  ${BLUE}docker compose -f docker/$COMPOSE_FILE logs -f${NC}"

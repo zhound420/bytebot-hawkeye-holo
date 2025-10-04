@@ -1050,6 +1050,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             this.pendingScreenshotObservation = true;
             mustClearObservationThisReply = true;
             observationBlockedInReply = false;
+
+            // Automatically enrich screenshots with OmniParser detection in the background
+            // This runs async and doesn't block the iteration
+            this.enrichScreenshotWithOmniParser().catch(err => {
+              this.logger.warn(`Background OmniParser enrichment failed: ${err.message}`);
+            });
           }
         }
 
@@ -1827,6 +1833,44 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     }
 
     return Buffer.from(payload.image, 'base64');
+  }
+
+  /**
+   * Automatically enriches the current screenshot with OmniParser detection
+   * Runs in the background and populates caches for future detect_elements calls
+   * This creates "internal activity" that will be surfaced to the user
+   */
+  private async enrichScreenshotWithOmniParser(): Promise<void> {
+    try {
+      const screenshotBuffer = await this.captureScreenshotBuffer();
+
+      // Check if we already have cached elements for this screenshot
+      const cached = this.getScreenshotCacheEntry(screenshotBuffer);
+      if (cached) {
+        this.logger.debug(`Screenshot already enriched (${cached.length} elements in cache)`);
+        return;
+      }
+
+      // Run OmniParser detection in the background
+      // This will automatically track activity via CVActivityIndicatorService
+      const enhancedResult = await this.enhancedVisualDetector.detectElements(
+        screenshotBuffer,
+        null,
+        {
+          confidenceThreshold: 0.5,
+          maxResults: 20,
+        }
+      );
+
+      // Cache the results for future detect_elements calls
+      this.setScreenshotCacheEntry(screenshotBuffer, enhancedResult.elements);
+      this.cacheDetectedElements(enhancedResult.elements);
+
+      this.logger.log(`🔍 Auto-enriched screenshot with ${enhancedResult.elements.length} elements (${enhancedResult.methodsUsed.join(', ')})`);
+    } catch (error) {
+      // Don't throw - this is background enrichment, shouldn't break the main flow
+      this.logger.warn(`Failed to auto-enrich screenshot: ${error.message}`);
+    }
   }
 
   private normalizeRegion(region: {

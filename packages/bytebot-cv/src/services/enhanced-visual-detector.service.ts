@@ -6,14 +6,14 @@ import { DetectedElement, BoundingBox } from '../types';
 
 export interface EnhancedDetectionOptions {
   useOCR?: boolean;
-  useOmniParser?: boolean;
+  useOmniParser?: boolean; // Legacy param name: means "use Holo 1.5-7B"
 
   // OCR options
   ocrRegion?: BoundingBox;
 
-  // OmniParser options
-  omniParserCaptions?: boolean;
-  omniParserConfidence?: number;
+  // Holo 1.5-7B options (legacy param names for backward compatibility)
+  omniParserCaptions?: boolean; // Enable functional captions for detected elements
+  omniParserConfidence?: number; // Minimum confidence threshold (0-1)
 
   // General options
   confidenceThreshold?: number;
@@ -56,7 +56,7 @@ export class EnhancedVisualDetectorService {
   }
 
   /**
-   * UI element detection using OmniParser (semantic) and OCR (text)
+   * UI element detection using Holo 1.5-7B (semantic) and OCR (text)
    */
   async detectElements(
     screenshotBuffer: Buffer,
@@ -78,7 +78,7 @@ export class EnhancedVisualDetectorService {
 
     const {
       useOCR = false, // OCR is expensive, use as fallback only
-      useOmniParser = holoAvailable, // Default to enabled when service is healthy (legacy param name)
+      useOmniParser = holoAvailable, // Legacy param: means "use Holo 1.5-7B", defaults to enabled when service healthy
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
@@ -166,7 +166,7 @@ export class EnhancedVisualDetectorService {
    */
   async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
     return this.detectElements(screenshotBuffer, null, {
-      useOmniParser: true, // Legacy param name, means "use Holo"
+      useOmniParser: true, // Legacy param: means "use Holo 1.5-7B"
       useOCR: false,
     });
   }
@@ -187,6 +187,7 @@ export class EnhancedVisualDetectorService {
   }
 
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
+    // Track Holo 1.5-7B activity (legacy option names kept for backward compatibility)
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
       captions: options.omniParserCaptions ?? true,
       confidence_threshold: options.omniParserConfidence ?? 0.3,

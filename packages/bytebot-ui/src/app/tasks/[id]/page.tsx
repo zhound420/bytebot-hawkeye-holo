@@ -142,7 +142,7 @@ export default function TaskPage() {
         <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           {/* Main container */}
           <div className="flex flex-1 flex-col gap-3">
-            {/* Top row: Active Model and OmniParser side by side */}
+            {/* Top row: Active Model and Holo 1.5-7B side by side */}
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-card px-2 py-1.5 dark:border-border/60 dark:bg-muted">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">

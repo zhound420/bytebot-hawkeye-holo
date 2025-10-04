@@ -62,11 +62,13 @@ interface CVDetectionSummary {
     cacheHitRate: number;
   };
   methods: {
-    omniparser: number;
+    holo: number; // holo-1.5-7b detections
     ocr: number;
     template: number;
     feature: number;
     contour: number;
+    // Backward compatibility
+    omniparser?: number;
   };
   clicks: {
     total: number;
@@ -743,13 +745,13 @@ export function TelemetryStatus({ className = "" }: Props) {
                     count > 0 && (
                       <div key={method} className={cn(
                         "rounded border px-2 py-1 text-[10px]",
-                        method === 'omniparser' && "border-pink-500/30 bg-pink-500/10 text-pink-600 dark:border-pink-500/40 dark:bg-pink-500/20 dark:text-pink-300",
+                        (method === 'holo' || method === 'omniparser') && "border-pink-500/30 bg-pink-500/10 text-pink-600 dark:border-pink-500/40 dark:bg-pink-500/20 dark:text-pink-300",
                         method === 'ocr' && "border-yellow-500/30 bg-yellow-500/10 text-yellow-600 dark:border-yellow-500/40 dark:bg-yellow-500/20 dark:text-yellow-300",
                         method === 'contour' && "border-green-500/30 bg-green-500/10 text-green-600 dark:border-green-500/40 dark:bg-green-500/20 dark:text-green-300",
                         method === 'template' && "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-300",
                         method === 'feature' && "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:border-purple-500/40 dark:bg-purple-500/20 dark:text-purple-300",
                       )}>
-                        {method}: {count}
+                        {method === 'holo' ? 'Holo 1.5-7B' : method === 'omniparser' ? 'Holo 1.5-7B' : method}: {count}
                       </div>
                     )
                   ))}
@@ -785,10 +787,10 @@ export function TelemetryStatus({ className = "" }: Props) {
                         <div className="flex items-center gap-2 mt-0.5 text-[9px] text-muted-foreground">
                           <span className={cn(
                             "px-1 rounded",
-                            detection.primaryMethod === 'omniparser' && "bg-pink-500/20 text-pink-600 dark:bg-pink-500/30 dark:text-pink-300",
-                            detection.primaryMethod !== 'omniparser' && "bg-gray-500/20 dark:bg-gray-500/30"
+                            (detection.primaryMethod === 'holo-1.5-7b' || detection.primaryMethod === 'omniparser') && "bg-pink-500/20 text-pink-600 dark:bg-pink-500/30 dark:text-pink-300",
+                            (detection.primaryMethod !== 'holo-1.5-7b' && detection.primaryMethod !== 'omniparser') && "bg-gray-500/20 dark:bg-gray-500/30"
                           )}>
-                            {detection.primaryMethod}
+                            {detection.primaryMethod === 'holo-1.5-7b' ? 'Holo 1.5-7B' : detection.primaryMethod === 'omniparser' ? 'Holo 1.5-7B' : detection.primaryMethod}
                           </span>
                           {detection.cached && (
                             <span className="bg-blue-500/20 text-blue-600 px-1 rounded dark:bg-blue-500/30 dark:text-blue-300">⚡ cached</span>

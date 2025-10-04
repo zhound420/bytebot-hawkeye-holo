@@ -19,6 +19,9 @@ interface CVActivitySnapshot {
     totalMethodsExecuted: number;
     successRate: number;
   };
+  holoDevice?: string;  // cuda, mps, cpu
+  holoModel?: string;   // "Holo 1.5-7B (Qwen2.5-VL base)"
+  // Backward compatibility
   omniparserDevice?: string;
   omniparserModels?: {
     iconDetector: string;
@@ -33,11 +36,13 @@ interface CVDetectionData {
     cacheHitRate: number;
   };
   methods: {
-    omniparser: number;
+    holo: number;  // holo-1.5-7b detections
     ocr: number;
     template: number;
     feature: number;
     contour: number;
+    // Backward compatibility
+    omniparser?: number;
   };
   clicks: {
     total: number;
@@ -66,7 +71,8 @@ const methodDisplayNames: Record<string, string> = {
   "feature-matching": "Feature Match",
   "contour-detection": "Contour Detect",
   "ocr-detection": "OCR",
-  "omniparser": "AI Vision (OmniParser)",
+  "holo-1.5-7b": "Holo 1.5-7B",
+  "omniparser": "Holo 1.5-7B",  // Backward compatibility
 };
 
 const methodColors: Record<string, string> = {
@@ -74,7 +80,8 @@ const methodColors: Record<string, string> = {
   "feature-matching": "bg-purple-500",
   "contour-detection": "bg-green-500",
   "ocr-detection": "bg-yellow-500",
-  "omniparser": "bg-pink-500",
+  "holo-1.5-7b": "bg-pink-500",
+  "omniparser": "bg-pink-500",  // Backward compatibility
 };
 
 // Helper function to get device badge and styling
@@ -157,8 +164,8 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
   // Show if: active methods OR recent history OR device/model info available
   const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;
-  const hasDeviceInfo = activity?.omniparserDevice !== undefined;
-  const hasModelInfo = activity?.omniparserModels !== undefined;
+  const hasDeviceInfo = activity?.holoDevice !== undefined || activity?.omniparserDevice !== undefined;
+  const hasModelInfo = activity?.holoModel !== undefined || activity?.omniparserModels !== undefined;
 
   // For inline mode (chat panel), only show if there's actual CV activity happening
   // Don't show just because device info exists
@@ -182,8 +189,11 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
   // Inline mode for chat panel
   if (inline) {
-    const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserModels;
-    const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
+    const hasHolo = activity?.activeMethods?.includes("holo-1.5-7b") ||
+                     activity?.activeMethods?.includes("omniparser") ||
+                     activity?.holoModel ||
+                     activity?.omniparserModels;
+    const deviceBadge = getDeviceBadge(activity?.holoDevice || activity?.omniparserDevice);
 
     return (
       <div className={cn("rounded-lg border border-border bg-card/50 dark:bg-card/30 px-3 py-2 backdrop-blur-sm", className)}>
@@ -204,16 +214,21 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-medium text-foreground">
-                {hasOmniParser ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
+                {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
               </span>
-              {activity?.omniparserModels && (
+              {activity?.holoModel && (
+                <span className="text-[9px] text-muted-foreground">
+                  {activity.holoModel}
+                </span>
+              )}
+              {!activity?.holoModel && activity?.omniparserModels && (
                 <span className="text-[9px] text-muted-foreground">
                   {activity.omniparserModels.iconDetector} Detection + {activity.omniparserModels.captionModel} Captions
                 </span>
               )}
             </div>
           </div>
-          {hasOmniParser && activity?.omniparserDevice && (
+          {hasHolo && (activity?.holoDevice || activity?.omniparserDevice) && (
             <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
               <span>{deviceBadge.icon}</span>
               <span>{deviceBadge.label}</span>
@@ -322,8 +337,11 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   }
 
   if (compact) {
-    const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserModels;
-    const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
+    const hasHolo = activity?.activeMethods?.includes("holo-1.5-7b") ||
+                     activity?.activeMethods?.includes("omniparser") ||
+                     activity?.holoModel ||
+                     activity?.omniparserModels;
+    const deviceBadge = getDeviceBadge(activity?.holoDevice || activity?.omniparserDevice);
     const models = activity?.omniparserModels;
 
     return (
@@ -343,15 +361,20 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium text-foreground">
-              {hasOmniParser ? "AI Vision" : "CV"} Active
+              {hasHolo ? "AI Vision" : "CV"} Active
             </span>
-            {hasOmniParser && activity?.omniparserDevice && (
+            {hasHolo && (activity?.holoDevice || activity?.omniparserDevice) && (
               <span className={cn("text-xs font-medium", deviceBadge.color)}>
                 {deviceBadge.icon}
               </span>
             )}
           </div>
-          {models && (
+          {activity?.holoModel && (
+            <span className="text-[10px] text-muted-foreground">
+              {activity.holoModel}
+            </span>
+          )}
+          {!activity?.holoModel && models && (
             <span className="text-[10px] text-muted-foreground">
               {models.iconDetector} Detection + {models.captionModel} Captions
             </span>
@@ -361,8 +384,11 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     );
   }
 
-  const deviceBadge = getDeviceBadge(activity?.omniparserDevice);
-  const hasOmniParser = activity?.activeMethods?.includes("omniparser") || activity?.omniparserDevice;
+  const deviceBadge = getDeviceBadge(activity?.holoDevice || activity?.omniparserDevice);
+  const hasHolo = activity?.activeMethods?.includes("holo-1.5-7b") ||
+                   activity?.activeMethods?.includes("omniparser") ||
+                   activity?.holoDevice ||
+                   activity?.omniparserDevice;
 
   return (
     <div className={cn("rounded-lg border border-border bg-card px-2 py-1.5", className)}>
@@ -370,16 +396,21 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1">
             <h3 className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {hasOmniParser ? "AI Computer Vision" : "CV Detection"}
+              {hasHolo ? "AI Computer Vision" : "CV Detection"}
             </h3>
-            {hasOmniParser && (
+            {hasHolo && (
               <span className={cn("text-[9px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
                 <span>{deviceBadge.icon}</span>
                 <span>{deviceBadge.label}</span>
               </span>
             )}
           </div>
-          {activity?.omniparserModels && (
+          {activity?.holoModel && (
+            <div className="text-[8px] text-muted-foreground">
+              {activity.holoModel}
+            </div>
+          )}
+          {!activity?.holoModel && activity?.omniparserModels && (
             <div className="text-[8px] text-muted-foreground">
               {activity.omniparserModels.iconDetector} Detection + {activity.omniparserModels.captionModel} Captions
             </div>

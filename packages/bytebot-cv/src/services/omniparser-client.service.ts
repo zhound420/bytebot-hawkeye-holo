@@ -48,12 +48,11 @@ export interface HoloOptions {
   usePaddleOcr?: boolean; // Deprecated - maintained for compatibility
 }
 
-// Backward compatibility aliases
+// Backward compatibility type aliases
 export type OmniParserElement = HoloElement;
 export type OmniParserResponse = HoloResponse;
 export type OmniParserOptions = HoloOptions;
 export type OmniParserModelStatus = HoloModelStatus;
-export const OmniParserClientService = HoloClientService;
 
 /**
  * Holo 1.5-7B model status
@@ -349,3 +348,6 @@ export class HoloClientService {
     };
   }
 }
+
+// Backward compatibility class alias (must be after class declaration)
+export const OmniParserClientService = HoloClientService;

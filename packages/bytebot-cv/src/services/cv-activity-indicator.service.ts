@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter } from 'events';
-import { OmniParserClientService } from './omniparser-client.service';
+import { HoloClientService } from './omniparser-client.service';
 
 export interface CVMethodActivity {
   method: string;
@@ -40,11 +40,13 @@ export interface CVDetectionSummary {
     cacheHitRate: number;
   };
   methods: {
-    omniparser: number;
+    holo: number; // holo-1.5-7b detections
     ocr: number;
     template: number;
     feature: number;
     contour: number;
+    // Backward compatibility
+    omniparser?: number;
   };
   clicks: {
     total: number;
@@ -65,10 +67,13 @@ export interface CVActivitySnapshot {
     totalMethodsExecuted: number;
     successRate: number;
   };
-  omniparserDevice?: string; // Device type for OmniParser (cuda, mps, cpu)
-  omniparserModels?: { // Models used by OmniParser
-    iconDetector: string; // e.g., "YOLOv8"
-    captionModel: string; // e.g., "Florence-2"
+  holoDevice?: string; // Device type for Holo 1.5-7B (cuda, mps, cpu)
+  holoModel?: string; // Model name (e.g., "Holo 1.5-7B (Qwen2.5-VL base)")
+  // Backward compatibility
+  omniparserDevice?: string;
+  omniparserModels?: {
+    iconDetector: string;
+    captionModel: string;
   };
 }
 
@@ -86,7 +91,7 @@ export class CVActivityIndicatorService extends EventEmitter {
   private readonly maxClickHistorySize = 50;
 
   constructor(
-    @Optional() private readonly omniParserClient?: OmniParserClientService,
+    @Optional() private readonly omniParserClient?: HoloClientService,
   ) {
     super();
     this.logger.log('CV Activity Indicator Service initialized');
@@ -194,29 +199,32 @@ export class CVActivityIndicatorService extends EventEmitter {
       methodDetails[id] = activity;
     });
 
-    // Extract OmniParser device info from active methods or recent history
-    let omniparserDevice: string | undefined;
+    // Extract Holo 1.5-7B device info from active methods or recent history
+    let holoDevice: string | undefined;
     for (const activity of this.activeMethods.values()) {
-      if (activity.method === 'omniparser' && activity.metadata?.device) {
-        omniparserDevice = activity.metadata.device;
+      if ((activity.method === 'holo-1.5-7b' || activity.method === 'omniparser') && activity.metadata?.device) {
+        holoDevice = activity.metadata.device;
         break;
       }
     }
     // Fallback to recent history if not currently active
-    if (!omniparserDevice) {
-      const recentOmniparser = this.methodHistory
+    if (!holoDevice) {
+      const recentHolo = this.methodHistory
         .slice(-10)
         .reverse()
-        .find(h => h.method === 'omniparser' && h.metadata?.device);
-      if (recentOmniparser) {
-        omniparserDevice = recentOmniparser.metadata?.device;
+        .find(h => (h.method === 'holo-1.5-7b' || h.method === 'omniparser') && h.metadata?.device);
+      if (recentHolo) {
+        holoDevice = recentHolo.metadata?.device;
       }
     }
 
     // Removed noisy debug log - activity is tracked via /cv-activity endpoints instead
 
-    // Get OmniParser model info if available
+    // Get model info if available (Holo 1.5-7B via OmniParser client)
     const modelStatus = this.omniParserClient?.getModelStatus();
+    const holoModel = modelStatus ? "Holo 1.5-7B (Qwen2.5-VL base)" : undefined;
+
+    // Backward compatibility: Keep old field names
     const omniparserModels = modelStatus ? {
       iconDetector: modelStatus.icon_detector.type,
       captionModel: modelStatus.caption_model.type,
@@ -231,7 +239,10 @@ export class CVActivityIndicatorService extends EventEmitter {
         totalMethodsExecuted: this.methodHistory.length,
         successRate
       },
-      omniparserDevice,
+      holoDevice,
+      holoModel,
+      // Backward compatibility
+      omniparserDevice: holoDevice,
       omniparserModels
     };
   }
@@ -405,20 +416,28 @@ export class CVActivityIndicatorService extends EventEmitter {
 
     // Count methods used
     const methodCounts = {
-      omniparser: 0,
+      holo: 0,
       ocr: 0,
       template: 0,
       feature: 0,
       contour: 0,
+      omniparser: 0, // Backward compatibility
     };
 
     this.detectionHistory.forEach(detection => {
       const method = detection.primaryMethod.toLowerCase();
-      if (method.includes('omniparser')) methodCounts.omniparser++;
-      else if (method.includes('ocr')) methodCounts.ocr++;
-      else if (method.includes('template')) methodCounts.template++;
-      else if (method.includes('feature')) methodCounts.feature++;
-      else if (method.includes('contour')) methodCounts.contour++;
+      if (method.includes('holo-1.5-7b') || method.includes('omniparser')) {
+        methodCounts.holo++;
+        methodCounts.omniparser++; // Backward compatibility
+      } else if (method.includes('ocr')) {
+        methodCounts.ocr++;
+      } else if (method.includes('template')) {
+        methodCounts.template++;
+      } else if (method.includes('feature')) {
+        methodCounts.feature++;
+      } else if (method.includes('contour')) {
+        methodCounts.contour++;
+      }
     });
 
     // Calculate click stats

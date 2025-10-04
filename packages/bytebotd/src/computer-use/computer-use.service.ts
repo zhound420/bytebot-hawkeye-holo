@@ -12,7 +12,7 @@ import { FocusRegionService } from '../nut/focus-region.service';
 import { ProgressBroadcaster } from '../progress/progress-broadcaster';
 import { FOCUS_CONFIG } from '../config/focus-config';
 import { TelemetryService } from '../telemetry/telemetry.service';
-import { OmniParserClientService } from '@bytebot/cv';
+import { HoloClientService } from '@bytebot/cv';
 import {
   ComputerAction,
   MoveMouseAction,
@@ -59,7 +59,7 @@ export class ComputerUseService {
     private readonly focusRegion: FocusRegionService,
     private readonly progressBroadcaster: ProgressBroadcaster,
     private readonly telemetryService: TelemetryService,
-    @Optional() private readonly omniParserClient?: OmniParserClientService,
+    @Optional() private readonly omniParserClient?: HoloClientService,
   ) {
     // Check OmniParser availability on startup
     if (this.omniParserClient) {

@@ -30,7 +30,7 @@ if [[ ! -d "packages/bytebot-omniparser/venv" ]]; then
     echo -e "${RED}✗ Holo 1.5-7B not set up yet${NC}"
     echo ""
     echo "Run setup first:"
-    echo -e "  ${BLUE}./scripts/setup-omniparser.sh${NC}"
+    echo -e "  ${BLUE}./scripts/setup-holo.sh${NC}"
     exit 1
 fi
 
@@ -41,7 +41,7 @@ if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠ Holo 1.5-7B already running on port 9989${NC}"
     echo ""
     echo "To restart, first stop it:"
-    echo -e "  ${BLUE}./scripts/stop-omniparser.sh${NC}"
+    echo -e "  ${BLUE}./scripts/stop-holo.sh${NC}"
     exit 0
 fi
 
@@ -75,7 +75,16 @@ echo ""
 echo "Service: http://localhost:9989"
 echo "Logs: logs/holo.log"
 echo ""
-echo "Wait ~60 seconds for model to load..."
+
+# Check if model is cached
+MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+if [ -d "$MODEL_CACHE" ]; then
+    echo "Model cached: Loading from cache (~60 seconds)..."
+else
+    echo -e "${YELLOW}First run: Downloading model (~15.4 GB, 5-30 minutes)${NC}"
+    echo "  Follow progress: tail -f logs/holo.log"
+fi
+echo ""
 
 # Wait and check health
 sleep 5
@@ -96,7 +105,7 @@ for i in {1..25}; do
         echo -e "  ${BLUE}./scripts/start-stack.sh${NC}"
         echo ""
         echo "To stop Holo 1.5-7B:"
-        echo -e "  ${BLUE}./scripts/stop-omniparser.sh${NC}"
+        echo -e "  ${BLUE}./scripts/stop-holo.sh${NC}"
         echo ""
         exit 0
     fi

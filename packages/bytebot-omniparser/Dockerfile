@@ -33,6 +33,18 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
 # Install remaining requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Flash Attention 2 for CUDA systems (optional optimization, 30% speedup)
+# Only install on amd64 with CUDA, skip on arm64
+RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
+        echo "Attempting to install Flash Attention 2 for CUDA acceleration..."; \
+        pip install --no-cache-dir flash-attn --no-build-isolation || { \
+            echo "⚠ Flash Attention 2 installation failed (optional optimization)"; \
+            echo "  Falling back to standard attention (still fast)"; \
+        }; \
+    else \
+        echo "Skipping Flash Attention 2 on ARM64"; \
+    fi
+
 # Copy application code
 COPY src/ ./src/
 COPY scripts/ ./scripts/

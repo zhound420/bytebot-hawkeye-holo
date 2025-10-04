@@ -51,6 +51,21 @@ At least one LLM provider API key:
 - **Google** (Gemini models) - Get at [aistudio.google.com](https://aistudio.google.com)
 - **OpenRouter** (Multi-model proxy) - Get at [openrouter.ai](https://openrouter.ai)
 
+### Disk Space Requirements
+
+**Holo 1.5-7B Model:**
+- **Model size:** ~15.4 GB (8.29B parameters in BF16 precision)
+- **Cache location:** `~/.cache/huggingface/hub/`
+- **Recommended free space:** 25 GB (model + cache overhead)
+- **Download time:** 5-30 minutes depending on internet speed (one-time download)
+
+**By Platform:**
+- **Apple Silicon (M1-M4):** Model downloads automatically during `setup-holo.sh` (~5-30 min)
+- **x86_64 (Docker):** Model downloads when container first starts, cached for future use
+- **Storage:** Model is cached permanently and reused across restarts
+
+> **Tip:** If disk space is limited, the setup script will warn you and ask for confirmation before downloading.
+
 ### GPU Requirements (Recommended for Best Holo 1.5-7B Performance)
 
 Holo 1.5-7B provides precision UI localization with GPU acceleration:

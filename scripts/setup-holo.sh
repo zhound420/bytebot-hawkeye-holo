@@ -33,7 +33,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${GREEN}✓ Holo 1.5-7B already set up${NC}"
         echo ""
         echo "To start Holo 1.5-7B natively:"
-        echo -e "  ${BLUE}./scripts/start-omniparser.sh${NC}"
+        echo -e "  ${BLUE}./scripts/start-holo.sh${NC}"
         echo ""
         exit 0
     fi
@@ -51,6 +51,70 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo "Installing dependencies..."
     pip install --upgrade pip
     pip install -r requirements.txt
+
+    # Download Holo 1.5-7B model (~15.4 GB)
+    echo ""
+    echo -e "${BLUE}Downloading Holo 1.5-7B model...${NC}"
+    echo "  Size: ~15.4 GB (one-time download)"
+    echo "  Location: ~/.cache/huggingface/"
+    echo "  This may take 5-30 minutes depending on your internet speed"
+    echo ""
+
+    # Check disk space first
+    available_gb=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "999")
+    if [ "$available_gb" != "999" ] && [ "$available_gb" -lt 25 ]; then
+        echo -e "${YELLOW}⚠ Warning: Less than 25GB free disk space${NC}"
+        echo "  Available: ${available_gb}GB"
+        echo "  Recommended: 25GB (model + cache)"
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Setup cancelled. Free up disk space and try again."
+            deactivate
+            exit 1
+        fi
+    fi
+
+    # Download with progress indication
+    python << 'EOFDL'
+from transformers import AutoModelForImageTextToText, AutoProcessor
+import sys
+
+print("📥 Downloading processor...")
+try:
+    processor = AutoProcessor.from_pretrained(
+        "Hcompany/Holo1.5-7B",
+        trust_remote_code=True
+    )
+    print("✓ Processor downloaded")
+except Exception as e:
+    print(f"✗ Processor download failed: {e}")
+    sys.exit(1)
+
+print("\n📥 Downloading model (this is the large file ~15.4 GB)...")
+print("   Progress: Check ~/.cache/huggingface/ for download status")
+try:
+    model = AutoModelForImageTextToText.from_pretrained(
+        "Hcompany/Holo1.5-7B",
+        trust_remote_code=True
+    )
+    print("✓ Model downloaded successfully!")
+    print("   Cached at: ~/.cache/huggingface/hub/")
+except Exception as e:
+    print(f"✗ Model download failed: {e}")
+    print("   The model will download on first start instead.")
+    sys.exit(1)
+EOFDL
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ Model downloaded and cached${NC}"
+    else
+        echo ""
+        echo -e "${YELLOW}⚠ Model download incomplete${NC}"
+        echo "  The model will download on first start instead."
+        echo "  This is not a fatal error - setup will continue."
+    fi
 
     deactivate
 
@@ -91,7 +155,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo "Next steps:"
     echo ""
     echo "1. Start Holo 1.5-7B (native with Apple Silicon MPS GPU):"
-    echo -e "   ${BLUE}./scripts/start-omniparser.sh${NC}"
+    echo -e "   ${BLUE}./scripts/start-holo.sh${NC}"
     echo ""
     echo "2. In another terminal, start Docker stack:"
     echo -e "   ${BLUE}./scripts/start-stack.sh${NC}"

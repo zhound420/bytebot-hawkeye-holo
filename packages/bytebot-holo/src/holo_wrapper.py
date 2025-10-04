@@ -1,4 +1,4 @@
-"""Holo 1.5-7B model wrapper for UI localization."""
+"""Holo 1.5-7B model wrapper for UI localization using GGUF quantized models."""
 
 import time
 import re
@@ -6,118 +6,118 @@ import io
 import base64
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-import torch
 import numpy as np
 from PIL import Image
 
-from transformers import AutoModelForImageTextToText, AutoProcessor
-from transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize
+try:
+    from llama_cpp import Llama
+    from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+except ImportError:
+    raise ImportError(
+        "llama-cpp-python is required for GGUF model support. "
+        "Install with: pip install llama-cpp-python"
+    )
 
 from .config import settings
 
 
 class Holo15:
-    """Holo 1.5-7B wrapper for UI element localization."""
+    """Holo 1.5-7B wrapper for UI element localization using GGUF quantized models."""
 
     def __init__(self):
-        """Initialize Holo 1.5-7B model."""
+        """Initialize Holo 1.5-7B GGUF model."""
         self.device = settings.device
-        self.dtype = self._get_dtype()
-        self.model_name = "Hcompany/Holo1.5-7B"
+        self.model_repo = "mradermacher/Holo1.5-7B-GGUF"
 
-        print(f"Loading Holo 1.5-7B on {self.device} with dtype={self.dtype}...")
-        print(f"  Model: {self.model_name}")
+        # Select quantization level based on device and memory
+        # Q4_K_M: 4.8GB, best balance of quality and size
+        # Q8_0: 8.2GB, best quality
+        # Q4_K_S: 4.6GB, smallest with good quality
+        self.model_filename = "Holo1.5-7B.Q4_K_M.gguf"
+        self.mmproj_filename = "mmproj-Q8_0.gguf"
 
-        # Load model and processor
-        self.model, self.processor = self._load_model()
+        print(f"Loading Holo 1.5-7B GGUF on {self.device}...")
+        print(f"  Model: {self.model_repo}")
+        print(f"  Quantization: {self.model_filename}")
+        print(f"  Projector: {self.mmproj_filename}")
 
-        print(f"✓ Holo 1.5-7B loaded successfully (device={self.device}, dtype={self.dtype})")
+        # Load model and projector
+        self.model, self.chat_handler = self._load_model()
 
-    def _get_dtype(self) -> torch.dtype:
-        """Get torch dtype from config."""
-        # Holo 1.5 works best with bfloat16 (Qwen2.5-VL base)
-        # Fall back to float16 for older GPUs, float32 for MPS
-        if self.device == "mps":
-            print("  ℹ️  MPS detected: Using float32")
-            return torch.float32
+        print(f"✓ Holo 1.5-7B GGUF loaded successfully (device={self.device})")
 
-        dtype_map = {
-            "float16": torch.float16,
-            "float32": torch.float32,
-            "bfloat16": torch.bfloat16,
-        }
+    def _get_n_gpu_layers(self) -> int:
+        """Get number of layers to offload to GPU based on device."""
+        if self.device == "cuda":
+            # NVIDIA: Offload all layers to GPU
+            return -1
+        elif self.device == "mps":
+            # Apple Silicon: Offload all layers to Metal
+            return -1
+        else:
+            # CPU: No GPU layers
+            return 0
 
-        # Default to bfloat16 for Holo 1.5 if not specified
-        requested_dtype = settings.model_dtype
-        if requested_dtype not in dtype_map:
-            print(f"  ℹ️  Unknown dtype '{requested_dtype}', using bfloat16")
-            return torch.bfloat16
-
-        return dtype_map[requested_dtype]
-
-    def _load_model(self) -> Tuple[AutoModelForImageTextToText, AutoProcessor]:
-        """Load Holo 1.5-7B model and processor."""
+    def _load_model(self) -> Tuple[Llama, Qwen25VLChatHandler]:
+        """Load Holo 1.5-7B GGUF model and multimodal projector."""
         try:
-            # Load processor first
-            processor = AutoProcessor.from_pretrained(
-                self.model_name,
-                trust_remote_code=True
+            # Initialize chat handler with multimodal projector
+            chat_handler = Qwen25VLChatHandler.from_pretrained(
+                repo_id=self.model_repo,
+                filename=f"*{self.mmproj_filename}*",
             )
 
-            # Load model with optimizations
-            model = AutoModelForImageTextToText.from_pretrained(
-                self.model_name,
-                torch_dtype=self.dtype,
-                device_map="auto",  # Automatic device placement
-                trust_remote_code=True,
-                attn_implementation="flash_attention_2" if self.device == "cuda" else "sdpa",  # Flash Attention 2 for CUDA
-            ).eval()  # Set to eval mode
+            # Load quantized model with automatic GPU offloading
+            model = Llama.from_pretrained(
+                repo_id=self.model_repo,
+                filename=f"*{self.model_filename}*",
+                chat_handler=chat_handler,
+                n_ctx=8192,  # Increased context for images + prompts
+                n_gpu_layers=self._get_n_gpu_layers(),
+                verbose=False,
+            )
 
-            return model, processor
+            return model, chat_handler
 
         except Exception as e:
-            print(f"✗ Failed to load Holo 1.5-7B: {e}")
-            print(f"  Attempting fallback without Flash Attention...")
+            print(f"✗ Failed to load Holo 1.5-7B GGUF: {e}")
+            raise
 
-            # Fallback without Flash Attention
-            processor = AutoProcessor.from_pretrained(
-                self.model_name,
-                trust_remote_code=True
-            )
-
-            model = AutoModelForImageTextToText.from_pretrained(
-                self.model_name,
-                torch_dtype=self.dtype,
-                device_map="auto",
-                trust_remote_code=True,
-            ).eval()
-
-            return model, processor
-
-    def _smart_resize_image(self, image: Image.Image) -> Tuple[Image.Image, Dict[str, float]]:
+    def _smart_resize_image(self, image: Image.Image, max_pixels: int = 1280 * 28 * 28) -> Tuple[Image.Image, Dict[str, float]]:
         """
-        Apply smart_resize to image for coordinate alignment.
+        Apply smart resize to image for coordinate alignment.
 
         Args:
             image: PIL Image
+            max_pixels: Maximum number of pixels (default: 1280 * 28 * 28 for Qwen2.5-VL)
 
         Returns:
             Tuple of (resized_image, scale_factors)
         """
         original_size = image.size  # (width, height)
+        original_pixels = original_size[0] * original_size[1]
 
-        # Calculate optimal dimensions using smart_resize
-        # Note: PIL uses (width, height), but smart_resize expects (height, width)
-        # and returns (new_height, new_width)
-        new_height, new_width = smart_resize(
-            height=original_size[1],  # Convert PIL width,height to height,width
-            width=original_size[0],
-            factor=28,  # Qwen2.5-VL uses 28x28 patches
-            min_pixels=256 * 28 * 28,  # Minimum resolution
-            max_pixels=1280 * 28 * 28  # Maximum resolution (Qwen2.5-VL default)
-        )
+        # If image is within limits, no resize needed
+        if original_pixels <= max_pixels:
+            return image, {
+                'width_scale': 1.0,
+                'height_scale': 1.0,
+                'original_width': original_size[0],
+                'original_height': original_size[1],
+                'resized_width': original_size[0],
+                'resized_height': original_size[1],
+            }
 
-        # Actually resize the image to calculated dimensions
+        # Calculate resize factor to fit within max_pixels
+        scale = (max_pixels / original_pixels) ** 0.5
+        new_width = int(original_size[0] * scale)
+        new_height = int(original_size[1] * scale)
+
+        # Resize to nearest multiple of 28 (Qwen2.5-VL patch size)
+        new_width = (new_width // 28) * 28
+        new_height = (new_height // 28) * 28
+
+        # Actually resize the image
         resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
         # Calculate scale factors for coordinate conversion
@@ -173,7 +173,7 @@ class Holo15:
         guidelines: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Localize a UI element using Holo 1.5-7B.
+        Localize a UI element using Holo 1.5-7B GGUF.
 
         Args:
             image: Input image as numpy array (RGB)
@@ -200,47 +200,29 @@ class Holo15:
 
             prompt_text = f"{guidelines}\n{task_instruction}" if guidelines else task_instruction
 
-            # Prepare messages for chat template
-            messages = [{
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": resized_image},
-                    {"type": "text", "text": prompt_text}
-                ]
-            }]
+            # Convert image to base64 for llama-cpp-python
+            buffered = io.BytesIO()
+            resized_image.save(buffered, format="PNG")
+            image_b64 = base64.b64encode(buffered.getvalue()).decode('ascii')
+            image_url = f"data:image/png;base64,{image_b64}"
 
-            # Apply chat template
-            text = self.processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
+            # Create chat completion with image
+            response = self.model.create_chat_completion(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                            {"type": "text", "text": prompt_text}
+                        ]
+                    }
+                ],
+                max_tokens=settings.max_new_tokens,
+                temperature=0.0,  # Deterministic
             )
 
-            # Process inputs
-            inputs = self.processor(
-                text=[text],
-                images=[resized_image],
-                return_tensors="pt",
-                padding=True
-            ).to(self.model.device)
-
-            # Generate coordinates
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **inputs,
-                    max_new_tokens=settings.max_new_tokens,
-                    do_sample=False,  # Deterministic
-                )
-
-            # Decode output
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            output_text = self.processor.batch_decode(
-                generated_ids_trimmed,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False
-            )[0]
+            # Extract output text
+            output_text = response["choices"][0]["message"]["content"]
 
             # Parse coordinates from output
             coords = self._parse_coordinates(output_text)
@@ -405,7 +387,7 @@ class Holo15:
         include_som: bool = True,
     ) -> Dict[str, Any]:
         """
-        Parse UI screenshot using Holo 1.5-7B.
+        Parse UI screenshot using Holo 1.5-7B GGUF.
 
         Args:
             image: Input screenshot as numpy array (RGB)

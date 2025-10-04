@@ -4,13 +4,14 @@ FROM python:3.12-slim
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
-# Install system dependencies
+# Install system dependencies (including build tools for llama-cpp-python)
 RUN apt-get update && apt-get install -y \
     git \
     wget \
     curl \
-    libgl1 \
-    libglib2.0-0 \
+    build-essential \
+    cmake \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -24,42 +25,34 @@ COPY requirements.txt .
 # amd64 (x86_64): Full CUDA support (12.1 - backward compatible with 11.8+)
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
         echo "Building for ARM64 - installing CPU-only PyTorch"; \
-        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu; \
+        pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
     else \
         echo "Building for AMD64 - installing CUDA 12.1 PyTorch"; \
-        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121; \
+        pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121; \
+    fi
+
+# Install llama-cpp-python with CUDA support for amd64, CPU-only for arm64
+# This will compile llama.cpp with GPU acceleration on supported platforms
+RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
+        echo "Installing llama-cpp-python with CUDA support..."; \
+        CMAKE_ARGS="-DGGML_CUDA=on" pip install --no-cache-dir llama-cpp-python>=0.3.0 || { \
+            echo "⚠ CUDA build failed, falling back to CPU-only llama-cpp-python"; \
+            pip install --no-cache-dir llama-cpp-python>=0.3.0; \
+        }; \
+    else \
+        echo "Installing llama-cpp-python for ARM64 (CPU-only)"; \
+        pip install --no-cache-dir llama-cpp-python>=0.3.0; \
     fi
 
 # Install remaining requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Flash Attention 2 for CUDA systems (optional optimization, 30% speedup)
-# Only install on amd64 with CUDA, skip on arm64
-RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
-        echo "Attempting to install Flash Attention 2 for CUDA acceleration..."; \
-        pip install --no-cache-dir flash-attn --no-build-isolation || { \
-            echo "⚠ Flash Attention 2 installation failed (optional optimization)"; \
-            echo "  Falling back to standard attention (still fast)"; \
-        }; \
-    else \
-        echo "Skipping Flash Attention 2 on ARM64"; \
-    fi
-
 # Copy application code
 COPY src/ ./src/
-COPY scripts/ ./scripts/
 COPY pyproject.toml .
 
-# Clone OmniParser repository
-RUN git clone https://github.com/microsoft/OmniParser.git
-
-# Create weights directory
-RUN mkdir -p weights
-
-# Download models (this will be done at build time)
-# In production, you might want to mount these or download at runtime
-RUN chmod +x scripts/download_models.sh && \
-    bash scripts/download_models.sh || echo "Model download skipped - will download at runtime"
+# Create cache directory for HuggingFace models (GGUF files will be cached here)
+RUN mkdir -p /root/.cache/huggingface
 
 # Expose port
 EXPOSE 9989
@@ -71,7 +64,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Create startup script with GPU diagnostics
 RUN echo '#!/bin/bash\n\
 echo "========================================"\n\
-echo "OmniParser Container GPU Diagnostics"\n\
+echo "Holo 1.5-7B GGUF Service Starting"\n\
 echo "========================================"\n\
 \n\
 # Check for NVIDIA runtime\n\
@@ -103,8 +96,12 @@ echo ""\n\
 echo "PyTorch GPU Detection:"\n\
 python3 -c "import torch; print(f\"  CUDA Available: {torch.cuda.is_available()}\"); print(f\"  CUDA Version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}\"); print(f\"  GPU Count: {torch.cuda.device_count() if torch.cuda.is_available() else 0}\"); [print(f\"  GPU {i}: {torch.cuda.get_device_name(i)}\") for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else None"\n\
 \n\
+echo ""\n\
+echo "Model: Holo1.5-7B-GGUF (Q4_K_M quantization)"\n\
+echo "Backend: llama-cpp-python with GPU acceleration"\n\
+echo "Models will be downloaded from HuggingFace on first request"\n\
 echo "========================================"\n\
-echo "Starting OmniParser Service..."\n\
+echo "Starting Holo Service..."\n\
 echo "========================================"\n\
 \n\
 # Start the actual service\n\

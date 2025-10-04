@@ -2,21 +2,21 @@ fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 huggingface-hub==0.26.2
-transformers>=4.49.0
-qwen-vl-utils>=0.0.8
 Pillow==10.4.0
 torch>=2.0.0
-torchvision>=0.15.0
-einops==0.8.0
-timm==1.0.11
 numpy>=1.24.0
 pydantic==2.9.0
 pydantic-settings==2.6.0
-accelerate
 
-# Flash Attention 2 for CUDA Ampere+ GPUs (optional, provides 30% speedup)
-# Automatically installed by Dockerfile for x86_64 CUDA systems
-# For native Apple Silicon install: Not needed (uses SDPA instead)
-# Manual install on NVIDIA systems: pip install flash-attn --no-build-isolation
-# Requires: CUDA 11.8+, Compute Capability 8.0+ (Ampere, Ada, Hopper GPUs)
-# If installation fails, Holo 1.5-7B falls back to standard attention (still fast)
+# llama-cpp-python for GGUF quantized models
+# Supports CUDA (NVIDIA), Metal (Apple Silicon), and CPU backends
+llama-cpp-python>=0.3.0
+
+# Note: For GPU acceleration, llama-cpp-python will auto-detect:
+# - CUDA on NVIDIA GPUs (Linux/Windows)
+# - Metal on Apple Silicon (macOS)
+# - Falls back to CPU if no GPU available
+#
+# To force specific backend, set CMAKE_ARGS before install:
+# export CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python  # NVIDIA
+# export CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python # Apple Silicon

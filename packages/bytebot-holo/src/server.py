@@ -83,13 +83,14 @@ async def lifespan(app: FastAPI):
     import torch
 
     print("=" * 50)
-    print("Bytebot Holo 1.5-7B Service Starting")
+    print("Bytebot Holo 1.5-7B Service Starting (GGUF)")
     print("=" * 50)
     print(f"Device: {settings.device}")
     print(f"Port: {settings.port}")
-    print(f"Model: Hcompany/Holo1.5-7B (Qwen2.5-VL base)")
+    print(f"Model: mradermacher/Holo1.5-7B-GGUF")
+    print(f"Quantization: Q4_K_M (4.8GB)")
     print("")
-    print("GPU Diagnostics:")
+    print("Backend: llama-cpp-python with GPU acceleration")
     print(f"  PyTorch Version: {torch.__version__}")
     print(f"  CUDA Available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
@@ -172,8 +173,9 @@ def decode_image(image_data: str) -> np.ndarray:
 async def root():
     """Root endpoint."""
     return {
-        "service": "Bytebot Holo 1.5-7B",
-        "model": "Hcompany/Holo1.5-7B",
+        "service": "Bytebot Holo 1.5-7B (GGUF)",
+        "model": "mradermacher/Holo1.5-7B-GGUF",
+        "quantization": "Q4_K_M",
         "version": "1.0.0",
         "status": "running",
         "endpoints": {

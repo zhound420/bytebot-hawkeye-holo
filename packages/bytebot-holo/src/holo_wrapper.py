@@ -36,6 +36,10 @@ class Holo15:
         self.model_filename = "Holo1.5-7B.Q4_K_M.gguf"
         self.mmproj_filename = "mmproj-Q8_0.gguf"
 
+        # Model name and dtype for status endpoint compatibility
+        self.model_name = f"{self.model_repo}/{self.model_filename}"
+        self.dtype = "Q4_K_M (4-bit quantization)"
+
         print(f"Loading Holo 1.5-7B GGUF on {self.device}...")
         print(f"  Model: {self.model_repo}")
         print(f"  Quantization: {self.model_filename}")

@@ -187,10 +187,11 @@ export class EnhancedVisualDetectorService {
   }
 
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
-    // Track Holo 1.5-7B activity
+    // Track Holo 1.5-7B activity with device info
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
       captions: options.holoCaptions ?? true,
       confidence_threshold: options.holoConfidence ?? 0.3,
+      device: 'loading',  // Will be updated after response
     });
 
     try {
@@ -212,9 +213,12 @@ export class EnhancedVisualDetectorService {
 
       // Update metadata with device info for UI display
       this.cvActivity.updateMethodMetadata(activityId, {
-        device: response.device,
+        device: response.device,  // 'mps', 'cuda', or 'cpu'
         elementCount: response.count,
         processingTime: response.processing_time_ms,
+        ocrDetected: response.ocr_detected,
+        iconDetected: response.icon_detected,
+        interactableCount: response.interactable_count,
       });
 
       // Convert to DetectedElement format

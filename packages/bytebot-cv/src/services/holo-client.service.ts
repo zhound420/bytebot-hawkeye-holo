@@ -118,7 +118,7 @@ export class HoloClientService {
   async checkHealth(): Promise<boolean> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       const response = await fetch(`${this.baseUrl}/health`, {
         signal: controller.signal,
@@ -155,7 +155,7 @@ export class HoloClientService {
   async fetchModelStatus(): Promise<HoloModelStatus | null> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       const response = await fetch(`${this.baseUrl}/models/status`, {
         signal: controller.signal,

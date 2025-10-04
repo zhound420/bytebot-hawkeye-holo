@@ -178,6 +178,9 @@ export class AgentProcessor {
   }>();
   private readonly SCREENSHOT_CACHE_TTL_MS = 2000; // 2 seconds - screens change fast
 
+  // Store last enhanced detection result for telemetry
+  private lastEnhancedResult: any = null;
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -1416,6 +1419,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
         elements = enhancedResult.elements;
 
+        // Store enhanced result for telemetry
+        this.lastEnhancedResult = enhancedResult;
+
         // Cache the results for future requests
         this.setScreenshotCacheEntry(screenshotBuffer, elements);
       }
@@ -1423,13 +1429,19 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       if (params.includeAll) {
         // Record detection for telemetry (includeAll mode)
+        // Extract primary method from: elements metadata, or enhancedResult.methodsUsed
+        let primaryMethod = elements[0]?.metadata?.detectionMethod || 'unknown';
+        if (primaryMethod === 'unknown' && this.lastEnhancedResult?.methodsUsed?.[0]) {
+          primaryMethod = this.lastEnhancedResult.methodsUsed[0];
+        }
+
         const detectionEntry: DetectionHistoryEntry = {
           timestamp: new Date(),
           description: params.description || '(all elements)',
           elementsFound: elements.length,
-          primaryMethod: elements[0]?.metadata?.detectionMethod || 'unknown',
+          primaryMethod,
           cached: !!cachedElements,
-          duration: 0,
+          duration: this.lastEnhancedResult?.performance?.totalTime || 0,
           elements: elements.slice(0, 10).map(el => ({
             id: el.id,
             semanticDescription: el.metadata?.semantic_caption || el.text,
@@ -1614,13 +1626,19 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       }
 
       // Record detection for telemetry
+      // Extract primary method from: elements metadata, or enhancedResult.methodsUsed
+      let primaryMethod = elements[0]?.metadata?.detectionMethod || 'unknown';
+      if (primaryMethod === 'unknown' && this.lastEnhancedResult?.methodsUsed?.[0]) {
+        primaryMethod = this.lastEnhancedResult.methodsUsed[0];
+      }
+
       const detectionEntry: DetectionHistoryEntry = {
         timestamp: new Date(),
         description: params.description || '',
         elementsFound: elements.length,
-        primaryMethod: elements[0]?.metadata?.detectionMethod || 'unknown',
+        primaryMethod,
         cached: !!cachedElements,
-        duration: 0, // Duration tracking would require adding timing logic
+        duration: this.lastEnhancedResult?.performance?.totalTime || 0,
         elements: elements.slice(0, 10).map(el => ({
           id: el.id,
           semanticDescription: el.metadata?.semantic_caption || el.text,

@@ -53,6 +53,10 @@ else
 fi
 
 echo ""
+echo -e "${BLUE}Patching OmniParser for compatibility...${NC}"
+bash "$SCRIPT_DIR/patch-paddleocr.sh"
+
+echo ""
 echo -e "${BLUE}Downloading model weights...${NC}"
 bash "$SCRIPT_DIR/download_models.sh"
 

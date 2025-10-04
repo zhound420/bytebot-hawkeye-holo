@@ -338,7 +338,7 @@ class OmniParserV2:
                     display_img=False,
                     output_bb_format='xyxy',
                     goal_filtering=None,
-                    easyocr_args={'paragraph': False, 'text_threshold': 0.9},
+                    easyocr_args={'paragraph': False, 'text_threshold': 0.5},  # Lowered from 0.9 for better detection
                     use_paddleocr=use_paddleocr
                 )
                 ocr_text, ocr_bbox = ocr_result
@@ -385,8 +385,27 @@ class OmniParserV2:
                 )
 
                 # Convert parsed_content_list to our format
+                # Validate structure before processing
+                if not isinstance(parsed_content_list, list):
+                    raise TypeError(f"parsed_content_list must be list, got {type(parsed_content_list)}")
+
                 elements = []
                 for i, elem in enumerate(parsed_content_list):
+                    # Validate each element is a dict
+                    if not isinstance(elem, dict):
+                        raise TypeError(
+                            f"Element {i} must be dict, got {type(elem)}. "
+                            f"Value: {elem}. "
+                            f"List length: {len(parsed_content_list)}"
+                        )
+
+                    # Validate required keys
+                    if 'bbox' not in elem:
+                        raise KeyError(
+                            f"Element {i} missing 'bbox' key. "
+                            f"Available keys: {list(elem.keys())}"
+                        )
+
                     bbox_norm = elem['bbox']  # [x_ratio, y_ratio, w_ratio, h_ratio]
                     x1 = int(bbox_norm[0] * w)
                     y1 = int(bbox_norm[1] * h)
@@ -427,6 +446,13 @@ class OmniParserV2:
 
             except Exception as e:
                 print(f"Warning: Full OmniParser pipeline failed: {e}")
+                print(f"  Error type: {type(e).__name__}")
+                if 'parsed_content_list' in locals():
+                    print(f"  parsed_content_list type: {type(parsed_content_list)}")
+                    print(f"  parsed_content_list length: {len(parsed_content_list) if isinstance(parsed_content_list, list) else 'N/A'}")
+                    if isinstance(parsed_content_list, list) and len(parsed_content_list) > 0:
+                        print(f"  First element type: {type(parsed_content_list[0])}")
+                        print(f"  First element preview: {str(parsed_content_list[0])[:200]}")
                 print(f"Falling back to basic detection")
                 # Fall through to basic detection
 

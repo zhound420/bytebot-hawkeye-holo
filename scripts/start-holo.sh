@@ -36,13 +36,31 @@ fi
 
 cd packages/bytebot-omniparser
 
-# Check if already running
+# Check if already running (verify it's actually Holo via PID file)
+if [[ -f "../../logs/holo.pid" ]]; then
+    PID=$(cat ../../logs/holo.pid)
+    if ps -p $PID > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Holo 1.5-7B already running (PID: $PID)${NC}"
+        echo ""
+        echo "Service: http://localhost:9989"
+        echo "To restart, first stop it:"
+        echo -e "  ${BLUE}./scripts/stop-holo.sh${NC}"
+        exit 0
+    else
+        echo -e "${YELLOW}⚠ Stale PID file found, cleaning up...${NC}"
+        rm ../../logs/holo.pid
+    fi
+fi
+
+# Also check port as a fallback (but warn it might not be Holo)
 if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Holo 1.5-7B already running on port 9989${NC}"
+    echo -e "${YELLOW}⚠ Port 9989 is in use by another process${NC}"
     echo ""
-    echo "To restart, first stop it:"
-    echo -e "  ${BLUE}./scripts/stop-holo.sh${NC}"
-    exit 0
+    echo "Check what's running:"
+    echo -e "  ${BLUE}lsof -i :9989${NC}"
+    echo ""
+    echo "If it's not Holo, stop it first, then run this script again."
+    exit 1
 fi
 
 # Activate environment and start

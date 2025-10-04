@@ -28,17 +28,35 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${YELLOW}→ Native setup recommended for GPU acceleration (MPS)${NC}"
     echo ""
 
-    # Check if already set up
-    if [[ -d "packages/bytebot-omniparser/venv" ]]; then
+    # Check if already set up (venv + model cached)
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+    if [[ -d "packages/bytebot-omniparser/venv" ]] && [[ -d "$MODEL_CACHE" ]]; then
         echo -e "${GREEN}✓ Holo 1.5-7B already set up${NC}"
+        echo ""
+        echo "Setup includes:"
+        echo "  ✓ Python environment (venv)"
+        echo "  ✓ Model cached (~15.4 GB at ~/.cache/huggingface/)"
         echo ""
         echo "To start Holo 1.5-7B natively:"
         echo -e "  ${BLUE}./scripts/start-holo.sh${NC}"
         echo ""
         exit 0
+    elif [[ -d "packages/bytebot-omniparser/venv" ]] && [[ ! -d "$MODEL_CACHE" ]]; then
+        echo -e "${YELLOW}⚠ Partial setup detected${NC}"
+        echo "  ✓ Python environment exists"
+        echo "  ✗ Model not cached"
+        echo ""
+        echo -e "${BLUE}Re-running model download...${NC}"
+        echo ""
+        # Don't exit - continue to model download section
+        # Skip venv creation, go straight to model download
+        cd packages/bytebot-omniparser
+        source venv/bin/activate
+        SKIP_VENV_CREATION=true
     fi
 
     # Set up native Holo 1.5-7B
+    if [[ "$SKIP_VENV_CREATION" != "true" ]]; then
     echo -e "${BLUE}Setting up native Holo 1.5-7B for Apple Silicon...${NC}"
     cd packages/bytebot-omniparser
 
@@ -51,8 +69,18 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo "Installing dependencies..."
     pip install --upgrade pip
     pip install -r requirements.txt
+    fi  # End of SKIP_VENV_CREATION check
 
-    # Download Holo 1.5-7B model (~15.4 GB)
+    # Download Holo 1.5-7B model (~15.4 GB) - only if not cached
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+    if [[ -d "$MODEL_CACHE" ]]; then
+        echo ""
+        echo -e "${GREEN}✓ Model already cached${NC}"
+        echo "  Location: $MODEL_CACHE"
+        echo "  Skipping download"
+        echo ""
+    else
+        # Download Holo 1.5-7B model (~15.4 GB)
     echo ""
     echo -e "${BLUE}Downloading Holo 1.5-7B model...${NC}"
     echo "  Size: ~15.4 GB (one-time download)"
@@ -115,6 +143,7 @@ EOFDL
         echo "  The model will download on first start instead."
         echo "  This is not a fatal error - setup will continue."
     fi
+    fi  # End of model cache check
 
     deactivate
 

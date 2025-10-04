@@ -147,7 +147,7 @@ curl -X POST http://localhost:9989/parse \
 ### Unchanged (Working as Designed)
 - `docker/docker-compose.override.yml` - GPU passthrough already configured
 - `packages/bytebot-omniparser/src/config.py` - Device detection logic correct
-- `scripts/setup-omniparser.sh` - Platform detection unchanged
+- `scripts/setup-holo.sh` - Platform detection unchanged
 
 ## Next Steps
 

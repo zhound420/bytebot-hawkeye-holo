@@ -15,8 +15,8 @@ This comprehensive script:
 2. Optionally clears Docker build cache
 3. Builds `shared` package (required dependency)
 4. Builds `bytebot-cv` package (CV capabilities)
-5. Sets up OmniParser (platform-specific)
-6. Starts OmniParser natively (Apple Silicon only)
+5. Sets up Holo 1.5-7B (platform-specific)
+6. Starts Holo natively (Apple Silicon only)
 7. Builds all Docker containers with latest code
 8. Starts the full stack
 9. Verifies service health
@@ -31,9 +31,9 @@ This comprehensive script:
 
 ## Script Reference
 
-### `setup-omniparser.sh`
+### `setup-holo.sh`
 
-**Purpose:** Platform-aware OmniParser setup
+**Purpose:** Platform-aware Holo 1.5-7B setup
 
 **What it does:**
 - Detects platform (Apple Silicon vs x86_64)
@@ -51,16 +51,16 @@ This comprehensive script:
 
 **Usage:**
 ```bash
-./scripts/setup-omniparser.sh
+./scripts/setup-holo.sh
 ```
 
 **First-time setup only** - Run once per system.
 
 ---
 
-### `start-omniparser.sh`
+### `start-holo.sh`
 
-**Purpose:** Start native OmniParser (Apple Silicon only)
+**Purpose:** Start native Holo 1.5-7B (Apple Silicon only)
 
 **What it does:**
 - Activates Python environment
@@ -70,16 +70,16 @@ This comprehensive script:
 
 **Usage:**
 ```bash
-./scripts/start-omniparser.sh
+./scripts/start-holo.sh
 ```
 
 **Required for Apple Silicon** before starting Docker stack.
 
 ---
 
-### `stop-omniparser.sh`
+### `stop-holo.sh`
 
-**Purpose:** Stop native OmniParser
+**Purpose:** Stop native Holo 1.5-7B
 
 **What it does:**
 - Finds process on port 9989
@@ -87,7 +87,7 @@ This comprehensive script:
 
 **Usage:**
 ```bash
-./scripts/stop-omniparser.sh
+./scripts/stop-holo.sh
 ```
 
 ---
@@ -215,8 +215,8 @@ curl http://localhost:9989/health
 
 **Restart:**
 ```bash
-./scripts/stop-omniparser.sh
-./scripts/start-omniparser.sh
+./scripts/stop-holo.sh
+./scripts/start-holo.sh
 ```
 
 **Check logs:**
@@ -249,7 +249,7 @@ This is fixed automatically by the setup script. If you installed manually:
 ```bash
 cd packages/bytebot-omniparser
 bash scripts/patch-paddleocr.sh
-./scripts/start-omniparser.sh  # from project root
+./scripts/start-holo.sh  # from project root
 ```
 
 ### Docker build fails with OpenCV errors

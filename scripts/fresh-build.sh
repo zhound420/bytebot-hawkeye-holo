@@ -102,10 +102,10 @@ echo -e "${GREEN}✓ CV package built${NC}"
 cd ../..
 echo ""
 
-# Setup OmniParser if needed
-echo -e "${BLUE}Step 5: Setting up OmniParser...${NC}"
-if [ -f "scripts/setup-omniparser.sh" ]; then
-    ./scripts/setup-omniparser.sh
+# Setup Holo 1.5-7B if needed
+echo -e "${BLUE}Step 5: Setting up Holo 1.5-7B...${NC}"
+if [ -f "scripts/setup-holo.sh" ]; then
+    ./scripts/setup-holo.sh
 else
     echo -e "${YELLOW}⚠ OmniParser setup script not found, skipping${NC}"
 fi
@@ -113,9 +113,9 @@ echo ""
 
 # Start OmniParser for Apple Silicon (native with MPS GPU)
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
-    echo -e "${BLUE}Step 6: Starting native OmniParser (Apple Silicon with MPS GPU)...${NC}"
-    if [ -f "scripts/start-omniparser.sh" ]; then
-        ./scripts/start-omniparser.sh
+    echo -e "${BLUE}Step 6: Starting native Holo 1.5-7B (Apple Silicon with MPS GPU)...${NC}"
+    if [ -f "scripts/start-holo.sh" ]; then
+        ./scripts/start-holo.sh
         echo ""
         echo "Waiting for OmniParser to be ready..."
         sleep 3

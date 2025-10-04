@@ -76,6 +76,6 @@ This is expected due to Rosetta 2 emulation. First build takes longer (~15-20 mi
 3. Run fresh build: `./scripts/fresh-build.sh`
 
 #### Need native ARM64 performance?
-For CPU-intensive services (like OmniParser on Mac), run natively outside Docker:
-- See `scripts/setup-omniparser.sh` for native setup
+For CPU-intensive services (like Holo 1.5-7B on Mac), run natively outside Docker:
+- See `scripts/setup-holo.sh` for native setup
 - Docker services will connect to native service via `host.docker.internal`

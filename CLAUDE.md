@@ -68,8 +68,8 @@ npm install
 cd packages/shared && npm run build
 cd ../bytebot-cv && npm install && npm run build
 
-# 3. Setup OmniParser (auto-detects Apple Silicon vs x86_64/NVIDIA)
-./scripts/setup-omniparser.sh
+# 3. Setup Holo 1.5-7B (auto-detects Apple Silicon vs x86_64/NVIDIA)
+./scripts/setup-holo.sh
 
 # 4. Start stack
 ./scripts/start-stack.sh
@@ -94,9 +94,9 @@ cd ../bytebot-cv && npm install && npm run build
 ### Manual Control
 
 ```bash
-# Apple Silicon only: Start/stop native OmniParser
-./scripts/start-omniparser.sh  # Start with MPS GPU
-./scripts/stop-omniparser.sh   # Stop
+# Apple Silicon only: Start/stop native Holo 1.5-7B
+./scripts/start-holo.sh  # Start with MPS GPU
+./scripts/stop-holo.sh   # Stop
 
 # Stop entire stack
 ./scripts/stop-stack.sh

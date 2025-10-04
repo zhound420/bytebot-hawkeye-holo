@@ -14,8 +14,8 @@ Docker Desktop on macOS **cannot** pass through Metal/MPS to containers. The onl
 
 ```bash
 # Automatic setup
-./scripts/setup-omniparser.sh
-./scripts/start-omniparser.sh
+./scripts/setup-holo.sh
+./scripts/start-holo.sh
 ./scripts/start-stack.sh  # Auto-detects native OmniParser
 ```
 
@@ -78,7 +78,7 @@ docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 
 ```bash
 # Standard setup - auto-detects GPU
-./scripts/setup-omniparser.sh
+./scripts/setup-holo.sh
 ./scripts/start-stack.sh
 ```
 
@@ -205,7 +205,7 @@ docker logs bytebot-omniparser 2>&1 | grep "Auto-detected device"
 
 | Platform | Method | Performance | Setup |
 |----------|--------|-------------|-------|
-| **Apple Silicon** | Native OmniParser | ~1-2s/frame ✅ | `./scripts/setup-omniparser.sh` |
+| **Apple Silicon** | Native Holo 1.5-7B | ~1-2s/frame ✅ | `./scripts/setup-holo.sh` |
 | **Apple Silicon** | Docker (CPU fallback) | ~8-15s/frame ❌ | Not recommended |
 | **NVIDIA GPU** | Docker with CUDA | ~0.6s/frame ✅ | Install nvidia-container-toolkit |
 | **x86_64 CPU** | Docker with CPU | ~8-15s/frame ⚠️ | Works everywhere, slow |

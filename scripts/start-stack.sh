@@ -84,21 +84,21 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
         # Check if it's been set up
         if [[ ! -d "../packages/bytebot-omniparser/venv" ]] && [[ ! -d "../packages/bytebot-omniparser/weights/icon_detect" ]]; then
-            echo -e "${BLUE}→ Setting up native OmniParser automatically (recommended for M4 GPU)...${NC}"
+            echo -e "${BLUE}→ Setting up native Holo 1.5-7B automatically (recommended for M4 GPU)...${NC}"
             echo ""
             cd ..
-            ./scripts/setup-omniparser.sh
+            ./scripts/setup-holo.sh
             echo ""
-            echo -e "${BLUE}→ Starting native OmniParser...${NC}"
-            ./scripts/start-omniparser.sh
+            echo -e "${BLUE}→ Starting native Holo 1.5-7B...${NC}"
+            ./scripts/start-holo.sh
             echo ""
             echo "Waiting for OmniParser to be ready..."
             sleep 3
             cd docker
         else
-            echo -e "${BLUE}→ Starting native OmniParser automatically...${NC}"
+            echo -e "${BLUE}→ Starting native Holo 1.5-7B automatically...${NC}"
             cd ..
-            ./scripts/start-omniparser.sh
+            ./scripts/start-holo.sh
             echo ""
             echo "Waiting for OmniParser to be ready..."
             sleep 3

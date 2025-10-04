@@ -112,7 +112,7 @@ The setup script automatically detects your hardware and configures optimal perf
 
 ```bash
 # One-time setup (installs Holo 1.5-7B and dependencies)
-./scripts/setup-omniparser.sh
+./scripts/setup-holo.sh
 
 # Start the full stack
 ./scripts/start-stack.sh

@@ -33,4 +33,4 @@ Contributors keep Hawkeye’s high-precision desktop agent dependable. Use this 
 
 ## Configuration & Security
 - Store secrets in `docker/.env`; keep real keys out of Git and document placeholders in `.env.defaults`.
-- Large CUDA/OpenCV assets are provisioned via `scripts/setup-omniparser.sh`—do not commit binaries. Capture any cache/bootstrap nuances in your PR description.
+- Large CUDA/Holo assets are provisioned via `scripts/setup-holo.sh`—do not commit binaries. Capture any cache/bootstrap nuances in your PR description.

@@ -34,7 +34,7 @@ if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo ""
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         cd ..
-        ./scripts/stop-omniparser.sh
+        ./scripts/stop-holo.sh
     fi
 fi
 

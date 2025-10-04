@@ -76,7 +76,7 @@ const computerDetectElementsJsonSchema = {
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    'Detect UI elements in the current screenshot using OmniParser AI (YOLOv8 + Florence-2) for semantic understanding and Tesseract.js OCR for text extraction. This is the preferred method for finding clickable elements instead of manual coordinate targeting.',
+    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using OmniParser AI (YOLOv8 + Florence-2) semantic understanding + Tesseract.js OCR. Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
   input_schema: computerDetectElementsJsonSchema,
 };
 
@@ -117,6 +117,6 @@ const computerClickElementJsonSchema = {
 export const computerClickElementTool = {
   name: 'computer_click_element',
   description:
-    'Click a UI element that was detected by computer_detect_elements. This is more reliable than manual coordinate clicking as it uses the actual detected element boundaries.',
+    '✅ PREFERRED CLICKING METHOD (89% accuracy) - Click a UI element by its ID from computer_detect_elements. Uses actual detected element boundaries for precise targeting. This is significantly more reliable than manual grid-based coordinate clicking (60% accuracy). Always pair with computer_detect_elements.',
   input_schema: computerClickElementJsonSchema,
 };

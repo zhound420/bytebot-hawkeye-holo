@@ -72,7 +72,7 @@ export const _traceMouseTool = {
 export const _clickMouseTool = {
   name: 'computer_click_mouse',
   description:
-    'Performs a mouse click using grid-based coordinates or Smart Focus AI. This is one of three clicking methods: (1) CV-assisted via computer_detect_elements + computer_click_element [most accurate for standard UI], (2) Grid-based with precise coordinates [fast and reliable], or (3) Smart Focus with description [AI-computed coordinates]. Provide either coordinates (from grid calculation) or description (for Smart Focus). Prefer keyboard navigation/shortcuts when possible.',
+    '⚠️ FALLBACK ONLY (60% accuracy) - Grid-based or Smart Focus clicking. ONLY use after computer_detect_elements + computer_click_element has failed 2+ times. For ALL standard UI elements (buttons, links, fields, icons, menus), you MUST try CV-assisted detection first. This method should ONLY be used for: (1) Custom rendering (canvas/games), (2) Clicking outside standard UI elements, (3) Transient elements that close during detection. Provide either coordinates (from grid calculation) or description (for Smart Focus AI).',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -539,29 +539,46 @@ export const _writeFileTool = {
 
 /**
  * Export all tools as an array
+ *
+ * IMPORTANT: CV-first tools are listed first to enforce the preferred workflow.
+ * Models should ALWAYS try computer_detect_elements + computer_click_element
+ * before falling back to grid-based computer_click_mouse.
  */
 export const agentTools = [
-  _moveMouseTool,
-  _traceMouseTool,
-  _clickMouseTool,
+  // CV-FIRST TOOLS (Primary clicking method - 89% accuracy)
   computerDetectElementsTool,
   computerClickElementTool,
+
+  // SCREENSHOT TOOLS (Observation)
+  _screenshotTool,
+  _screenshotRegionTool,
+  _screenshotCustomRegionTool,
+  _screenInfoTool,
+
+  // MOUSE TOOLS (Navigation and fallback)
+  _moveMouseTool,
+  _traceMouseTool,
+  _clickMouseTool,  // ⚠️ FALLBACK ONLY - Use CV tools first
   _pressMouseTool,
   _dragMouseTool,
   _scrollTool,
+  _cursorPositionTool,
+
+  // KEYBOARD TOOLS
   _typeKeysTool,
   _pressKeysTool,
   _typeTextTool,
   _pasteTextTool,
-  _waitTool,
-  _screenshotTool,
-  _screenshotRegionTool,
-  _screenshotCustomRegionTool,
+
+  // APPLICATION MANAGEMENT
   _applicationTool,
-  _cursorPositionTool,
-  _screenInfoTool,
-  _setTaskStatusTool,
-  _createTaskTool,
+
+  // UTILITY TOOLS
+  _waitTool,
   _readFileTool,
   _writeFileTool,
+
+  // TASK MANAGEMENT
+  _setTaskStatusTool,
+  _createTaskTool,
 ];

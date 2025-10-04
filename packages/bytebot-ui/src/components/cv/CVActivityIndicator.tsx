@@ -107,8 +107,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
 
     const fetchActivity = async () => {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL || "http://localhost:9991";
-        const response = await fetch(`${baseUrl}/cv-activity/stream`);
+        const response = await fetch("/api/cv-activity/stream");
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);

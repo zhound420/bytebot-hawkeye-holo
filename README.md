@@ -64,7 +64,18 @@ At least one LLM provider API key:
 - **x86_64 (Docker):** Model downloads when container first starts, cached for future use
 - **Storage:** Model is cached permanently and reused across restarts
 
-> **Tip:** If disk space is limited, the setup script will warn you and ask for confirmation before downloading.
+**Model Validation:**
+The setup script validates complete downloads by checking:
+- ✅ Cache size must be ≥10GB (not just 16MB tokenizer files)
+- ✅ Model weight files (.safetensors/.bin) must exist
+- ✅ Shows diagnostic info if validation fails (actual size, weight count, what's missing)
+
+If you see "⚠ Partial setup detected", the script will automatically:
+1. Show cache size and weight file count
+2. Clean incomplete cache
+3. Re-download with latest dependencies (including transformers ≥4.49.0)
+
+> **Tip:** If disk space is limited, the setup script will warn you and ask for confirmation before downloading. To force a clean reinstall: `./scripts/setup-holo.sh --force`
 
 ### GPU Requirements (Recommended for Best Holo 1.5-7B Performance)
 
@@ -164,7 +175,39 @@ The start script will:
 ./scripts/stop-stack.sh
 ```
 
-> **Troubleshooting?** See [GPU Setup Guide](docs/GPU_SETUP.md) for platform-specific configuration and debugging.
+### Troubleshooting Setup
+
+**Model download fails with "qwen2_5_vl not recognized":**
+- **Cause:** Outdated transformers version in existing venv (needs ≥4.49.0)
+- **Fix:** Run setup with force flag to upgrade packages:
+  ```bash
+  ./scripts/setup-holo.sh --force
+  ```
+
+**Setup reports "already set up" but model isn't downloaded:**
+- Scripts now validate cache is complete (≥10GB size + weight files present)
+- Shows diagnostic info: actual cache size, weight file count, what's missing
+- Auto-cleans incomplete cache and re-downloads automatically
+- **Fix:** Just run setup again - it will detect and fix incomplete state:
+  ```bash
+  ./scripts/setup-holo.sh
+  ```
+
+**First-time setup on limited disk space:**
+- Setup script checks free space and warns if <25GB available
+- You can confirm to continue or cancel to free up space
+- Model cache location: `~/.cache/huggingface/hub/` (~15.4GB)
+- **Fix:** Free up disk space and run `./scripts/setup-holo.sh`
+
+**Force reinstall (clean slate):**
+```bash
+./scripts/setup-holo.sh --force
+```
+- Removes existing venv and incomplete model cache
+- Performs clean installation from scratch with latest dependencies
+- Useful for recovering from corrupted state or upgrading transformers
+
+> **More help?** See [GPU Setup Guide](docs/GPU_SETUP.md) for platform-specific configuration and debugging.
 
 ## Hawkeye Fork Enhancements
 
@@ -315,6 +358,12 @@ The streamlined system outputs structured `UniversalUIElement` objects by fusing
 - The agent automatically applies migrations on startup
 - Manual migration: `docker exec bytebot-agent npx prisma migrate deploy`
 
+**Setup script issues:**
+- **Model incomplete:** Check cache size: `du -sh ~/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B/` (should be ~15GB, not 16MB)
+- **Download fails:** Transformers version too old - run `./scripts/setup-holo.sh --force` to upgrade
+- **"qwen2_5_vl not recognized":** Old transformers in venv - force flag upgrades packages
+- **Disk space:** Needs 25GB free - script checks and warns before downloading
+
 ## Advanced: Manual Docker Compose Setup
 
 ![Desktop accuracy overlay](docs/images/hawkeye1.png)
@@ -359,6 +408,99 @@ docker compose -f docker/docker-compose.yml up -d --build
 ```
 
 **Note:** Direct API access requires API keys in `docker/.env`. The agent will use the provider-specific services (Anthropic, OpenAI, Google) directly.
+
+## LMStudio Deployment Recommendations
+
+### Resource Constraints on Apple Silicon
+
+**Important:** On Apple Silicon Macs, Holo 1.5-7B **must** run locally for MPS GPU acceleration. This means you likely **cannot** run LMStudio locally due to GPU memory constraints unless you have a massive GPU.
+
+**Why Holo runs locally:**
+- Docker Desktop on macOS doesn't support MPS (Metal Performance Shaders) GPU passthrough
+- Running Holo natively gives ~1.5-2.5s inference vs ~8-15s CPU-only in Docker
+- Holo 1.5-7B needs ~8GB GPU memory (8.29B parameters in BF16 precision)
+
+**Why LMStudio can't run locally (usually):**
+- M1/M2/M3 unified memory is shared between CPU and GPU
+- Running both Holo (8GB) + LMStudio models (7-70B) exceeds available GPU memory
+- Result: GPU memory exhaustion, severe slowdown, or OOM crashes
+
+### Recommended Deployment Options
+
+#### **Option 1: LMStudio on Separate Host (Recommended)**
+
+Run LMStudio on a different machine with its own GPU:
+
+```yaml
+# In packages/bytebot-llm-proxy/litellm-config.yaml
+- model_name: local-lmstudio-ui-tars-72b-dpo
+  litellm_params:
+    model: openai/ui-tars-72b-dpo
+    api_base: http://192.168.4.250:1234/v1  # Different machine on local network
+    api_key: lm-studio
+```
+
+**Advantages:**
+- ✅ Holo gets full MPS GPU access for fast inference (~1.5-2.5s)
+- ✅ LMStudio models run on separate hardware with dedicated resources
+- ✅ No GPU memory contention
+- ✅ Best performance for both systems
+- ✅ Can use large models (70B+) without affecting Holo
+
+**Setup:**
+1. **On LMStudio host machine:**
+   - Start LMStudio with network binding: `--host 0.0.0.0`
+   - Note the IP address (e.g., `192.168.4.250`)
+   - Verify port 1234 is accessible: `curl http://192.168.4.250:1234/v1/models`
+
+2. **On Bytebot Mac:**
+   - Edit `packages/bytebot-llm-proxy/litellm-config.yaml`
+   - Update `api_base` to point to LMStudio host IP
+   - Restart: `docker compose restart bytebot-llm-proxy`
+
+#### **Option 2: LMStudio Locally (Only for Massive GPUs)**
+
+Only viable if you have exceptional hardware:
+
+```yaml
+# Only works with >24GB GPU memory
+api_base: http://localhost:1234/v1  # Local LMStudio
+```
+
+**Requirements:**
+- **Apple Silicon:** M3 Max (96GB+ unified memory) or M4 Max with 128GB+ RAM
+- **x86_64 Workstation:** >24GB VRAM (RTX 4090, RTX 6000 Ada, A6000, etc.)
+
+**Why:** Running Holo 1.5-7B (8GB) + 7-70B LLM models simultaneously requires massive GPU memory. Most consumer hardware can't handle both.
+
+#### **Option 3: Cloud LLM Providers (Simplest)**
+
+Use Anthropic, OpenAI, or OpenRouter instead of LMStudio:
+
+```bash
+# docker/.env
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+```
+
+**Advantages:**
+- ✅ No local GPU memory constraints
+- ✅ Holo gets full local GPU for UI localization
+- ✅ Simpler setup, no additional hardware needed
+- ✅ Access to latest frontier models (Claude Opus 4, GPT-5, etc.)
+- ✅ No maintenance or model management
+
+**Costs:** Pay-per-token pricing, but eliminates need for expensive GPU hardware.
+
+### Summary: Best Practices
+
+| Setup | Holo Location | LLM Location | Best For |
+|-------|---------------|--------------|----------|
+| **Recommended** | Local (MPS GPU) | Remote LMStudio host | Maximum performance, large models |
+| **Simplest** | Local (MPS GPU) | Cloud API (Anthropic/OpenAI) | Easy setup, frontier models |
+| **Power Users** | Local (MPS GPU) | Local LMStudio (if >24GB GPU) | Massive hardware, privacy needs |
+
+**Bottom line:** Unless you have exceptional GPU hardware, run LMStudio on a separate host to avoid GPU memory contention with Holo 1.5-7B.
 
 ## Alternative Deployments
 

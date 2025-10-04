@@ -129,9 +129,14 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${BLUE}Re-running full setup...${NC}"
         echo ""
         # Don't exit - continue to model download section
-        # Skip venv creation, go straight to model download
+        # Skip venv creation, but MUST upgrade packages in case requirements changed
         cd packages/bytebot-omniparser
         source venv/bin/activate
+
+        echo "Upgrading dependencies to latest versions..."
+        pip install --upgrade pip -q
+        pip install -r requirements.txt --upgrade
+
         SKIP_VENV_CREATION=true
     fi
 

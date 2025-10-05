@@ -77,9 +77,13 @@ export class ProxyService implements BytebotAgentService {
         { signal },
       );
 
+      if (!completion?.choices?.length) {
+        throw new Error('LLM proxy returned no choices for the request');
+      }
+
       // Process the response
       const choice = completion.choices[0];
-      if (!choice || !choice.message) {
+      if (!choice?.message) {
         throw new Error('No valid response from Chat Completion API');
       }
 

@@ -14,6 +14,17 @@ RUN apt-get update && apt-get install -y \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install minimal CUDA runtime libraries when targeting NVIDIA GPUs
+RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
+        set -eux; \
+        wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb; \
+        dpkg -i cuda-keyring_1.1-1_all.deb; \
+        rm cuda-keyring_1.1-1_all.deb; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends cuda-cudart-12-6 libcublas-12-6; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Set working directory
 WORKDIR /app
 
@@ -34,10 +45,15 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
 # Install llama-cpp-python with CUDA support for amd64, CPU-only for arm64
 # This will compile llama.cpp with GPU acceleration on supported platforms
 RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
-        echo "Installing llama-cpp-python with CUDA support..."; \
-        CMAKE_ARGS="-DGGML_CUDA=on" pip install --no-cache-dir llama-cpp-python>=0.3.0 || { \
-            echo "⚠ CUDA build failed, falling back to CPU-only llama-cpp-python"; \
-            pip install --no-cache-dir llama-cpp-python>=0.3.0; \
+        echo "Installing llama-cpp-python CUDA wheel (cu121)..."; \
+        pip install --no-cache-dir --prefer-binary \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 \
+            llama-cpp-python>=0.3.0 || { \
+            echo "⚠ CUDA wheel install failed, falling back to source build"; \
+            CMAKE_ARGS="-DGGML_CUDA=on -DLLAMA_VISION=on" pip install --no-cache-dir llama-cpp-python>=0.3.0 || { \
+                echo "⚠ CUDA build failed, falling back to CPU-only llama-cpp-python"; \
+                pip install --no-cache-dir llama-cpp-python>=0.3.0; \
+            }; \
         }; \
     else \
         echo "Installing llama-cpp-python for ARM64 (CPU-only)"; \

@@ -62,6 +62,10 @@ class Holo15:
             # CPU: No GPU layers
             return 0
 
+    def _get_mmproj_gpu_layers(self) -> int:
+        """Determine GPU offload for multimodal projector/CLIP encoder."""
+        return -1 if self.device in {"cuda", "mps"} else 0
+
     def _load_model(self) -> Tuple[Llama, Qwen25VLChatHandler]:
         """Load Holo 1.5-7B GGUF model and multimodal projector."""
         try:
@@ -78,6 +82,8 @@ class Holo15:
                 chat_handler=chat_handler,
                 n_ctx=8192,  # Increased context for images + prompts
                 n_gpu_layers=self._get_n_gpu_layers(),
+                mmproj_n_gpu_layers=self._get_mmproj_gpu_layers(),
+                vision_device=self.device if self.device in {"cuda", "mps"} else "cpu",
                 verbose=False,
             )
 

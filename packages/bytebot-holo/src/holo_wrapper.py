@@ -802,6 +802,22 @@ class Holo15:
                 return True
         return False
 
+    def _deduplicate_detections(self, detections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate detections based on coordinate proximity."""
+        if not detections:
+            return []
+
+        unique: List[Dict[str, Any]] = []
+        seen_centers: List[Tuple[int, int]] = []
+
+        for detection in detections:
+            center = tuple(detection["center"])
+            if not self._is_duplicate(center, seen_centers):
+                unique.append(detection)
+                seen_centers.append(center)
+
+        return unique
+
     def _legacy_multi_detection(
         self,
         image: np.ndarray,
@@ -1007,9 +1023,9 @@ class Holo15:
             )
 
             if structured_detections is not None:
-                detections = structured_detections
+                detections.extend(structured_detections)
                 structured_success = True
-                print(f"✓ Structured parsing succeeded: {len(detections)} elements extracted")
+                print(f"✓ Structured parsing succeeded: {len(structured_detections)} elements extracted")
                 break
             else:
                 # Diagnostic logging for failed structured parsing
@@ -1029,21 +1045,28 @@ class Holo15:
                 if self.retry_backoff:
                     time.sleep(self.retry_backoff * (attempt + 1))
 
-        if not structured_success and settings.allow_legacy_fallback:
-            print(f"→ Falling back to legacy multi-detection mode ({len(detection_prompts)} prompts)")
+        # ALWAYS run legacy mode for supplementary coverage (thoroughness over speed)
+        # This gives us diverse single-element queries that complement structured detection
+        if settings.allow_legacy_fallback:
+            print(f"→ Running legacy mode for supplementary coverage ({len(detection_prompts)} prompts)")
             legacy_detections, legacy_outputs = self._legacy_multi_detection(
                 image,
                 detection_prompts,
                 payload,
                 effective_max,
-                max_tokens=max_tokens,  # CRITICAL FIX: Pass profile's max_tokens to legacy mode
+                max_tokens=max_tokens,
             )
-            if legacy_detections:
-                detections = legacy_detections
-                print(f"✓ Legacy mode found {len(detections)} element(s)")
-            else:
-                print(f"✗ Legacy mode found 0 elements")
             raw_outputs.extend(legacy_outputs)
+
+            if legacy_detections:
+                print(f"✓ Legacy mode found {len(legacy_detections)} additional element(s)")
+                # Deduplicate before adding
+                before_dedup = len(detections) + len(legacy_detections)
+                detections.extend(legacy_detections)
+                detections = self._deduplicate_detections(detections)
+                print(f"✓ After deduplication: {len(detections)} unique elements (was {before_dedup})")
+            else:
+                print(f"⚠ Legacy mode found 0 additional elements")
 
         if detections:
             detections.sort(key=lambda item: float(item.get("confidence", settings.default_confidence)), reverse=True)

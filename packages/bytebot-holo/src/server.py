@@ -2,7 +2,6 @@
 
 import io
 import base64
-import time
 from typing import Optional
 from contextlib import asynccontextmanager
 import numpy as np
@@ -24,13 +23,6 @@ class ParseRequest(BaseModel):
     task: Optional[str] = Field(None, description="Specific task instruction for single-element mode")
     detect_multiple: bool = Field(True, description="Detect multiple elements using various prompts")
     include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
-    # Compatibility fields (maintained for backward compatibility)
-    include_captions: bool = Field(True, description="Deprecated - maintained for compatibility")
-    include_ocr: bool = Field(True, description="Deprecated - maintained for compatibility")
-    use_full_pipeline: bool = Field(True, description="Deprecated - maintained for compatibility")
-    min_confidence: Optional[float] = Field(None, description="Deprecated - maintained for compatibility")
-    iou_threshold: Optional[float] = Field(0.1, description="Deprecated - maintained for compatibility")
-    use_paddleocr: bool = Field(True, description="Deprecated - maintained for compatibility")
 
 
 class ElementDetection(BaseModel):
@@ -44,6 +36,8 @@ class ElementDetection(BaseModel):
     content: Optional[str] = Field(None, description="OCR text or caption content")
     source: Optional[str] = Field(None, description="Detection source (box_ocr_content_ocr or box_yolo_content_yolo)")
     element_id: Optional[int] = Field(None, description="Element index for SOM mapping")
+    raw_output: Optional[str] = Field(None, description="Raw model output segment that produced this detection")
+    task: Optional[str] = Field(None, description="Original task instruction associated with the detection")
 
 
 class ParseResponse(BaseModel):
@@ -58,6 +52,8 @@ class ParseResponse(BaseModel):
     icon_detected: Optional[int] = Field(None, description="Number of icon elements detected")
     text_detected: Optional[int] = Field(None, description="Number of text elements in final result")
     interactable_count: Optional[int] = Field(None, description="Number of interactable elements")
+    raw_model_outputs: Optional[list[str]] = Field(None, description="Raw Holo model outputs for debugging/traceability")
+    model: str = Field("holo-1.5-7b", description="Source model identifier")
 
 
 class HealthResponse(BaseModel):
@@ -87,8 +83,9 @@ async def lifespan(app: FastAPI):
     print("=" * 50)
     print(f"Device: {settings.device}")
     print(f"Port: {settings.port}")
-    print(f"Model: mradermacher/Holo1.5-7B-GGUF")
-    print(f"Quantization: Q4_K_M (4.8GB)")
+    print(f"Model repo: {settings.model_repo}")
+    print(f"Configured model file: {settings.model_filename}")
+    print(f"Configured projector: {settings.mmproj_filename}")
     print("")
     print("Backend: llama-cpp-python with GPU acceleration")
     print(f"  PyTorch Version: {torch.__version__}")
@@ -103,8 +100,11 @@ async def lifespan(app: FastAPI):
     try:
         # Preload models
         print("Preloading Holo 1.5-7B model...")
-        get_model()
+        holo = get_model()
         print("✓ Model preloaded successfully")
+        print(f"  Active model: {holo.model_filename}")
+        print(f"  Active projector: {holo.mmproj_filename}")
+        print(f"  Quantization descriptor: {holo.dtype}")
     except Exception as e:
         print(f"✗ Error preloading model: {e}")
         print("Model will be loaded on first request")
@@ -172,10 +172,12 @@ def decode_image(image_data: str) -> np.ndarray:
 @app.get("/", response_model=dict)
 async def root():
     """Root endpoint."""
+    model = get_model()
     return {
         "service": "Bytebot Holo 1.5-7B (GGUF)",
-        "model": "mradermacher/Holo1.5-7B-GGUF",
-        "quantization": "Q4_K_M",
+        "model_repo": model.model_repo,
+        "model": model.model_filename,
+        "quantization": model.dtype,
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
@@ -215,7 +217,8 @@ async def model_status():
             icon_detector={
                 "loaded": True,
                 "type": "Holo 1.5-7B",
-                "path": model.model_name
+                "path": model.model_name,
+                "quantization": model.dtype
             },
             caption_model={
                 "loaded": True,
@@ -260,6 +263,8 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
             include_som=request.include_som,
         )
 
+        result["model"] = "holo-1.5-7b"
+
         return ParseResponse(**result)
 
     except HTTPException:
@@ -274,13 +279,6 @@ async def parse_screenshot_upload(
     task: Optional[str] = None,
     detect_multiple: bool = True,
     include_som: bool = True,
-    # Deprecated parameters (maintained for compatibility)
-    include_captions: bool = True,
-    include_ocr: bool = True,
-    use_full_pipeline: bool = True,
-    min_confidence: Optional[float] = None,
-    iou_threshold: float = 0.1,
-    use_paddleocr: bool = True
 ):
     """
     Parse UI screenshot from file upload using Holo 1.5-7B.
@@ -317,6 +315,8 @@ async def parse_screenshot_upload(
             detect_multiple=detect_multiple,
             include_som=include_som,
         )
+
+        result["model"] = "holo-1.5-7b"
 
         return ParseResponse(**result)
 

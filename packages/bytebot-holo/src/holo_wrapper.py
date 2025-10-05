@@ -1,10 +1,10 @@
 """Holo 1.5-7B model wrapper for UI localization using GGUF quantized models."""
 
+import json
 import time
 import re
 import io
 import base64
-from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 from PIL import Image
@@ -27,28 +27,120 @@ class Holo15:
     def __init__(self):
         """Initialize Holo 1.5-7B GGUF model."""
         self.device = settings.device
-        self.model_repo = "mradermacher/Holo1.5-7B-GGUF"
+        self.model_repo = settings.model_repo
 
-        # Select quantization level based on device and memory
-        # Q4_K_M: 4.8GB, best balance of quality and size
-        # Q8_0: 8.2GB, best quality
-        # Q4_K_S: 4.6GB, smallest with good quality
-        self.model_filename = "Holo1.5-7B.Q4_K_M.gguf"
-        self.mmproj_filename = "mmproj-Q8_0.gguf"
+        # Allow quantization overrides while auto-tuning for capable GPUs
+        self.model_filename, self.mmproj_filename, self.dtype = self._select_quantization()
+
+        # Runtime knobs
+        self.n_ctx = settings.n_ctx
+        self.n_threads = settings.n_threads
+        self.n_batch = settings.n_batch
+        self.n_gpu_layers = settings.n_gpu_layers if settings.n_gpu_layers is not None else self._get_n_gpu_layers()
+        self.mmproj_n_gpu_layers = (
+            settings.mmproj_n_gpu_layers
+            if settings.mmproj_n_gpu_layers is not None
+            else self._get_mmproj_gpu_layers()
+        )
+        self.temperature = settings.temperature
+        self.top_p = settings.top_p
+        self.max_retries = max(settings.max_retries, 0)
+        self.retry_backoff = max(settings.retry_backoff_seconds, 0.0)
 
         # Model name and dtype for status endpoint compatibility
         self.model_name = f"{self.model_repo}/{self.model_filename}"
-        self.dtype = "Q4_K_M (4-bit quantization)"
 
         print(f"Loading Holo 1.5-7B GGUF on {self.device}...")
-        print(f"  Model: {self.model_repo}")
-        print(f"  Quantization: {self.model_filename}")
+        print(f"  Model repo: {self.model_repo}")
+        print(f"  Model file: {self.model_filename}")
         print(f"  Projector: {self.mmproj_filename}")
+        print(f"  Context window: {self.n_ctx}")
+        print(
+            "  Offload: n_gpu_layers=%s, mmproj_n_gpu_layers=%s"
+            % (self.n_gpu_layers, self.mmproj_n_gpu_layers)
+        )
+        if self.n_threads:
+            print(f"  Threads: {self.n_threads}")
+        if self.n_batch:
+            print(f"  Batch size: {self.n_batch}")
 
         # Load model and projector
         self.model, self.chat_handler = self._load_model()
 
         print(f"✓ Holo 1.5-7B GGUF loaded successfully (device={self.device})")
+
+    def _select_quantization(self) -> Tuple[str, str, str]:
+        """Select quantization strategy with optional auto-upgrade."""
+        if settings.model_path and settings.model_path.exists():
+            local_name = settings.model_path.name
+            if settings.mmproj_path and settings.mmproj_path.exists():
+                mmproj_name = settings.mmproj_path.name
+            else:
+                mmproj_name = settings.mmproj_filename
+            dtype = self._describe_quant(local_name)
+            return local_name, mmproj_name, dtype
+
+        requested_model = settings.model_filename.strip()
+        requested_mmproj = settings.mmproj_filename.strip()
+
+        auto_requested = requested_model.lower() == "auto"
+        model_filename = requested_model
+
+        if auto_requested:
+            model_filename = self._auto_select_model_filename()
+        elif self.device in {"cuda", "mps"} and requested_model == "Holo1.5-7B.Q4_K_M.gguf":
+            upgraded = self._auto_select_model_filename()
+            if upgraded != requested_model:
+                print(
+                    "→ Auto-upgrading quantization based on GPU capacity: "
+                    f"{requested_model} → {upgraded}"
+                )
+                model_filename = upgraded
+
+        if requested_mmproj.lower() == "auto":
+            mmproj_filename = "mmproj-Q8_0.gguf"
+        else:
+            mmproj_filename = requested_mmproj
+
+        dtype = self._describe_quant(model_filename)
+        return model_filename, mmproj_filename, dtype
+
+    def _auto_select_model_filename(self) -> str:
+        """Heuristically choose the best quantization for the current device."""
+        default = "Holo1.5-7B.Q4_K_M.gguf"
+
+        if self.device == "cuda":
+            try:
+                import torch
+
+                props = torch.cuda.get_device_properties(0)
+                total_gb = props.total_memory / (1024 ** 3)
+                if total_gb >= 16:
+                    print("→ Detected >=16GB VRAM, selecting Q8_0 for max quality")
+                    return "Holo1.5-7B.Q8_0.gguf"
+                if total_gb >= 10:
+                    print("→ Detected >=10GB VRAM, keeping balanced Q4_K_M quantization")
+                    return "Holo1.5-7B.Q4_K_M.gguf"
+            except Exception as exc:
+                print(f"Warning: Unable to inspect CUDA device memory: {exc}")
+            return default
+
+        if self.device == "mps":
+            # On Apple Silicon the 4-bit model provides the best latency-memory balance
+            return "Holo1.5-7B.Q4_K_M.gguf"
+
+        # CPU-only: stick to 4-bit for manageability
+        return default
+
+    @staticmethod
+    def _describe_quant(model_filename: str) -> str:
+        """Human readable quantization description."""
+        lookup = {
+            "Holo1.5-7B.Q4_K_M.gguf": "Q4_K_M (4-bit quantization)",
+            "Holo1.5-7B.Q4_K_S.gguf": "Q4_K_S (compact 4-bit quantization)",
+            "Holo1.5-7B.Q8_0.gguf": "Q8_0 (8-bit quantization)",
+        }
+        return lookup.get(model_filename, model_filename)
 
     def _get_n_gpu_layers(self) -> int:
         """Get number of layers to offload to GPU based on device."""
@@ -69,29 +161,98 @@ class Holo15:
     def _load_model(self) -> Tuple[Llama, Qwen25VLChatHandler]:
         """Load Holo 1.5-7B GGUF model and multimodal projector."""
         try:
-            # Initialize chat handler with multimodal projector
-            chat_handler = Qwen25VLChatHandler.from_pretrained(
-                repo_id=self.model_repo,
-                filename=f"*{self.mmproj_filename}*",
-            )
+            chat_handler = self._load_chat_handler()
 
-            # Load quantized model with automatic GPU offloading
-            model = Llama.from_pretrained(
-                repo_id=self.model_repo,
-                filename=f"*{self.model_filename}*",
-                chat_handler=chat_handler,
-                n_ctx=8192,  # Increased context for images + prompts
-                n_gpu_layers=self._get_n_gpu_layers(),
-                mmproj_n_gpu_layers=self._get_mmproj_gpu_layers(),
-                vision_device=self.device if self.device in {"cuda", "mps"} else "cpu",
-                verbose=False,
-            )
+            if settings.model_path and not settings.model_path.exists():
+                print(
+                    f"⚠ Specified HOLO_MODEL_PATH not found: {settings.model_path}. "
+                    "Falling back to Hugging Face download."
+                )
+
+            if settings.mmproj_path and not settings.mmproj_path.exists():
+                print(
+                    f"⚠ Specified HOLO_MMPROJ_PATH not found: {settings.mmproj_path}. "
+                    "Falling back to Hugging Face download."
+                )
+
+            llama_kwargs = {
+                "n_ctx": self.n_ctx,
+                "n_gpu_layers": self.n_gpu_layers,
+                "mmproj_n_gpu_layers": self.mmproj_n_gpu_layers,
+                "vision_device": self.device if self.device in {"cuda", "mps"} else "cpu",
+                "verbose": False,
+                "chat_handler": chat_handler,
+            }
+
+            model_path = settings.model_path
+
+            if model_path and model_path.exists():
+                llama_kwargs["model_path"] = str(model_path)
+            else:
+                kwargs = {
+                    "repo_id": self.model_repo,
+                    "filename": f"*{self.model_filename}*",
+                }
+                if settings.cache_models:
+                    kwargs["download_dir"] = str(settings.cache_dir)
+                llama_kwargs.update(kwargs)
+
+            if self.n_threads is not None:
+                llama_kwargs["n_threads"] = self.n_threads
+            if self.n_batch is not None:
+                llama_kwargs["n_batch"] = self.n_batch
+
+            if "model_path" in llama_kwargs:
+                model = Llama(**llama_kwargs)
+            else:
+                model = Llama.from_pretrained(**llama_kwargs)
+
+            actual_gpu_layers = getattr(model, "n_gpu_layers", None)
+            if self.device == "cuda" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
+                print(
+                    "⚠ CUDA device requested but llama-cpp-python reports no GPU layers. "
+                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
+                )
+            if self.device == "mps" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
+                print(
+                    "⚠ MPS device requested but Metal acceleration is disabled. "
+                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_METAL=on\" pip install --force-reinstall llama-cpp-python"
+                )
+
+            print("  llama.cpp runtime parameters:")
+            print(f"    context_length: {self.n_ctx}")
+            print(f"    n_threads: {getattr(model, 'n_threads', self.n_threads)}")
+            print(f"    n_batch: {getattr(model, 'n_batch', self.n_batch)}")
+            print(f"    n_gpu_layers: {self.n_gpu_layers}")
+            print(f"    mmproj_n_gpu_layers: {self.mmproj_n_gpu_layers}")
 
             return model, chat_handler
 
         except Exception as e:
             print(f"✗ Failed to load Holo 1.5-7B GGUF: {e}")
             raise
+
+    def _load_chat_handler(self) -> Qwen25VLChatHandler:
+        """Load chat handler, honoring optional local mmproj path."""
+        mmproj_path = settings.mmproj_path
+
+        filename_pattern = f"*{self.mmproj_filename}*"
+        local_dir: Optional[str] = None
+        cache_dir: Optional[str] = None
+
+        if mmproj_path and mmproj_path.exists():
+            local_dir = str(mmproj_path.parent)
+            filename_pattern = mmproj_path.name
+        elif settings.cache_models:
+            cache_dir = str(settings.cache_dir)
+
+        return Qwen25VLChatHandler.from_pretrained(
+            repo_id=self.model_repo,
+            filename=filename_pattern,
+            local_dir=local_dir,
+            cache_dir=cache_dir,
+            local_dir_use_symlinks=False,
+        )
 
     def _smart_resize_image(self, image: Image.Image, max_pixels: int = 1280 * 28 * 28) -> Tuple[Image.Image, Dict[str, float]]:
         """
@@ -204,12 +365,492 @@ class Holo15:
 
         return None
 
+    def _prepare_image_payload(self, image: np.ndarray) -> Dict[str, Any]:
+        """Convert an image into llama-cpp friendly payload + scale metadata."""
+        pil_image = Image.fromarray(image)
+        resized_image, scale_factors = self._smart_resize_image(pil_image)
+
+        buffered = io.BytesIO()
+        resized_image.save(buffered, format="PNG")
+        image_b64 = base64.b64encode(buffered.getvalue()).decode('ascii')
+
+        return {
+            "image_url": f"data:image/png;base64,{image_b64}",
+            "scale_factors": scale_factors,
+        }
+
+    def _call_model(self, image_url: str, prompt_text: str) -> str:
+        """Invoke the llama.cpp chat completion with standard settings."""
+        messages = []
+
+        if settings.system_prompt:
+            messages.append({"role": "system", "content": settings.system_prompt})
+
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": prompt_text},
+                ],
+            }
+        )
+
+        completion_kwargs = {
+            "messages": messages,
+            "max_tokens": settings.max_new_tokens,
+            "temperature": self.temperature,
+        }
+
+        if self.top_p is not None:
+            completion_kwargs["top_p"] = self.top_p
+
+        response = self.model.create_chat_completion(**completion_kwargs)
+
+        return response["choices"][0]["message"]["content"]
+
+    @staticmethod
+    def _augment_prompt(prompt_text: str) -> str:
+        """Append retry guidance to the prompt."""
+        guidance = settings.retry_guidance.strip()
+        if not guidance:
+            return prompt_text
+        return f"{prompt_text}\n\n{guidance}"
+
+    def _build_single_prompt(
+        self,
+        task_instruction: str,
+        scale_factors: Dict[str, float],
+        guidelines: str,
+    ) -> str:
+        """Construct the single-element localization prompt."""
+        width = int(scale_factors['resized_width'])
+        height = int(scale_factors['resized_height'])
+
+        prompt_parts = [
+            guidelines.strip(),
+            f"Image resolution: {width}x{height} pixels.",
+            f"Task: {task_instruction}",
+            settings.single_detection_format.strip(),
+        ]
+
+        return "\n\n".join(part for part in prompt_parts if part)
+
+    def _build_multi_prompt(
+        self,
+        discovery_prompt: str,
+        scale_factors: Dict[str, float],
+        detection_prompts: List[str],
+    ) -> str:
+        """Construct the multi-element discovery prompt."""
+        width = int(scale_factors['resized_width'])
+        height = int(scale_factors['resized_height'])
+
+        # Remove duplicates while keeping order
+        seen = set()
+        extra_hints = []
+        for prompt in detection_prompts:
+            normalized = prompt.strip()
+            if not normalized or normalized == discovery_prompt or normalized in seen:
+                continue
+            seen.add(normalized)
+            extra_hints.append(f"- {normalized}")
+
+        prompt_parts = [
+            settings.holo_guidelines.strip(),
+            f"Image resolution: {width}x{height} pixels.",
+            discovery_prompt.strip(),
+            settings.multi_detection_format.strip(),
+        ]
+
+        if extra_hints:
+            prompt_parts.append("Additional context hints:\n" + "\n".join(extra_hints))
+
+        return "\n\n".join(part for part in prompt_parts if part)
+
+    def _parse_single_output(
+        self,
+        output_text: str,
+        scale_factors: Dict[str, float],
+        task_instruction: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Parse single-element response using structured JSON fallback to regex."""
+        data = self._extract_json_object(output_text)
+
+        candidates: List[Dict[str, Any]] = []
+        if isinstance(data, dict):
+            if "elements" in data and isinstance(data["elements"], list):
+                candidates = [elem for elem in data["elements"] if isinstance(elem, dict)]
+            else:
+                candidates = [data]
+        elif isinstance(data, list):
+            candidates = [elem for elem in data if isinstance(elem, dict)]
+
+        for candidate in candidates:
+            detection = self._element_dict_to_detection(
+                candidate,
+                scale_factors,
+                task_instruction,
+                output_text,
+            )
+            if detection is not None:
+                return detection
+
+        # Regex fallback for legacy formats
+        coords = self._parse_coordinates(output_text)
+        if coords is None:
+            return None
+
+        description = self._parse_description(output_text) or task_instruction
+
+        return self._make_detection(
+            coords[0],
+            coords[1],
+            scale_factors,
+            description,
+            "clickable",
+            output_text,
+            task_instruction,
+            None,
+            None,
+        )
+
+    def _parse_multi_output(
+        self,
+        output_text: str,
+        scale_factors: Dict[str, float],
+        fallback_prompt: str,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Parse multi-element structured output, returning detections or None on failure."""
+        data = self._extract_json_object(output_text)
+
+        if data is None:
+            return None
+
+        if isinstance(data, dict):
+            if "elements" in data and isinstance(data["elements"], list):
+                candidates = [elem for elem in data["elements"] if isinstance(elem, dict)]
+            else:
+                candidates = [data]
+        elif isinstance(data, list):
+            candidates = [elem for elem in data if isinstance(elem, dict)]
+        else:
+            return None
+
+        detections: List[Dict[str, Any]] = []
+        seen_centers: List[Tuple[int, int]] = []
+
+        for candidate in candidates:
+            detection = self._element_dict_to_detection(
+                candidate,
+                scale_factors,
+                fallback_prompt,
+                output_text,
+            )
+
+            if detection is None:
+                continue
+
+            center_tuple = tuple(detection["center"])
+            if self._is_duplicate(center_tuple, seen_centers):
+                continue
+
+            detection["element_id"] = len(detections)
+            detections.append(detection)
+            seen_centers.append(center_tuple)
+
+            if len(detections) >= settings.max_detections:
+                break
+
+        return detections
+
+    def _element_dict_to_detection(
+        self,
+        element: Dict[str, Any],
+        scale_factors: Dict[str, float],
+        fallback_label: str,
+        raw_output: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Convert structured element description into detection payload."""
+        if not isinstance(element, dict):
+            return None
+
+        x = self._coerce_float(element.get("x"))
+        y = self._coerce_float(element.get("y"))
+
+        if x is None and y is None and "bbox" in element:
+            bbox = element["bbox"]
+            if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+                x1 = self._coerce_float(bbox[0])
+                y1 = self._coerce_float(bbox[1])
+                x2 = self._coerce_float(bbox[2])
+                y2 = self._coerce_float(bbox[3])
+                if None not in (x1, y1, x2, y2):
+                    width_val = x2 - x1
+                    height_val = y2 - y1
+                    x = x1 + width_val / 2
+                    y = y1 + height_val / 2
+                    element.setdefault("width", width_val)
+                    element.setdefault("height", height_val)
+
+        if x is None and "x_norm" in element:
+            normalized_x = self._coerce_float(element.get("x_norm"))
+            if normalized_x is not None:
+                x = normalized_x * scale_factors['resized_width']
+
+        if y is None and "y_norm" in element:
+            normalized_y = self._coerce_float(element.get("y_norm"))
+            if normalized_y is not None:
+                y = normalized_y * scale_factors['resized_height']
+
+        label = (
+            element.get("label")
+            or element.get("description")
+            or element.get("name")
+            or fallback_label
+        )
+
+        element_type = element.get("type") or element.get("category") or "clickable"
+        confidence = self._coerce_float(element.get("confidence"))
+
+        width_hint = (
+            self._coerce_float(element.get("width"))
+            or self._coerce_float(element.get("w"))
+            or self._coerce_float(element.get("width_pixels"))
+        )
+        height_hint = (
+            self._coerce_float(element.get("height"))
+            or self._coerce_float(element.get("h"))
+            or self._coerce_float(element.get("height_pixels"))
+        )
+
+        if width_hint is None and element.get("width_norm") is not None:
+            width_norm = self._coerce_float(element.get("width_norm"))
+            if width_norm is not None:
+                width_hint = width_norm * scale_factors['resized_width']
+
+        if height_hint is None and element.get("height_norm") is not None:
+            height_norm = self._coerce_float(element.get("height_norm"))
+            if height_norm is not None:
+                height_hint = height_norm * scale_factors['resized_height']
+
+        detection = self._make_detection(
+            x,
+            y,
+            scale_factors,
+            str(label),
+            str(element_type),
+            raw_output,
+            fallback_label,
+            confidence,
+            (width_hint, height_hint),
+        )
+
+        if detection is not None:
+            if confidence is not None:
+                detection["confidence"] = float(max(0.0, min(confidence, 1.0)))
+        return detection
+
+    @staticmethod
+    def _coerce_float(value: Any) -> Optional[float]:
+        """Convert numeric-like values into float, returning None on failure."""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                return None
+        return None
+
+    def _make_detection(
+        self,
+        x: Optional[float],
+        y: Optional[float],
+        scale_factors: Dict[str, float],
+        label: str,
+        element_type: str,
+        raw_output: str,
+        task_instruction: str,
+        confidence: Optional[float],
+        size_hints: Optional[Tuple[Optional[float], Optional[float]]],
+    ) -> Optional[Dict[str, Any]]:
+        """Create detection dict from coordinates and optional size hints."""
+        if x is None or y is None:
+            return None
+
+        try:
+            x_val = float(x)
+            y_val = float(y)
+        except (TypeError, ValueError):
+            return None
+
+        resized_width = float(scale_factors['resized_width'])
+        resized_height = float(scale_factors['resized_height'])
+
+        if 0.0 <= x_val <= 1.0 and resized_width > 1:
+            x_val *= resized_width
+        if 0.0 <= y_val <= 1.0 and resized_height > 1:
+            y_val *= resized_height
+
+        original_x = int(round(x_val * scale_factors['width_scale']))
+        original_y = int(round(y_val * scale_factors['height_scale']))
+
+        original_width = int(scale_factors['original_width'])
+        original_height = int(scale_factors['original_height'])
+
+        width_hint, height_hint = (size_hints or (None, None))
+
+        if width_hint is not None:
+            width_val = float(width_hint)
+            if 0.0 <= width_val <= 1.0 and resized_width > 1:
+                width_val *= resized_width
+            bbox_width = max(1, int(round(width_val * scale_factors['width_scale'])))
+        else:
+            bbox_width = settings.click_box_size
+
+        if height_hint is not None:
+            height_val = float(height_hint)
+            if 0.0 <= height_val <= 1.0 and resized_height > 1:
+                height_val *= resized_height
+            bbox_height = max(1, int(round(height_val * scale_factors['height_scale'])))
+        else:
+            bbox_height = settings.click_box_size
+
+        half_width = bbox_width // 2
+        half_height = bbox_height // 2
+
+        bbox_x = max(0, original_x - half_width)
+        bbox_y = max(0, original_y - half_height)
+
+        if bbox_x + bbox_width > original_width:
+            bbox_width = max(1, original_width - bbox_x)
+        if bbox_y + bbox_height > original_height:
+            bbox_height = max(1, original_height - bbox_y)
+
+        confidence_value = (
+            float(confidence)
+            if confidence is not None
+            else settings.default_confidence
+        )
+
+        confidence_value = max(0.0, min(confidence_value, 1.0))
+
+        caption = label if label else task_instruction
+
+        max_x_index = max(0, original_width - 1)
+        max_y_index = max(0, original_height - 1)
+
+        detection = {
+            "bbox": [bbox_x, bbox_y, bbox_width, bbox_height],
+            "center": [max(0, min(original_x, max_x_index)), max(0, min(original_y, max_y_index))],
+            "confidence": confidence_value,
+            "type": element_type or "clickable",
+            "caption": caption,
+            "interactable": True,
+            "content": caption,
+            "source": "holo-localization",
+            "raw_output": raw_output,
+            "task": task_instruction,
+        }
+
+        return detection
+
+    @staticmethod
+    def _is_duplicate(center: Tuple[int, int], seen: List[Tuple[int, int]]) -> bool:
+        """Detect if a coordinate is already accounted for."""
+        for seen_center in seen:
+            distance = ((center[0] - seen_center[0]) ** 2 + (center[1] - seen_center[1]) ** 2) ** 0.5
+            if distance < settings.deduplication_radius:
+                return True
+        return False
+
+    def _legacy_multi_detection(
+        self,
+        image: np.ndarray,
+        detection_prompts: List[str],
+        prepared_payload: Dict[str, Any],
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Fallback multi-detection loop using legacy prompt list."""
+        detections: List[Dict[str, Any]] = []
+        raw_outputs: List[str] = []
+        seen_centers: List[Tuple[int, int]] = []
+
+        for prompt in detection_prompts:
+            detection, outputs = self.localize_element(
+                image,
+                prompt,
+                prepared_payload=prepared_payload,
+            )
+
+            raw_outputs.extend(outputs)
+
+            if detection is None:
+                continue
+
+            center_tuple = tuple(detection["center"])
+            if self._is_duplicate(center_tuple, seen_centers):
+                continue
+
+            detection["element_id"] = len(detections)
+            detections.append(detection)
+            seen_centers.append(center_tuple)
+
+            if len(detections) >= settings.max_detections:
+                break
+
+        return detections, raw_outputs
+
+    @staticmethod
+    def _extract_json_object(text: str) -> Optional[Any]:
+        """Try to recover a JSON object or array from the model text."""
+        if not text:
+            return None
+
+        candidates: List[str] = []
+
+        code_fence = re.search(r"```json\s*(.*?)```", text, re.IGNORECASE | re.DOTALL)
+        if code_fence:
+            candidates.append(code_fence.group(1))
+
+        generic_fence = re.search(r"```\s*(.*?)```", text, re.DOTALL)
+        if generic_fence:
+            candidates.append(generic_fence.group(1))
+
+        stripped = text.strip()
+        if stripped:
+            candidates.append(stripped)
+
+        for token in ("{", "["):
+            idx = text.find(token)
+            if idx != -1:
+                candidates.append(text[idx:])
+
+        decoder = json.JSONDecoder()
+        for candidate in candidates:
+            snippet = candidate.strip()
+            if not snippet:
+                continue
+            try:
+                return json.loads(snippet)
+            except json.JSONDecodeError:
+                try:
+                    obj, _ = decoder.raw_decode(snippet)
+                    return obj
+                except Exception:
+                    continue
+
+        return None
+
     def localize_element(
         self,
         image: np.ndarray,
         task_instruction: str,
-        guidelines: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        guidelines: Optional[str] = None,
+        prepared_payload: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
         """
         Localize a UI element using Holo 1.5-7B GGUF.
 
@@ -217,115 +858,59 @@ class Holo15:
             image: Input image as numpy array (RGB)
             task_instruction: Task description (e.g., "Click the submit button")
             guidelines: Optional guidelines for the model
+            prepared_payload: Optional cached payload with image_url & scale factors
 
         Returns:
-            Detection dict with coordinates, or None if localization fails
+            Tuple of (detection dict or None, list of raw model outputs)
         """
         try:
-            # Convert to PIL Image
-            pil_image = Image.fromarray(image)
-
-            # Apply smart resize for coordinate alignment
-            resized_image, scale_factors = self._smart_resize_image(pil_image)
+            payload = prepared_payload or self._prepare_image_payload(image)
+            image_url = payload["image_url"]
+            scale_factors = payload["scale_factors"]
         except Exception as e:
             print(f"✗ Holo error in image preprocessing: {e}")
-            return None
+            return None, []
 
-        try:
-            # Prepare prompt with guidelines
-            if guidelines is None:
-                guidelines = settings.holo_guidelines
+        if guidelines is None:
+            guidelines = settings.holo_guidelines
 
-            prompt_text = f"{guidelines}\n{task_instruction}" if guidelines else task_instruction
+        prompt_text = self._build_single_prompt(task_instruction, scale_factors, guidelines)
 
-            # Convert image to base64 for llama-cpp-python
-            buffered = io.BytesIO()
-            resized_image.save(buffered, format="PNG")
-            image_b64 = base64.b64encode(buffered.getvalue()).decode('ascii')
-            image_url = f"data:image/png;base64,{image_b64}"
+        attempts_outputs: List[str] = []
+        detection: Optional[Dict[str, Any]] = None
 
-            # Create chat completion with image
-            response = self.model.create_chat_completion(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": image_url}},
-                            {"type": "text", "text": prompt_text}
-                        ]
-                    }
-                ],
-                max_tokens=settings.max_new_tokens,
-                temperature=0.0,  # Deterministic
+        for attempt in range(self.max_retries + 1):
+            try:
+                output_text = self._call_model(image_url, prompt_text)
+            except Exception as exc:
+                print(f"✗ Holo error during localization (task: '{task_instruction}'): {exc}")
+                break
+
+            attempts_outputs.append(output_text)
+
+            detection = self._parse_single_output(
+                output_text,
+                scale_factors,
+                task_instruction,
             )
 
-            # Extract output text
-            output_text = response["choices"][0]["message"]["content"]
+            if detection is not None:
+                detection["raw_output"] = output_text
+                break
 
-            # Parse coordinates from output
-            coords = self._parse_coordinates(output_text)
+            if attempt < self.max_retries:
+                prompt_text = self._augment_prompt(prompt_text)
+                if self.retry_backoff:
+                    time.sleep(self.retry_backoff * (attempt + 1))
 
-            if coords is None:
-                print(f"  Warning: Failed to parse coordinates from output: {output_text}")
-                return None
-
-            # Parse description from output (e.g., "Click(x, y) - blue Settings button")
-            description = self._parse_description(output_text)
-
-            # Scale coordinates back to original image size
-            x, y = coords
-            original_x = int(x * scale_factors['width_scale'])
-            original_y = int(y * scale_factors['height_scale'])
-
-            # Validate coordinates are within bounds
-            if not (0 <= original_x <= scale_factors['original_width'] and
-                    0 <= original_y <= scale_factors['original_height']):
-                print(f"  Warning: Coordinates out of bounds: ({original_x}, {original_y})")
-                # Clamp to bounds
-                original_x = max(0, min(original_x, int(scale_factors['original_width'])))
-                original_y = max(0, min(original_y, int(scale_factors['original_height'])))
-
-            # Create bounding box around click point (configurable size)
-            box_size = settings.click_box_size
-            half_size = box_size // 2
-
-            bbox_x = max(0, original_x - half_size)
-            bbox_y = max(0, original_y - half_size)
-            bbox_width = box_size
-            bbox_height = box_size
-
-            # Ensure bbox doesn't exceed image bounds
-            if bbox_x + bbox_width > scale_factors['original_width']:
-                bbox_width = int(scale_factors['original_width']) - bbox_x
-            if bbox_y + bbox_height > scale_factors['original_height']:
-                bbox_height = int(scale_factors['original_height']) - bbox_y
-
-            # Use parsed description if available, otherwise fall back to task instruction
-            element_caption = description if description else task_instruction
-
-            detection = {
-                "bbox": [bbox_x, bbox_y, bbox_width, bbox_height],
-                "center": [original_x, original_y],
-                "confidence": settings.default_confidence,  # Holo doesn't provide confidence
-                "type": "clickable",
-                "caption": element_caption,
-                "interactable": True,
-                "content": element_caption,
-                "source": "holo-localization",
-                "raw_output": output_text,
-                "task": task_instruction,  # Store original task for reference
-            }
-
-            return detection
-        except Exception as e:
-            print(f"✗ Holo error during localization (task: '{task_instruction}'): {e}")
-            return None
+        return detection, attempts_outputs
 
     def detect_multiple_elements(
         self,
         image: np.ndarray,
         detection_prompts: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        prepared_payload: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """
         Detect multiple UI elements using multiple localization prompts.
 
@@ -334,41 +919,63 @@ class Holo15:
             detection_prompts: List of prompts to try (default from settings)
 
         Returns:
-            List of detected elements
+            Tuple of (list of detected elements, raw outputs)
         """
         if detection_prompts is None:
             detection_prompts = settings.detection_prompts
 
-        detections = []
-        seen_coords = set()
+        payload = prepared_payload or self._prepare_image_payload(image)
 
-        for prompt in detection_prompts:
+        detections: List[Dict[str, Any]] = []
+        raw_outputs: List[str] = []
+
+        discovery_prompt = settings.discovery_prompt.format(
+            max_detections=settings.max_detections
+        )
+        prompt_text = self._build_multi_prompt(
+            discovery_prompt,
+            payload["scale_factors"],
+            detection_prompts,
+        )
+
+        structured_success = False
+
+        for attempt in range(self.max_retries + 1):
             try:
-                detection = self.localize_element(image, prompt)
+                output_text = self._call_model(payload["image_url"], prompt_text)
+            except Exception as exc:
+                print(f"✗ Holo error during multi-detection: {exc}")
+                break
 
-                if detection is not None:
-                    # Deduplicate based on center coordinates
-                    center = tuple(detection["center"])
+            raw_outputs.append(output_text)
 
-                    # Check if we've seen a similar coordinate
-                    is_duplicate = False
-                    for seen_coord in seen_coords:
-                        distance = ((center[0] - seen_coord[0]) ** 2 +
-                                  (center[1] - seen_coord[1]) ** 2) ** 0.5
-                        if distance < settings.deduplication_radius:
-                            is_duplicate = True
-                            break
+            structured_detections = self._parse_multi_output(
+                output_text,
+                payload["scale_factors"],
+                discovery_prompt,
+            )
 
-                    if not is_duplicate:
-                        seen_coords.add(center)
-                        detection["element_id"] = len(detections)
-                        detections.append(detection)
+            if structured_detections is not None:
+                detections = structured_detections
+                structured_success = True
+                break
 
-            except Exception as e:
-                print(f"  Warning: Failed to localize with prompt '{prompt}': {e}")
-                continue
+            if attempt < self.max_retries:
+                prompt_text = self._augment_prompt(prompt_text)
+                if self.retry_backoff:
+                    time.sleep(self.retry_backoff * (attempt + 1))
 
-        return detections
+        if not structured_success and settings.allow_legacy_fallback:
+            legacy_detections, legacy_outputs = self._legacy_multi_detection(
+                image,
+                detection_prompts,
+                payload,
+            )
+            if legacy_detections:
+                detections = legacy_detections
+            raw_outputs.extend(legacy_outputs)
+
+        return detections, raw_outputs
 
     def generate_som_image(
         self,
@@ -445,16 +1052,35 @@ class Holo15:
         """
         start_time = time.time()
 
+        prepared_payload: Optional[Dict[str, Any]] = None
+        raw_model_outputs: List[str] = []
+
         if task:
             # Single element mode: localize specific task
-            detection = self.localize_element(image, task)
+            prepared_payload = self._prepare_image_payload(image)
+            detection, outputs = self.localize_element(
+                image,
+                task,
+                prepared_payload=prepared_payload,
+            )
+            raw_model_outputs.extend(outputs)
             detections = [detection] if detection else []
         elif detect_multiple:
             # Multi-element mode: run multiple detection prompts
-            detections = self.detect_multiple_elements(image)
+            prepared_payload = self._prepare_image_payload(image)
+            detections, outputs = self.detect_multiple_elements(
+                image,
+                prepared_payload=prepared_payload,
+            )
+            raw_model_outputs.extend(outputs)
         else:
             # Default to multi-element mode
-            detections = self.detect_multiple_elements(image)
+            prepared_payload = self._prepare_image_payload(image)
+            detections, outputs = self.detect_multiple_elements(
+                image,
+                prepared_payload=prepared_payload,
+            )
+            raw_model_outputs.extend(outputs)
 
         # Generate SOM annotated image if requested
         som_image = None
@@ -479,6 +1105,9 @@ class Holo15:
 
         if som_image:
             result["som_image"] = som_image
+
+        if raw_model_outputs:
+            result["raw_model_outputs"] = raw_model_outputs
 
         return result
 

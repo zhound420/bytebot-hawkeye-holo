@@ -1,6 +1,26 @@
-# Bytebot OmniParser Integration
+# Bytebot Holo 1.5 Integration
 
-OmniParser v2.0 integration for Bytebot Hawkeye CV pipeline. Provides semantic UI element detection and captioning using Microsoft's OmniParser models.
+Holo 1.5-7B (GGUF) localisation service for the Hawkeye desktop agent. The service wraps the Qwen2.5-VL based model distributed by the Holo project and exposes a REST API for click target discovery. The legacy OmniParser documentation is retained further below for historical context; the active pipeline now defaults to Holo.
+
+## Quick Start (Holo 1.5)
+
+```bash
+cd packages/bytebot-holo
+bash scripts/download_holo_models.sh          # grabs GGUF + projector (~5.5 GB)
+export HOLO_MODEL_PATH="$PWD/weights/holo1.5/Holo1.5-7B.Q4_K_M.gguf"
+export HOLO_MMPROJ_PATH="$PWD/weights/holo1.5/mmproj-Q8_0.gguf"
+pip install -r requirements.txt               # or add to existing env
+# Optional GPU acceleration
+#   NVIDIA: CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install --force-reinstall llama-cpp-python
+#   Apple M-series: CMAKE_ARGS="-DLLAMA_METAL=on" pip install --force-reinstall llama-cpp-python
+python src/server.py
+```
+
+Set `HOLO_DEVICE=cuda|mps|cpu` to pin the runtime; omit to auto-detect.
+
+---
+
+# Bytebot OmniParser Integration
 
 ## Features
 
@@ -127,25 +147,29 @@ curl -X POST http://localhost:9989/parse \
 
 ## Configuration
 
-Environment variables (prefix with `OMNIPARSER_`):
+Environment variables (prefix with `HOLO_` unless noted):
 
 ```bash
 # Service
 HOLO_HOST=0.0.0.0
 HOLO_PORT=9989
-OMNIPARSER_WORKERS=1
+HOLO_WORKERS=1
 
 # Device
 HOLO_DEVICE=cuda  # cuda, mps, cpu (auto-detected)
 
 # Detection
 HOLO_MIN_CONFIDENCE=0.3
-OMNIPARSER_MAX_DETECTIONS=100
+HOLO_MAX_DETECTIONS=100
 
 # Performance
 HOLO_MODEL_DTYPE=float16  # float16, float32, bfloat16
                                  # Note: Automatically uses float32 on Apple Silicon MPS
-OMNIPARSER_CACHE_MODELS=true
+HOLO_CACHE_MODELS=true
+
+# Optional: point at pre-downloaded GGUF files
+HOLO_MODEL_PATH=/abs/path/to/Holo1.5-7B.Q4_K_M.gguf
+HOLO_MMPROJ_PATH=/abs/path/to/mmproj-Q8_0.gguf
 ```
 
 ## Integration with Bytebot

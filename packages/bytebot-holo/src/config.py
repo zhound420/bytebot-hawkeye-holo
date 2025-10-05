@@ -1,6 +1,5 @@
 """Configuration management for Holo 1.5-7B service."""
 
-import os
 from pathlib import Path
 from typing import Literal, Optional, List
 from pydantic_settings import BaseSettings
@@ -17,37 +16,65 @@ class Settings(BaseSettings):
     # Device settings (auto = auto-detect, cuda = NVIDIA, mps = Apple Silicon, cpu = CPU)
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
 
-    # Model settings
+    # Model repository + quantization controls
+    model_repo: str = "mradermacher/Holo1.5-7B-GGUF"
+    model_filename: str = "Holo1.5-7B.Q4_K_M.gguf"
+    mmproj_filename: str = "mmproj-Q8_0.gguf"
+    model_path: Optional[Path] = None  # Absolute path to pre-downloaded GGUF model
+    mmproj_path: Optional[Path] = None  # Absolute path to projector file
     cache_models: bool = True
+    cache_dir: Path = Path.home() / ".cache" / "bytebot" / "holo"
     model_dtype: str = "bfloat16"  # float16, float32, bfloat16 (recommended for Holo)
+    n_ctx: int = 8192
+    n_threads: Optional[int] = None
+    n_batch: Optional[int] = None
+    n_gpu_layers: Optional[int] = None
+    mmproj_n_gpu_layers: Optional[int] = None
 
     # Holo 1.5 inference settings
     max_new_tokens: int = 128  # Maximum tokens for coordinate generation
+    temperature: float = 0.0
+    top_p: float = 0.8
+    max_retries: int = 2
+    retry_backoff_seconds: float = 0.75
     default_confidence: float = 0.85  # Default confidence (Holo doesn't provide confidence scores)
 
     # Coordinate-to-bbox conversion settings
     click_box_size: int = 40  # Size of bounding box around click point (pixels)
     deduplication_radius: int = 30  # Radius for deduplicating similar coordinates (pixels)
 
-    # Guidelines and prompts for Holo 1.5
+    # Prompt engineering for single + multi element detection
+    system_prompt: str = (
+        "You are Bytebot's UI localization specialist. "
+        "Always produce strict JSON without commentary so that downstream parsers never fail."
+    )
     holo_guidelines: str = (
-        "You are a GUI automation assistant. Analyze the screenshot carefully and:\n"
-        "1. Locate the requested UI element\n"
-        "2. Provide its exact pixel coordinates\n"
-        "3. Briefly describe what you found (e.g., 'blue Settings button', 'VSCode application icon')\n"
-        "Format: Click(x, y) - <description>"
+        "Analyze the screenshot carefully. Only describe elements that truly exist. "
+        "Report pixel coordinates on the provided image."
     )
-
-    # Discovery prompt for multi-element mode (single broad scan instead of 5 generic prompts)
-    # This is 5x faster: ~20-30s vs ~103s (5 × 20s) on Apple Silicon M4
+    single_detection_format: str = (
+        "Respond with a JSON object that matches this schema: "
+        "{\"x\": <int>, \"y\": <int>, \"label\": \"short description\"}. "
+        "If the element cannot be found, reply with {\"x\": null, \"y\": null, \"label\": \"not found\"}."
+    )
+    retry_guidance: str = (
+        "Your previous output could not be parsed. Return STRICT JSON that matches the requested schema. "
+        "Do not add explanations, markdown, or trailing text."
+    )
     discovery_prompt: str = (
-        "Analyze this screenshot and identify ALL interactive UI elements you can see. "
-        "For each element, provide: the type (button/icon/input field/link/menu) and a brief visual description. "
-        "Examples: 'blue VSCode application icon', 'red minimize button', 'Search text input field', 'Settings gear icon'"
+        "Identify up to {max_detections} actionable UI regions (buttons, tabs, menu rows, icons, form fields, "
+        "links, toggles). For each region, return a short visual description and center coordinates in pixels."
     )
+    multi_detection_format: str = (
+        "Respond with a JSON object in the following form: "
+        "{\"elements\": [{\"x\": <int>, \"y\": <int>, \"label\": \"description\", "
+        "\"type\": \"button|icon|input|text|link|other\", \"width\": <int?>, \"height\": <int?>}]}. "
+        "Return an empty list if nothing is actionable."
+    )
+    allow_legacy_fallback: bool = True
 
-    # Legacy: Keep for backward compatibility, but now only runs discovery_prompt in multi-element mode
-    detection_prompts: List[str] = [discovery_prompt]
+    # Legacy compatibility (still used for fallback heuristics)
+    detection_prompts: List[str] = []
 
     # Max detections limit
     max_detections: int = 100
@@ -94,7 +121,22 @@ def get_device() -> Literal["cuda", "mps", "cpu"]:
     return "cpu"
 
 
+# Resolve defaults that depend on other fields
+def _ensure_detection_prompts(base: Settings) -> List[str]:
+    """Provide backward-compatible detection prompt list."""
+    if base.detection_prompts:
+        return base.detection_prompts
+    return [base.discovery_prompt]
+
+
 settings = Settings()
+settings.detection_prompts = _ensure_detection_prompts(settings)
+
+if settings.cache_models:
+    try:
+        settings.cache_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        print(f"Warning: Unable to create cache directory {settings.cache_dir}: {exc}")
 
 # Auto-detect device if set to 'auto'
 if settings.device == "auto":

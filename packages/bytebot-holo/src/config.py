@@ -15,38 +15,38 @@ DEFAULT_DETECTION_PROMPTS: List[str] = [
 
 PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
     "speed": {
-        "max_detections": 20,
-        "max_new_tokens": 96,
-        "max_retries": 1,
-        "retry_backoff_seconds": 0.35,
+        "max_detections": 15,  # Reduced for faster inference
+        "max_new_tokens": 64,  # Reduced token limit for speed
+        "max_retries": 0,  # No retries for speed
+        "retry_backoff_seconds": 0.0,
         "click_box_size": 32,
         "deduplication_radius": 22,
-        "temperature": 0.0,
-        "top_p": 0.75,
-        "min_confidence_threshold": 0.4,
+        "temperature": 0.0,  # Greedy decoding for consistency
+        "top_p": None,  # Disable top_p with temperature=0.0
+        "min_confidence_threshold": 0.5,  # Higher threshold for quality
         "return_raw_outputs": False,
     },
     "balanced": {
-        "max_detections": 45,
-        "max_new_tokens": 128,
-        "max_retries": 2,
-        "retry_backoff_seconds": 0.6,
+        "max_detections": 30,  # Balanced element count
+        "max_new_tokens": 96,  # Moderate token limit
+        "max_retries": 1,  # Single retry
+        "retry_backoff_seconds": 0.3,
         "click_box_size": 40,
         "deduplication_radius": 30,
         "temperature": 0.0,
-        "top_p": 0.8,
+        "top_p": None,
         "min_confidence_threshold": 0.3,
         "return_raw_outputs": False,
     },
     "quality": {
-        "max_detections": 80,
-        "max_new_tokens": 192,
-        "max_retries": 3,
-        "retry_backoff_seconds": 0.75,
+        "max_detections": 50,  # Higher element count
+        "max_new_tokens": 128,  # More tokens for detailed output
+        "max_retries": 2,
+        "retry_backoff_seconds": 0.5,
         "click_box_size": 48,
         "deduplication_radius": 36,
-        "temperature": 0.05,
-        "top_p": 0.9,
+        "temperature": 0.0,
+        "top_p": None,
         "min_confidence_threshold": 0.2,
         "return_raw_outputs": True,
     },
@@ -73,23 +73,23 @@ class Settings(BaseSettings):
     cache_models: bool = True
     cache_dir: Path = Path.home() / ".cache" / "bytebot" / "holo"
     model_dtype: str = "bfloat16"  # float16, float32, bfloat16 (recommended for Holo)
-    n_ctx: int = 8192
+    n_ctx: int = 4096  # Reduced context for faster inference (was 8192)
     n_threads: Optional[int] = None
-    n_batch: Optional[int] = None
-    n_gpu_layers: Optional[int] = None
-    mmproj_n_gpu_layers: Optional[int] = None
+    n_batch: Optional[int] = 512  # Optimal batch size for MPS/CUDA
+    n_gpu_layers: Optional[int] = None  # Auto-tuned based on device
+    mmproj_n_gpu_layers: Optional[int] = None  # Auto-tuned based on device
 
     # Holo 1.5 inference settings
-    max_new_tokens: int = 128  # Maximum tokens for coordinate generation
-    temperature: float = 0.0
-    top_p: float = 0.8
-    max_retries: int = 2
-    retry_backoff_seconds: float = 0.75
+    max_new_tokens: int = 64  # Reduced for faster inference (was 128)
+    temperature: float = 0.0  # Greedy decoding for consistency
+    top_p: Optional[float] = None  # Disabled with temperature=0.0
+    max_retries: int = 0  # Disabled by default for speed (was 2)
+    retry_backoff_seconds: float = 0.3  # Reduced backoff (was 0.75)
     default_confidence: float = 0.85  # Default confidence (Holo doesn't provide confidence scores)
-    min_confidence_threshold: float = 0.3
-    performance_profile: Literal["speed", "balanced", "quality"] = "balanced"
+    min_confidence_threshold: float = 0.5  # Higher threshold for quality (was 0.3)
+    performance_profile: Literal["speed", "balanced", "quality"] = "speed"  # Default to speed
     return_raw_outputs: bool = False
-    active_profile: str = Field("balanced", exclude=True)
+    active_profile: str = Field("speed", exclude=True)  # Changed default
     active_profile_config: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     # Coordinate-to-bbox conversion settings
@@ -98,31 +98,33 @@ class Settings(BaseSettings):
 
     # Prompt engineering for single + multi element detection
     system_prompt: str = (
-        "You are Bytebot's UI localization specialist. "
-        "Always produce strict JSON without commentary so that downstream parsers never fail."
+        "You are a UI localization expert. Analyze screenshots and provide precise pixel coordinates. "
+        "Always return valid JSON without markdown formatting or explanatory text."
     )
     holo_guidelines: str = (
-        "Analyze the screenshot carefully. Only describe elements that truly exist. "
-        "Report pixel coordinates on the provided image."
+        "You are looking at a UI screenshot. Identify interactive elements like buttons, icons, inputs, and links. "
+        "For each element, provide the center point coordinates in pixels relative to the image dimensions. "
+        "Be precise and only report elements you can clearly see."
     )
     single_detection_format: str = (
-        "Respond with a JSON object that matches this schema: "
-        "{\"x\": <int>, \"y\": <int>, \"label\": \"short description\"}. "
-        "If the element cannot be found, reply with {\"x\": null, \"y\": null, \"label\": \"not found\"}."
+        "Return a JSON object with: {\"x\": <integer>, \"y\": <integer>, \"label\": \"brief description\"}. "
+        "Example: {\"x\": 352, \"y\": 128, \"label\": \"Submit button\"}. "
+        "If not found, return: {\"x\": null, \"y\": null, \"label\": \"not found\"}."
     )
     retry_guidance: str = (
-        "Your previous output could not be parsed. Return STRICT JSON that matches the requested schema. "
-        "Do not add explanations, markdown, or trailing text."
+        "Previous response was not valid JSON. Please return ONLY a JSON object with no markdown or extra text. "
+        "Use the exact format requested above."
     )
     discovery_prompt: str = (
-        "Identify up to {max_detections} actionable UI regions (buttons, tabs, menu rows, icons, form fields, "
-        "links, toggles). For each region, return a short visual description and center coordinates in pixels."
+        "Identify the top {max_detections} interactive UI elements in this screenshot. "
+        "Look for: buttons, icons, menu items, input fields, links, and clickable controls. "
+        "For each element, provide center coordinates and a brief label."
     )
     multi_detection_format: str = (
-        "Respond with a JSON object in the following form: "
-        "{\"elements\": [{\"x\": <int>, \"y\": <int>, \"label\": \"description\", "
-        "\"type\": \"button|icon|input|text|link|other\", \"width\": <int?>, \"height\": <int?>}]}. "
-        "Return an empty list if nothing is actionable."
+        "Return JSON in this exact format: "
+        "{{\"elements\": [{{\"x\": <int>, \"y\": <int>, \"label\": \"desc\", \"type\": \"button|icon|input|link\"}}]}}. "
+        "Example: {{\"elements\": [{{\"x\": 100, \"y\": 200, \"label\": \"Search button\", \"type\": \"button\"}}]}}. "
+        "Return {{\"elements\": []}} if no interactive elements are visible."
     )
     allow_legacy_fallback: bool = True
 

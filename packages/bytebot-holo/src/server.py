@@ -272,8 +272,15 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
         ParseResponse with detected elements and optional SOM annotated image
     """
     try:
+        # Log incoming request
+        print(f"→ Parse request: task={'Yes' if request.task else 'No'}, "
+              f"detect_multiple={request.detect_multiple}, "
+              f"profile={request.performance_profile or 'default'}, "
+              f"max_detections={request.max_detections or 'auto'}")
+
         # Decode image
         image = decode_image(request.image)
+        print(f"  Image decoded: {image.shape[1]}x{image.shape[0]} pixels")
 
         # Get model
         model = get_model()
@@ -297,6 +304,7 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"✗ Parse error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
 
 

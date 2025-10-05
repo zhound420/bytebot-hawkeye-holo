@@ -143,20 +143,44 @@ class Holo15:
         return lookup.get(model_filename, model_filename)
 
     def _get_n_gpu_layers(self) -> int:
-        """Get number of layers to offload to GPU based on device."""
+        """Get number of layers to offload to GPU based on device with auto-tuning."""
         if self.device == "cuda":
-            # NVIDIA: Offload all layers to GPU
+            # NVIDIA: Offload all layers to GPU (tested and working)
             return -1
         elif self.device == "mps":
-            # Apple Silicon: Offload all layers to Metal
-            return -1
+            # Apple Silicon: Use auto-tuning based on available memory
+            # Qwen2.5-VL-7B has ~28 transformer layers
+            # Q4_K_M quantization: ~4.8GB model + ~1GB projector
+            try:
+                import psutil
+                available_gb = psutil.virtual_memory().available / (1024 ** 3)
+
+                if available_gb >= 10:
+                    # Plenty of memory: offload all layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading all layers to GPU")
+                    return -1
+                elif available_gb >= 6:
+                    # Moderate memory: offload most layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading 24/28 layers to GPU")
+                    return 24
+                else:
+                    # Limited memory: offload fewer layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading 16/28 layers to GPU")
+                    return 16
+            except ImportError:
+                # psutil not available, offload all layers (conservative default)
+                print("  MPS: psutil not available, offloading all layers")
+                return -1
         else:
             # CPU: No GPU layers
             return 0
 
     def _get_mmproj_gpu_layers(self) -> int:
-        """Determine GPU offload for multimodal projector/CLIP encoder."""
-        return -1 if self.device in {"cuda", "mps"} else 0
+        """Determine GPU offload for multimodal projector/CLIP encoder (always offload on GPU)."""
+        if self.device in {"cuda", "mps"}:
+            # Always offload projector to GPU for best visual understanding
+            return -1
+        return 0
 
     def _load_model(self) -> Tuple[Llama, Qwen25VLChatHandler]:
         """Load Holo 1.5-7B GGUF model and multimodal projector."""
@@ -380,7 +404,10 @@ class Holo15:
         }
 
     def _call_model(self, image_url: str, prompt_text: str) -> str:
-        """Invoke the llama.cpp chat completion with standard settings."""
+        """Invoke the llama.cpp chat completion with standard settings and timing."""
+        import time
+        start_time = time.time()
+
         messages = []
 
         if settings.system_prompt:
@@ -407,7 +434,12 @@ class Holo15:
 
         response = self.model.create_chat_completion(**completion_kwargs)
 
-        return response["choices"][0]["message"]["content"]
+        inference_time = (time.time() - start_time) * 1000
+        output = response["choices"][0]["message"]["content"]
+
+        print(f"  Model inference: {inference_time:.1f}ms, Output length: {len(output)} chars")
+
+        return output
 
     @staticmethod
     def _augment_prompt(prompt_text: str) -> str:
@@ -1140,11 +1172,20 @@ class Holo15:
 
         processing_time = (time.time() - start_time) * 1000  # Convert to ms
 
-        # Log detection result for visibility
+        # Log detection result for visibility with performance metrics
         if detections:
             print(f"✓ Holo detected {len(detections)} element(s) in {processing_time:.1f}ms")
+            if len(detections) > 0:
+                avg_confidence = sum(d.get("confidence", 0) for d in detections) / len(detections)
+                print(f"  Average confidence: {avg_confidence:.2f}, Device: {self.device}, Profile: {profile_key}")
         else:
-            print(f"⚠ Holo found 0 elements (task: {task}, detect_multiple: {detect_multiple})")
+            print(f"⚠ Holo found 0 elements")
+            print(f"  Task: {task}, Detect multiple: {detect_multiple}")
+            print(f"  Processing time: {processing_time:.1f}ms, Device: {self.device}")
+            if include_raw and raw_model_outputs:
+                print(f"  Raw model outputs ({len(raw_model_outputs)} attempts):")
+                for i, output in enumerate(raw_model_outputs[:2]):  # Show first 2 outputs
+                    print(f"    Attempt {i+1}: {output[:200]}...")  # First 200 chars
 
         result = {
             "elements": detections,

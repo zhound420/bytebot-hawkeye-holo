@@ -239,21 +239,16 @@ export class HoloClientService {
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
 
-      // Create request body (using official OmniParser demo defaults)
+      // Create request body for Holo 1.5-7B API
       const requestBody = {
         image: base64Image,
         task: options.task ?? null, // Task-specific instruction for single-element mode
         detect_multiple: options.detectMultiple ?? true, // Multi-element scan mode
-        include_captions: options.includeCaptions ?? true,
-        include_som: options.includeSom ?? true,
-        include_ocr: options.includeOcr ?? true,
-        use_full_pipeline: options.useFullPipeline ?? true,
-        min_confidence: options.minConfidence ?? 0.05, // Official demo default (was 0.3)
-        iou_threshold: options.iouThreshold ?? 0.1, // Official demo default (was 0.7)
-        use_paddleocr: options.usePaddleOcr ?? true,
-        max_detections: options.maxDetections ?? undefined,
-        return_raw_outputs: options.returnRawOutputs ?? false,
-        performance_profile: options.performanceProfile ?? undefined,
+        include_som: options.includeSom ?? true, // Set-of-Mark annotations
+        min_confidence: options.minConfidence ?? 0.3, // Higher confidence for quality results
+        max_detections: options.maxDetections ?? undefined, // Server-side detection cap
+        return_raw_outputs: options.returnRawOutputs ?? false, // Include raw model outputs
+        performance_profile: options.performanceProfile ?? 'speed', // Default to speed profile
       };
 
       // Send request to Holo 1.5-7B service

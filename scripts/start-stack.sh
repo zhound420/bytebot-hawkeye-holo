@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -8,6 +9,115 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+wait_for_container_health() {
+    local container="$1"
+    local timeout="${2:-360}"
+    local interval="${3:-5}"
+
+    if ! docker ps -a --format '{{.Names}}' | grep -qx "$container" 2>/dev/null; then
+        echo -e "${YELLOW}Skipping health wait for ${container} (container not running)${NC}"
+        return 0
+    fi
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${container} health${NC}"
+    while (( waited < timeout )); do
+        local status
+        status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "")
+
+        case "$status" in
+            healthy)
+                echo -e " ${GREEN}✓${NC}"
+                return 0
+                ;;
+            unhealthy)
+                echo -e " ${RED}✗${NC} (reported unhealthy)"
+                docker logs "$container" --tail 40 || true
+                return 1
+                ;;
+            "")
+                # container not ready yet
+                ;;
+            *)
+                # still starting
+                ;;
+        esac
+
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    docker logs "$container" --tail 40 || true
+    return 1
+}
+
+wait_for_port() {
+    local label="$1"
+    local port="$2"
+    local host="${3:-localhost}"
+    local timeout="${4:-300}"
+    local interval="${5:-5}"
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${label} (port ${port})${NC}"
+    while (( waited < timeout )); do
+        if (exec 3<>/dev/tcp/"$host"/"$port") 2>/dev/null; then
+            exec 3>&-
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    return 1
+}
+
+wait_for_http() {
+    local url="$1"
+    local label="$2"
+    local timeout="${3:-180}"
+    local interval="${4:-5}"
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${label}${NC}"
+    while (( waited < timeout )); do
+        if curl -sf --max-time 5 "$url" >/dev/null 2>&1; then
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    return 1
+}
+
+set_service_status() {
+    local label="$1"
+    local new_status="$2"
+
+    for i in "${!SERVICE_RESULTS[@]}"; do
+        IFS='|' read -r existing_label existing_port existing_status <<< "${SERVICE_RESULTS[$i]}"
+        if [[ "$existing_label" == "$label" ]]; then
+            SERVICE_RESULTS[$i]="$existing_label|$existing_port|$new_status"
+            return 0
+        fi
+    done
+
+    SERVICE_RESULTS+=("$label||$new_status")
+}
+
+USE_NATIVE_HOLO=false
+EXPECT_HOLO_CONTAINER=false
+HOLO_PREWAIT=false
+HOLO_PREWAIT_SUCCESS=false
 ARCH=$(uname -m)
 OS=$(uname -s)
 
@@ -37,10 +147,16 @@ else
     exit 1
 fi
 
+STACK_SERVICES=(bytebot-desktop bytebot-agent bytebot-ui postgres)
+if [[ "$COMPOSE_FILE" == "docker-compose.proxy.yml" ]]; then
+    STACK_SERVICES+=(bytebot-llm-proxy)
+fi
+
 # Platform-specific configuration
 if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${BLUE}Platform: Apple Silicon${NC}"
     echo ""
+    USE_NATIVE_HOLO=true
 
     # Check if native Holo is running
     if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
@@ -71,12 +187,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         # Start all services except Holo container
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
-        docker compose -f $COMPOSE_FILE up -d --build --no-deps \
-            bytebot-desktop \
-            bytebot-agent \
-            bytebot-ui \
-            postgres \
-            $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
+        docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
 
     else
         echo -e "${YELLOW}⚠ Native Holo 1.5-7B not running${NC}"
@@ -127,39 +238,14 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${BLUE}Starting Docker stack (without Holo container)...${NC}"
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
-        docker compose -f $COMPOSE_FILE up -d --build --no-deps \
-            bytebot-desktop \
-            bytebot-agent \
-            bytebot-ui \
-            postgres \
-            $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
+        docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
 
-        # Exit here so we don't run the code below
-        echo ""
-        echo -e "${BLUE}Service Status:${NC}"
-        services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990" "Holo:9989")
-        for service_port in "${services[@]}"; do
-            IFS=: read -r service port <<< "$service_port"
-            if nc -z localhost $port 2>/dev/null; then
-                echo -e "  ${GREEN}✓${NC} $service (port $port)"
-            else
-                echo -e "  ${YELLOW}...${NC} $service (port $port) - starting..."
-            fi
-        done
-        echo ""
-        echo -e "${GREEN}Stack ready with native Holo 1.5-7B (MPS GPU)!${NC}"
-        echo ""
-        echo "Services:"
-        echo "  • UI:       http://localhost:9992"
-        echo "  • Agent:    http://localhost:9991"
-        echo "  • Desktop:  http://localhost:9990"
-        echo "  • Holo 1.5-7B: http://localhost:9989 (native MPS)"
-        echo ""
-        exit 0
+        # Native start handled above; continue to unified readiness checks
     fi
 
 elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     echo -e "${BLUE}Platform: x86_64${NC}"
+    EXPECT_HOLO_CONTAINER=true
 
     # Check for NVIDIA GPU
     if command -v nvidia-smi &> /dev/null; then
@@ -168,34 +254,110 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     fi
 
     echo ""
-    echo -e "${BLUE}Starting full Docker stack (includes Holo container)...${NC}"
-    docker compose -f $COMPOSE_FILE up -d --build
+    echo -e "${BLUE}Starting Holo container first (GPU/CPU Docker)${NC}"
+    docker compose -f "$COMPOSE_FILE" up -d --build bytebot-holo
+
+    if wait_for_container_health "bytebot-holo" 480 5; then
+        HOLO_PREWAIT=true
+        HOLO_PREWAIT_SUCCESS=true
+    else
+        HOLO_PREWAIT=true
+        HOLO_PREWAIT_SUCCESS=false
+        echo -e "${YELLOW}⚠ Holo container not healthy yet; continuing to start remaining services${NC}"
+    fi
+
+    echo ""
+    echo -e "${BLUE}Starting remaining Bytebot containers...${NC}"
+    docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
 fi
 
 # Wait for services to be ready
 echo ""
 echo -e "${BLUE}Waiting for services to start...${NC}"
-sleep 5
-
-# Check service health
-echo ""
-echo -e "${BLUE}Service Status:${NC}"
-
-# Check each service
-services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990")
-if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    services+=("Holo:9989")
-fi
 
 all_healthy=true
-for service_port in "${services[@]}"; do
-    IFS=: read -r service port <<< "$service_port"
-    if nc -z localhost $port 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} $service (port $port)"
+holo_status_recorded=false
+SERVICE_RESULTS=()
+
+# Core services exposed via HTTP/WebSocket
+standard_services=("UI|9992" "Agent|9991" "Desktop|9990")
+for entry in "${standard_services[@]}"; do
+    IFS='|' read -r label port <<< "$entry"
+    if wait_for_port "$label" "$port" "localhost"; then
+        SERVICE_RESULTS+=("$label|$port|ready")
     else
-        echo -e "  ${RED}✗${NC} $service (port $port) - starting..."
+        SERVICE_RESULTS+=("$label|$port|starting")
         all_healthy=false
     fi
+done
+
+# Promote agent status if container exposes Docker health checks
+if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-agent" 2>/dev/null; then
+    if wait_for_container_health "bytebot-agent" 300 5; then
+        set_service_status "Agent" "ready"
+    else
+        set_service_status "Agent" "starting"
+        all_healthy=false
+    fi
+fi
+
+# Holo readiness depends on platform
+if [[ "$USE_NATIVE_HOLO" == "true" ]]; then
+    if wait_for_http "http://localhost:9989/health" "Holo 1.5-7B (native health)" 300 6; then
+        SERVICE_RESULTS+=("Holo 1.5-7B|9989|ready")
+    else
+        SERVICE_RESULTS+=("Holo 1.5-7B|9989|starting")
+        all_healthy=false
+    fi
+    holo_status_recorded=true
+elif [[ "$EXPECT_HOLO_CONTAINER" == "true" ]]; then
+    if [[ "$HOLO_PREWAIT" == "true" ]]; then
+        if [[ "$HOLO_PREWAIT_SUCCESS" == "true" ]]; then
+            if wait_for_http "http://localhost:9989/health" "Holo 1.5-7B (container health)" 240 6; then
+                SERVICE_RESULTS+=("Holo 1.5-7B|9989|ready")
+            else
+                SERVICE_RESULTS+=("Holo 1.5-7B|9989|starting")
+                all_healthy=false
+            fi
+        else
+            SERVICE_RESULTS+=("Holo 1.5-7B|9989|starting")
+            all_healthy=false
+        fi
+    else
+        if wait_for_container_health "bytebot-holo" 420 5; then
+            if wait_for_http "http://localhost:9989/health" "Holo 1.5-7B (container health)" 240 6; then
+                SERVICE_RESULTS+=("Holo 1.5-7B|9989|ready")
+            else
+                SERVICE_RESULTS+=("Holo 1.5-7B|9989|starting")
+                all_healthy=false
+            fi
+        else
+            SERVICE_RESULTS+=("Holo 1.5-7B|9989|starting")
+            all_healthy=false
+        fi
+    fi
+    holo_status_recorded=true
+fi
+
+if [[ "$holo_status_recorded" == "false" ]]; then
+    SERVICE_RESULTS+=("Holo 1.5-7B|9989|skipped")
+fi
+
+echo ""
+echo -e "${BLUE}Service Status:${NC}"
+for entry in "${SERVICE_RESULTS[@]}"; do
+    IFS='|' read -r label port status <<< "$entry"
+    case "$status" in
+        ready)
+            echo -e "  ${GREEN}✓${NC} $label (port $port)"
+            ;;
+        skipped)
+            echo -e "  ${YELLOW}-${NC} $label (not managed by this stack)"
+            ;;
+        *)
+            echo -e "  ${YELLOW}...${NC} $label (port $port) - still starting"
+            ;;
+    esac
 done
 
 echo ""

@@ -199,7 +199,8 @@ fi
 all_healthy=true
 for service_port in "${services[@]}"; do
     IFS=: read -r service port <<< "$service_port"
-    if nc -z localhost $port 2>/dev/null; then
+    if (exec 3<>/dev/tcp/localhost/"$port") 2>/dev/null; then
+        exec 3>&-
         echo -e "  ${GREEN}✓${NC} $service (port $port)"
     else
         echo -e "  ${RED}✗${NC} $service (port $port) - check logs"

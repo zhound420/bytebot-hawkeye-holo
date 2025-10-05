@@ -103,10 +103,12 @@ This comprehensive script:
   - Auto-starts OmniParser if not running
   - Starts Docker services (excluding OmniParser container)
   - Rebuilds containers if code changed (`--build` flag)
+  - Waits for the native OmniParser health endpoint before continuing
 - **x86_64:**
-  - Starts full Docker stack including OmniParser container
+  - Starts the Holo container first, waits for its health check, then boots the remaining services
   - Rebuilds containers if code changed
-- Verifies service health
+- Waits for container health checks (Holo, Agent) and port readiness (UI/Desktop) with a 5-minute warmup window
+- Prints consolidated service status with guidance if a service is still warming up
 - Shows service URLs and logs commands
 
 **Usage:**
@@ -115,6 +117,11 @@ This comprehensive script:
 ```
 
 **Use for regular starts** after initial setup. Automatically rebuilds on code changes.
+
+> **Heads-up:** Holo's first CUDA/MPS initialization can take several minutes. The
+> script blocks until `/health` responds, then prints next steps. Tail logs with
+> `docker compose -f docker/docker-compose.yml logs -f bytebot-holo` (or
+> `docker/docker-compose.proxy.yml` if you start the proxy stack) if it times out.
 
 ---
 

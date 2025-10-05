@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { TelemetryService } from './telemetry/telemetry.service';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import * as express from 'express';
 import { json, urlencoded } from 'express';
@@ -26,6 +27,16 @@ async function bootstrap() {
   });
   app.use('/websockify', express.raw({ type: '*/*' }), wsProxy);
   const server = await app.listen(9990);
+
+  try {
+    const telemetry = app.get(TelemetryService);
+    await telemetry.resetAll();
+    console.log('[Telemetry] Drift offsets reset on startup');
+  } catch (error) {
+    console.warn(
+      `[Telemetry] Failed to reset drift offsets on startup: ${(error as Error).message}`,
+    );
+  }
 
   // Selective upgrade routing
   server.on('upgrade', (req, socket, head) => {

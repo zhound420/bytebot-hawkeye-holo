@@ -1780,13 +1780,34 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         }
       }
 
-      const element = this.getElementFromCache(elementId);
+      let element = this.getElementFromCache(elementId);
 
       if (!element) {
-        if (params.fallback_coordinates) {
+        this.logger.warn(
+          `Element ${elementId} missing from cache; refreshing detections via includeAll scan.`,
+        );
+
+        try {
+          await this.runComputerDetectElements({
+            description: '',
+            includeAll: true,
+          });
+        } catch (refreshError) {
+          this.logger.warn(
+            `Failed to refresh detection cache before click: ${(refreshError as Error).message}`,
+          );
+        }
+
+        element = this.getElementFromCache(elementId);
+      }
+
+      if (!element) {
+        const explicitFallback = params.fallback_coordinates;
+
+        if (explicitFallback) {
           const fallbackResult = await this.handleComputerClickMouse({
-            x: params.fallback_coordinates.x,
-            y: params.fallback_coordinates.y,
+            x: explicitFallback.x,
+            y: explicitFallback.y,
             button: 'left',
             clickCount: 1,
           });
@@ -1796,7 +1817,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             const fallbackClickEntry: ClickHistoryEntry = {
               timestamp: new Date(),
               elementId,
-              coordinates: params.fallback_coordinates,
+              coordinates: explicitFallback,
               success: true,
               detectionMethod: 'fallback_coordinates',
             };
@@ -1805,7 +1826,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             return {
               success: true,
               element_id: elementId,
-              coordinates_used: params.fallback_coordinates,
+              coordinates_used: explicitFallback,
               detection_method: 'fallback_coordinates',
             };
           }
@@ -1814,7 +1835,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           const failedFallbackEntry: ClickHistoryEntry = {
             timestamp: new Date(),
             elementId,
-            coordinates: params.fallback_coordinates,
+            coordinates: explicitFallback,
             success: false,
             detectionMethod: 'fallback_coordinates',
           };
@@ -1824,7 +1845,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             success: false,
             element_id: elementId,
             error: `Element with ID ${elementId} not found; fallback coordinates failed`,
-            coordinates_used: params.fallback_coordinates,
+            coordinates_used: explicitFallback,
             detection_method: 'fallback_coordinates',
           };
         }
@@ -1836,6 +1857,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       const clickTarget: ClickTarget =
         await this.elementDetector.getClickCoordinates(element);
+
+      const fallbackCoordinates =
+        params.fallback_coordinates ?? clickTarget.coordinates;
 
       const result = await this.handleComputerClickMouse({
         x: clickTarget.coordinates.x,
@@ -1869,10 +1893,10 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         };
       }
 
-      if (params.fallback_coordinates) {
+      if (fallbackCoordinates) {
         const fallbackResult = await this.handleComputerClickMouse({
-          x: params.fallback_coordinates.x,
-          y: params.fallback_coordinates.y,
+          x: fallbackCoordinates.x,
+          y: fallbackCoordinates.y,
           button: 'left',
           clickCount: 1,
         });
@@ -1885,7 +1909,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           const fallbackClickEntry: ClickHistoryEntry = {
             timestamp: new Date(),
             elementId,
-            coordinates: params.fallback_coordinates,
+            coordinates: fallbackCoordinates,
             success: true,
             detectionMethod: `${element.metadata.detectionMethod}_fallback`,
           };
@@ -1894,7 +1918,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           return {
             success: true,
             element_id: elementId,
-            coordinates_used: params.fallback_coordinates,
+            coordinates_used: fallbackCoordinates,
             detection_method: `${element.metadata.detectionMethod}_fallback`,
             confidence: element.confidence,
             element_text: element.text ?? null,

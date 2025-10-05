@@ -403,7 +403,7 @@ class Holo15:
             "scale_factors": scale_factors,
         }
 
-    def _call_model(self, image_url: str, prompt_text: str) -> str:
+    def _call_model(self, image_url: str, prompt_text: str, max_tokens: Optional[int] = None) -> str:
         """Invoke the llama.cpp chat completion with standard settings and timing."""
         import time
         start_time = time.time()
@@ -423,9 +423,12 @@ class Holo15:
             }
         )
 
+        # Use profile-specific max_tokens if provided, otherwise fall back to global setting
+        effective_max_tokens = max_tokens if max_tokens is not None else settings.max_new_tokens
+
         completion_kwargs = {
             "messages": messages,
-            "max_tokens": settings.max_new_tokens,
+            "max_tokens": effective_max_tokens,
             "temperature": self.temperature,
         }
 
@@ -437,7 +440,7 @@ class Holo15:
         inference_time = (time.time() - start_time) * 1000
         output = response["choices"][0]["message"]["content"]
 
-        print(f"  Model inference: {inference_time:.1f}ms, Output length: {len(output)} chars")
+        print(f"  Model inference: {inference_time:.1f}ms (max_tokens={effective_max_tokens}), Output length: {len(output)} chars")
 
         return output
 
@@ -883,6 +886,7 @@ class Holo15:
         task_instruction: str,
         guidelines: Optional[str] = None,
         prepared_payload: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
         """
         Localize a UI element using Holo 1.5-7B GGUF.
@@ -892,6 +896,7 @@ class Holo15:
             task_instruction: Task description (e.g., "Click the submit button")
             guidelines: Optional guidelines for the model
             prepared_payload: Optional cached payload with image_url & scale factors
+            max_tokens: Optional max tokens override (from profile)
 
         Returns:
             Tuple of (detection dict or None, list of raw model outputs)
@@ -914,7 +919,7 @@ class Holo15:
 
         for attempt in range(self.max_retries + 1):
             try:
-                output_text = self._call_model(image_url, prompt_text)
+                output_text = self._call_model(image_url, prompt_text, max_tokens=max_tokens)
             except Exception as exc:
                 print(f"✗ Holo error during localization (task: '{task_instruction}'): {exc}")
                 break
@@ -944,6 +949,7 @@ class Holo15:
         detection_prompts: Optional[List[str]] = None,
         prepared_payload: Optional[Dict[str, Any]] = None,
         max_detections: Optional[int] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """
         Detect multiple UI elements using multiple localization prompts.
@@ -951,6 +957,9 @@ class Holo15:
         Args:
             image: Input image as numpy array (RGB)
             detection_prompts: List of prompts to try (default from settings)
+            prepared_payload: Optional cached image payload
+            max_detections: Maximum detections to return
+            max_tokens: Optional max tokens override (from profile)
 
         Returns:
             Tuple of (list of detected elements, raw outputs)
@@ -982,7 +991,7 @@ class Holo15:
 
         for attempt in range(self.max_retries + 1):
             try:
-                output_text = self._call_model(payload["image_url"], prompt_text)
+                output_text = self._call_model(payload["image_url"], prompt_text, max_tokens=max_tokens)
             except Exception as exc:
                 print(f"✗ Holo error during multi-detection: {exc}")
                 break
@@ -1125,6 +1134,8 @@ class Holo15:
             if return_raw_outputs is not None
             else settings.return_raw_outputs or profile.get("return_raw_outputs", False)
         )
+        # CRITICAL FIX: Extract profile's max_new_tokens
+        profile_max_tokens = profile.get("max_new_tokens", settings.max_new_tokens)
 
         prepared_payload: Optional[Dict[str, Any]] = None
         raw_model_outputs: List[str] = []
@@ -1136,6 +1147,7 @@ class Holo15:
                 image,
                 task,
                 prepared_payload=prepared_payload,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
             detections = [detection] if detection else []
@@ -1148,6 +1160,7 @@ class Holo15:
                 image,
                 prepared_payload=prepared_payload,
                 max_detections=effective_max,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
         else:
@@ -1157,6 +1170,7 @@ class Holo15:
                 image,
                 prepared_payload=prepared_payload,
                 max_detections=effective_max,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
 

@@ -1460,12 +1460,14 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           screenshot,
           null, // No template for general detection
           {
-            // Use task-specific detection when searching for a specific element
-            holoTask: params.description && !params.includeAll ? params.description : undefined,
+            // ALWAYS use multi-element mode for better coverage and semantic matching
+            // Single-shot mode was limiting results to 1 element; multi-element returns 20-100
+            // Filtering by description happens client-side after detection
+            holoTask: undefined,  // Always multi-element mode
             // Let enhanced-visual-detector handle method selection automatically
             // OmniParser defaults to enabled when service is available
             confidenceThreshold: 0.5,
-            maxResults: 20,
+            maxResults: params.includeAll ? 100 : 20,  // More elements for discovery mode
             ocrRegion: searchRegion,
           }
         );

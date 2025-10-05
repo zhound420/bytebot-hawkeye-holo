@@ -90,7 +90,7 @@ export class HoloClientService {
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
-    this.timeout = parseInt(process.env.HOLO_TIMEOUT || '30000', 10);
+    this.timeout = parseInt(process.env.HOLO_TIMEOUT || '120000', 10);
     this.enabled = process.env.BYTEBOT_CV_USE_HOLO === 'true';
 
     if (this.enabled) {

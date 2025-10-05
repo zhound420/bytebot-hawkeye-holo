@@ -808,6 +808,7 @@ class Holo15:
         detection_prompts: List[str],
         prepared_payload: Dict[str, Any],
         max_detections: int,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Fallback multi-detection loop using legacy prompt list."""
         detections: List[Dict[str, Any]] = []
@@ -819,6 +820,7 @@ class Holo15:
                 image,
                 prompt,
                 prepared_payload=prepared_payload,
+                max_tokens=max_tokens,  # CRITICAL FIX: Pass profile's max_tokens
             )
 
             raw_outputs.extend(outputs)
@@ -1007,7 +1009,20 @@ class Holo15:
             if structured_detections is not None:
                 detections = structured_detections
                 structured_success = True
+                print(f"✓ Structured parsing succeeded: {len(detections)} elements extracted")
                 break
+            else:
+                # Diagnostic logging for failed structured parsing
+                print(f"⚠ Structured parsing failed (attempt {attempt + 1}/{self.max_retries + 1})")
+                print(f"  Output length: {len(output_text)} chars")
+                print(f"  Output preview: {output_text[:300]}...")
+                if attempt == 0:  # Log more detail on first attempt
+                    # Check if output looks like JSON
+                    first_char = output_text.strip()[0] if output_text.strip() else None
+                    if first_char in ['{', '[']:
+                        print(f"  ✓ Output starts with JSON character: '{first_char}'")
+                    else:
+                        print(f"  ✗ Output does NOT start with JSON (first char: '{first_char}')")
 
             if attempt < self.max_retries:
                 prompt_text = self._augment_prompt(prompt_text)
@@ -1015,14 +1030,19 @@ class Holo15:
                     time.sleep(self.retry_backoff * (attempt + 1))
 
         if not structured_success and settings.allow_legacy_fallback:
+            print(f"→ Falling back to legacy multi-detection mode ({len(detection_prompts)} prompts)")
             legacy_detections, legacy_outputs = self._legacy_multi_detection(
                 image,
                 detection_prompts,
                 payload,
                 effective_max,
+                max_tokens=max_tokens,  # CRITICAL FIX: Pass profile's max_tokens to legacy mode
             )
             if legacy_detections:
                 detections = legacy_detections
+                print(f"✓ Legacy mode found {len(detections)} element(s)")
+            else:
+                print(f"✗ Legacy mode found 0 elements")
             raw_outputs.extend(legacy_outputs)
 
         if detections:

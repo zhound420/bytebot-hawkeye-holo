@@ -99,7 +99,8 @@ class Settings(BaseSettings):
     # Prompt engineering for single + multi element detection
     system_prompt: str = (
         "You are a UI localization expert. Analyze screenshots and provide precise pixel coordinates. "
-        "Always return valid JSON without markdown formatting or explanatory text."
+        "CRITICAL RULES: (1) Return ONLY raw JSON, (2) NO markdown code fences (```json), "
+        "(3) NO explanations or reasoning, (4) Start response immediately with { or [ character."
     )
     holo_guidelines: str = (
         "You are looking at a UI screenshot. Identify interactive elements like buttons, icons, inputs, and links. "
@@ -121,10 +122,15 @@ class Settings(BaseSettings):
         "For each element, provide center coordinates and a brief label."
     )
     multi_detection_format: str = (
-        "Return ONLY valid JSON in this exact format with ALL elements:\n"
-        "{{\"elements\": [{{\"x\": <int>, \"y\": <int>, \"label\": \"desc\", \"type\": \"button|icon|input|link\"}}]}}\n"
-        "Example: {{\"elements\": [{{\"x\": 100, \"y\": 200, \"label\": \"Search\", \"type\": \"button\"}}, {{\"x\": 150, \"y\": 250, \"label\": \"Settings\", \"type\": \"icon\"}}]}}\n"
-        "NO markdown, NO explanations, ONLY complete JSON array."
+        "START YOUR RESPONSE WITH THIS EXACT FORMAT (no preamble):\n"
+        "{{\"elements\":[{{\"x\":<int>,\"y\":<int>,\"label\":\"desc\",\"type\":\"button|icon|input|link\"}}]}}\n\n"
+        "Example response (your response must start exactly like this):\n"
+        "{{\"elements\":[{{\"x\":100,\"y\":200,\"label\":\"Search\",\"type\":\"button\"}},{{\"x\":150,\"y\":250,\"label\":\"Settings\",\"type\":\"icon\"}}]}}\n\n"
+        "STRICT RULES:\n"
+        "- First character of response MUST be '{'\n"
+        "- Do NOT use markdown code fences (```json or ```)\n"
+        "- Do NOT add explanations before or after JSON\n"
+        "- Do NOT add reasoning or thoughts"
     )
     allow_legacy_fallback: bool = True
 

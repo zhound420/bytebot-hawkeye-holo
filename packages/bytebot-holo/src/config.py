@@ -15,8 +15,8 @@ DEFAULT_DETECTION_PROMPTS: List[str] = [
 
 PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
     "speed": {
-        "max_detections": 15,  # Reduced for faster inference
-        "max_new_tokens": 64,  # Reduced token limit for speed
+        "max_detections": 20,  # Increased from 15 for better coverage
+        "max_new_tokens": 256,  # Increased from 64 - CRITICAL FIX for multi-element detection
         "max_retries": 0,  # No retries for speed
         "retry_backoff_seconds": 0.0,
         "click_box_size": 32,
@@ -27,8 +27,8 @@ PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
         "return_raw_outputs": False,
     },
     "balanced": {
-        "max_detections": 30,  # Balanced element count
-        "max_new_tokens": 96,  # Moderate token limit
+        "max_detections": 40,  # Increased from 30 for better coverage
+        "max_new_tokens": 512,  # Increased from 96 - allows 20-40 elements
         "max_retries": 1,  # Single retry
         "retry_backoff_seconds": 0.3,
         "click_box_size": 40,
@@ -39,8 +39,8 @@ PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
         "return_raw_outputs": False,
     },
     "quality": {
-        "max_detections": 50,  # Higher element count
-        "max_new_tokens": 128,  # More tokens for detailed output
+        "max_detections": 100,  # Increased from 50 for maximum coverage
+        "max_new_tokens": 1024,  # Increased from 128 - allows 50-100 elements
         "max_retries": 2,
         "retry_backoff_seconds": 0.5,
         "click_box_size": 48,
@@ -121,10 +121,10 @@ class Settings(BaseSettings):
         "For each element, provide center coordinates and a brief label."
     )
     multi_detection_format: str = (
-        "Return JSON in this exact format: "
-        "{{\"elements\": [{{\"x\": <int>, \"y\": <int>, \"label\": \"desc\", \"type\": \"button|icon|input|link\"}}]}}. "
-        "Example: {{\"elements\": [{{\"x\": 100, \"y\": 200, \"label\": \"Search button\", \"type\": \"button\"}}]}}. "
-        "Return {{\"elements\": []}} if no interactive elements are visible."
+        "Return ONLY valid JSON in this exact format with ALL elements:\n"
+        "{{\"elements\": [{{\"x\": <int>, \"y\": <int>, \"label\": \"desc\", \"type\": \"button|icon|input|link\"}}]}}\n"
+        "Example: {{\"elements\": [{{\"x\": 100, \"y\": 200, \"label\": \"Search\", \"type\": \"button\"}}, {{\"x\": 150, \"y\": 250, \"label\": \"Settings\", \"type\": \"icon\"}}]}}\n"
+        "NO markdown, NO explanations, ONLY complete JSON array."
     )
     allow_legacy_fallback: bool = True
 

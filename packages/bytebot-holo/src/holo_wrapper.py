@@ -958,7 +958,11 @@ class Holo15:
         if detection_prompts is None:
             detection_prompts = settings.detection_prompts
 
-        effective_max = max(1, min(max_detections or settings.max_detections, 200))
+        # Honor explicit API request over profile defaults to avoid overriding user intent
+        if max_detections is not None:
+            effective_max = max(1, min(max_detections, 200))
+        else:
+            effective_max = max(1, min(settings.max_detections, 200))
 
         payload = prepared_payload or self._prepare_image_payload(image)
 
@@ -1106,7 +1110,11 @@ class Holo15:
 
         profile_key = (performance_profile or settings.active_profile).lower()
         profile = PERFORMANCE_PROFILES.get(profile_key, PERFORMANCE_PROFILES[settings.active_profile])
-        effective_max = max(1, min(max_detections or settings.max_detections, 200))
+        # Honor explicit API request over profile defaults
+        if max_detections is not None:
+            effective_max = max(1, min(max_detections, 200))
+        else:
+            effective_max = max(1, min(settings.max_detections, 200))
         confidence_floor = (
             min_confidence
             if min_confidence is not None

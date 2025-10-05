@@ -248,7 +248,7 @@ export class HoloClientService {
         min_confidence: options.minConfidence ?? 0.3, // Higher confidence for quality results
         max_detections: options.maxDetections ?? undefined, // Server-side detection cap
         return_raw_outputs: options.returnRawOutputs ?? false, // Include raw model outputs
-        performance_profile: options.performanceProfile ?? 'speed', // Default to speed profile
+        performance_profile: options.performanceProfile ?? 'balanced', // Balanced profile for production use
       };
 
       // Send request to Holo 1.5-7B service

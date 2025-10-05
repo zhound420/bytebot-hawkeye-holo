@@ -1,19 +1,36 @@
 # Repository Guidelines
 
+This guide helps contributors orient quickly inside bytebot-hawkeye-holo and ship reliable changes with confidence.
+
 ## Project Structure & Module Organization
-Packages live under `packages/`, with the NestJS control plane in `packages/bytebot-agent` and the Next.js UI in `packages/bytebot-ui`. Prisma schema and migrations sit in `packages/bytebot-agent/prisma/`, while feature modules land in `packages/bytebot-agent/src/`. UI assets are kept in `packages/bytebot-ui/static/`. Computer-vision helpers and camera control reside in `packages/bytebot-cv` and `packages/bytebot-agent-cc`. Shared utilities stay in `packages/shared`. Operational scripts live in `scripts/`, container specs in `docker/`, Helm charts in `helm/`, and integration fixtures in `tests/`.
+- `packages/bytebot-agent/` hosts the NestJS control plane; Prisma schema and migrations live in `prisma/`, feature modules under `src/`, and camera orchestration glue in `packages/bytebot-agent-cc/`.
+- `packages/bytebot-ui/` is the Next.js client with static assets in `static/`; colocate UI fixtures beside their components.
+- Vision helpers reside in `packages/bytebot-cv/`; cross-cutting utilities sit in `packages/shared/`; operational tooling spans `scripts/`, `docker/`, `helm/`, and `tests/` (integration artifacts under `tests/images/`).
+- Reference design notes and troubleshooting guides in `docs/` and top-level `*_GUIDE.md` files before introducing new modules.
 
 ## Build, Test, and Development Commands
-Bootstrap dependencies with `npm install` (Node 20+). Start the control plane with `npm run start:dev --workspace bytebot-agent` to hot reload NestJS and regenerate Prisma types. Launch the UI via `npm run dev --workspace bytebot-ui` for a rebuild-aware proxy. Bring the full stack (agent, OmniParser, health checks) up with `./scripts/start-stack.sh` and tear down via `./scripts/stop-stack.sh`. Produce optimized bundles with `npm run build --workspace <workspace>`.
+- Install dependencies with `npm install` (Node 20+).
+- Run the control plane live reload via `npm run start:dev --workspace bytebot-agent` to refresh Prisma types.
+- Launch the UI locally with `npm run dev --workspace bytebot-ui`.
+- Bring the full stack up with `./scripts/start-stack.sh` and down with `./scripts/stop-stack.sh`.
+- Produce optimized bundles using `npm run build --workspace <workspace>`.
 
 ## Coding Style & Naming Conventions
-Use TypeScript-first code with two-space indentation, single quotes, and trailing commas. Prefer `camelCase` for variables and helpers, `PascalCase` for classes and React components, and kebab-case for UI filenames and routes. Run the workspace `format` scripts before committing. ESLint (`eslint.config.mjs`) flags unawaited promises—either `await` them or annotate intentional detaches.
+- Default to TypeScript, two-space indentation, single quotes, and trailing commas.
+- Use `camelCase` for variables/functions, `PascalCase` for classes and React components, and kebab-case filenames for UI routes.
+- Run workspace formatters and linters (`npm run lint --workspace <workspace>`) before commit; address unawaited promise warnings in `eslint.config.mjs`.
 
 ## Testing Guidelines
-Run backend unit tests with `npm test --workspace bytebot-agent`, E2E tests via `npm run test:e2e --workspace bytebot-agent`, and coverage gates through `npm run test:cov --workspace bytebot-agent`. Frontend tests execute with `npm test --workspace bytebot-ui`, exercising colocated `.test.ts(x)` files. CV and ops integration flows run from `tests/integration/`, producing artifacts under `tests/images/`.
+- Backend unit tests: `npm test --workspace bytebot-agent`; E2E: `npm run test:e2e --workspace bytebot-agent`; coverage: `npm run test:cov --workspace bytebot-agent`.
+- Frontend tests: `npm test --workspace bytebot-ui`; place `.test.ts(x)` beside the code they cover.
+- Store integration suites in `tests/integration/`; generated imagery belongs under `tests/images/`.
 
 ## Commit & Pull Request Guidelines
-Follow Conventional Commits (e.g., `feat(agent): add action orchestrator`). Link issues in PR descriptions, summarize behavioural changes, list executed test commands, and attach screenshots or clips for UI or CV updates. Flag environment-sensitive toggles such as `BYTEBOT_GRID_OVERLAY`, GPU tuning, or OmniParser modes so reviewers can reproduce your results.
+- Follow Conventional Commits (for example `feat(agent): add action orchestrator`).
+- In PR descriptions, reference issues, summarize behavioural changes, and enumerate the test commands you executed.
+- Attach UI or CV screenshots/clips when visual regressions are possible and call out toggles such as `BYTEBOT_GRID_OVERLAY`.
 
 ## Security & Configuration Tips
-Store secrets in `docker/.env` and document placeholders in `.env.defaults`. Fetch large CUDA or Holo assets through `scripts/setup-holo.sh` instead of committing binaries. Treat new configuration toggles as part of the review checklist and update docs accordingly.
+- Keep secrets in `docker/.env`; document placeholders via `.env.defaults`.
+- Use `scripts/setup-holo.sh` to fetch large CUDA or Holo assets instead of committing binaries.
+- Treat new configuration flags as review items and update docs or Helm values accordingly.

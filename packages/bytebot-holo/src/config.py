@@ -1,8 +1,56 @@
 """Configuration management for Holo 1.5-7B service."""
 
 from pathlib import Path
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Dict, Any
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+DEFAULT_DETECTION_PROMPTS: List[str] = [
+    "List the most prominent buttons or calls to action the user can click.",
+    "Identify navigation controls such as tabs, menus, or sidebar entries that appear interactive.",
+    "Highlight form elements like text inputs, search fields, or dropdown selectors.",
+    "Surface key icons in toolbars or system trays that a desktop user might interact with soon.",
+]
+
+PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
+    "speed": {
+        "max_detections": 20,
+        "max_new_tokens": 96,
+        "max_retries": 1,
+        "retry_backoff_seconds": 0.35,
+        "click_box_size": 32,
+        "deduplication_radius": 22,
+        "temperature": 0.0,
+        "top_p": 0.75,
+        "min_confidence_threshold": 0.4,
+        "return_raw_outputs": False,
+    },
+    "balanced": {
+        "max_detections": 45,
+        "max_new_tokens": 128,
+        "max_retries": 2,
+        "retry_backoff_seconds": 0.6,
+        "click_box_size": 40,
+        "deduplication_radius": 30,
+        "temperature": 0.0,
+        "top_p": 0.8,
+        "min_confidence_threshold": 0.3,
+        "return_raw_outputs": False,
+    },
+    "quality": {
+        "max_detections": 80,
+        "max_new_tokens": 192,
+        "max_retries": 3,
+        "retry_backoff_seconds": 0.75,
+        "click_box_size": 48,
+        "deduplication_radius": 36,
+        "temperature": 0.05,
+        "top_p": 0.9,
+        "min_confidence_threshold": 0.2,
+        "return_raw_outputs": True,
+    },
+}
 
 
 class Settings(BaseSettings):
@@ -38,6 +86,11 @@ class Settings(BaseSettings):
     max_retries: int = 2
     retry_backoff_seconds: float = 0.75
     default_confidence: float = 0.85  # Default confidence (Holo doesn't provide confidence scores)
+    min_confidence_threshold: float = 0.3
+    performance_profile: Literal["speed", "balanced", "quality"] = "balanced"
+    return_raw_outputs: bool = False
+    active_profile: str = Field("balanced", exclude=True)
+    active_profile_config: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     # Coordinate-to-bbox conversion settings
     click_box_size: int = 40  # Size of bounding box around click point (pixels)
@@ -126,11 +179,36 @@ def _ensure_detection_prompts(base: Settings) -> List[str]:
     """Provide backward-compatible detection prompt list."""
     if base.detection_prompts:
         return base.detection_prompts
-    return [base.discovery_prompt]
+    return DEFAULT_DETECTION_PROMPTS
+
+
+def _apply_profile_defaults(base: Settings) -> None:
+    """Apply performance profile defaults unless explicitly overridden."""
+    profile_key = (base.performance_profile or "balanced").lower()
+    profile = PERFORMANCE_PROFILES.get(profile_key, PERFORMANCE_PROFILES["balanced"])
+
+    def _maybe_set(field: str, value: Any) -> None:
+        if field not in base.model_fields_set:
+            setattr(base, field, value)
+
+    _maybe_set("max_detections", profile["max_detections"])
+    _maybe_set("max_new_tokens", profile["max_new_tokens"])
+    _maybe_set("max_retries", profile["max_retries"])
+    _maybe_set("retry_backoff_seconds", profile["retry_backoff_seconds"])
+    _maybe_set("click_box_size", profile["click_box_size"])
+    _maybe_set("deduplication_radius", profile["deduplication_radius"])
+    _maybe_set("temperature", profile["temperature"])
+    _maybe_set("top_p", profile["top_p"])
+    _maybe_set("min_confidence_threshold", profile["min_confidence_threshold"])
+    _maybe_set("return_raw_outputs", profile["return_raw_outputs"])
+
+    base.active_profile = profile_key
+    base.active_profile_config = profile
 
 
 settings = Settings()
 settings.detection_prompts = _ensure_detection_prompts(settings)
+_apply_profile_defaults(settings)
 
 if settings.cache_models:
     try:
@@ -151,3 +229,4 @@ print(f"→ Model: Holo 1.5-7B (Qwen2.5-VL base)")
 print(f"  Dtype: {settings.model_dtype}, Max tokens: {settings.max_new_tokens}")
 print(f"  Detection prompts: {len(settings.detection_prompts)} prompts")
 print(f"  Click box size: {settings.click_box_size}px, Dedup radius: {settings.deduplication_radius}px")
+print(f"  Performance profile: {settings.active_profile}")

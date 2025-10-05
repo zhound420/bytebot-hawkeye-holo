@@ -15,6 +15,7 @@ export interface EnhancedDetectionOptions {
   holoTask?: string; // Task-specific instruction for single-shot detection (e.g., "Find the VSCode icon")
   holoCaptions?: boolean; // Enable functional captions for detected elements
   holoConfidence?: number; // Minimum confidence threshold (0-1)
+  holoPerformanceProfile?: 'speed' | 'balanced' | 'quality';
 
   // General options
   confidenceThreshold?: number;
@@ -226,6 +227,9 @@ export class EnhancedVisualDetectorService {
         detectMultiple: !options.holoTask, // Single-shot if task provided, multi-element otherwise
         includeCaptions: options.holoCaptions ?? true,
         minConfidence: options.holoConfidence ?? 0.3,
+        maxDetections: options.maxResults,
+        returnRawOutputs: process.env.HOLO_DEBUG_RAW === 'true',
+        performanceProfile: options.holoPerformanceProfile,
       });
 
       // Update metadata with device info for UI display
@@ -236,6 +240,9 @@ export class EnhancedVisualDetectorService {
         ocrDetected: response.ocr_detected,
         iconDetected: response.icon_detected,
         interactableCount: response.interactable_count,
+        profile: response.profile,
+        maxDetections: response.max_detections,
+        minConfidence: response.min_confidence,
       });
 
       // Convert to DetectedElement format

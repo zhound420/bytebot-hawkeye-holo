@@ -28,6 +28,9 @@ export interface HoloResponse {
     height: number;
   };
   device: string;
+  profile?: string;
+  max_detections?: number;
+  min_confidence?: number;
   som_image?: string; // Base64 encoded Set-of-Mark annotated image
   ocr_detected?: number; // Number of OCR text elements detected
   icon_detected?: number; // Number of icon elements detected
@@ -48,6 +51,9 @@ export interface HoloOptions {
   minConfidence?: number;
   iouThreshold?: number; // Deprecated - maintained for compatibility
   usePaddleOcr?: boolean; // Deprecated - maintained for compatibility
+  maxDetections?: number; // Cap detections server-side to reduce latency
+  returnRawOutputs?: boolean; // Request raw model transcripts for debugging
+  performanceProfile?: 'speed' | 'balanced' | 'quality';
 }
 
 /**
@@ -245,6 +251,9 @@ export class HoloClientService {
         min_confidence: options.minConfidence ?? 0.05, // Official demo default (was 0.3)
         iou_threshold: options.iouThreshold ?? 0.1, // Official demo default (was 0.7)
         use_paddleocr: options.usePaddleOcr ?? true,
+        max_detections: options.maxDetections ?? undefined,
+        return_raw_outputs: options.returnRawOutputs ?? false,
+        performance_profile: options.performanceProfile ?? undefined,
       };
 
       // Send request to Holo 1.5-7B service

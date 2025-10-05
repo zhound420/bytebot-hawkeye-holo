@@ -23,6 +23,26 @@ class ParseRequest(BaseModel):
     task: Optional[str] = Field(None, description="Specific task instruction for single-element mode")
     detect_multiple: bool = Field(True, description="Detect multiple elements using various prompts")
     include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
+    max_detections: Optional[int] = Field(
+        None,
+        ge=1,
+        le=200,
+        description="Optional cap on returned detections to limit token usage",
+    )
+    min_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for returned detections",
+    )
+    return_raw_outputs: bool = Field(
+        False,
+        description="Include raw model outputs for debugging (increases payload size)",
+    )
+    performance_profile: Optional[str] = Field(
+        None,
+        description="Override the active performance profile for this request",
+    )
 
 
 class ElementDetection(BaseModel):
@@ -47,6 +67,9 @@ class ParseResponse(BaseModel):
     processing_time_ms: float
     image_size: dict[str, int]
     device: str
+    profile: Optional[str] = Field(None, description="Performance profile applied for this response")
+    max_detections: Optional[int] = Field(None, description="Effective detection cap used")
+    min_confidence: Optional[float] = Field(None, description="Confidence threshold applied")
     som_image: Optional[str] = Field(None, description="Base64 encoded Set-of-Mark annotated image")
     ocr_detected: Optional[int] = Field(None, description="Number of OCR text elements detected")
     icon_detected: Optional[int] = Field(None, description="Number of icon elements detected")
@@ -261,6 +284,10 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
             task=request.task,
             detect_multiple=request.detect_multiple,
             include_som=request.include_som,
+            max_detections=request.max_detections,
+            min_confidence=request.min_confidence,
+            return_raw_outputs=request.return_raw_outputs,
+            performance_profile=request.performance_profile,
         )
 
         result["model"] = "holo-1.5-7b"
@@ -279,6 +306,10 @@ async def parse_screenshot_upload(
     task: Optional[str] = None,
     detect_multiple: bool = True,
     include_som: bool = True,
+    max_detections: Optional[int] = None,
+    min_confidence: Optional[float] = None,
+    return_raw_outputs: bool = False,
+    performance_profile: Optional[str] = None,
 ):
     """
     Parse UI screenshot from file upload using Holo 1.5-7B.
@@ -314,6 +345,10 @@ async def parse_screenshot_upload(
             task=task,
             detect_multiple=detect_multiple,
             include_som=include_som,
+            max_detections=max_detections,
+            min_confidence=min_confidence,
+            return_raw_outputs=return_raw_outputs,
+            performance_profile=performance_profile,
         )
 
         result["model"] = "holo-1.5-7b"

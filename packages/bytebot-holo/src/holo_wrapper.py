@@ -18,7 +18,7 @@ except ImportError:
         "Install with: pip install llama-cpp-python"
     )
 
-from .config import settings
+from .config import settings, PERFORMANCE_PROFILES
 
 
 class Holo15:
@@ -772,6 +772,7 @@ class Holo15:
         image: np.ndarray,
         detection_prompts: List[str],
         prepared_payload: Dict[str, Any],
+        max_detections: int,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Fallback multi-detection loop using legacy prompt list."""
         detections: List[Dict[str, Any]] = []
@@ -798,7 +799,7 @@ class Holo15:
             detections.append(detection)
             seen_centers.append(center_tuple)
 
-            if len(detections) >= settings.max_detections:
+            if len(detections) >= max_detections:
                 break
 
         return detections, raw_outputs
@@ -910,6 +911,7 @@ class Holo15:
         image: np.ndarray,
         detection_prompts: Optional[List[str]] = None,
         prepared_payload: Optional[Dict[str, Any]] = None,
+        max_detections: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """
         Detect multiple UI elements using multiple localization prompts.
@@ -924,13 +926,15 @@ class Holo15:
         if detection_prompts is None:
             detection_prompts = settings.detection_prompts
 
+        effective_max = max(1, min(max_detections or settings.max_detections, 200))
+
         payload = prepared_payload or self._prepare_image_payload(image)
 
         detections: List[Dict[str, Any]] = []
         raw_outputs: List[str] = []
 
         discovery_prompt = settings.discovery_prompt.format(
-            max_detections=settings.max_detections
+            max_detections=effective_max
         )
         prompt_text = self._build_multi_prompt(
             discovery_prompt,
@@ -970,10 +974,18 @@ class Holo15:
                 image,
                 detection_prompts,
                 payload,
+                effective_max,
             )
             if legacy_detections:
                 detections = legacy_detections
             raw_outputs.extend(legacy_outputs)
+
+        if detections:
+            detections.sort(key=lambda item: float(item.get("confidence", settings.default_confidence)), reverse=True)
+            if len(detections) > effective_max:
+                detections = detections[:effective_max]
+            for index, detection in enumerate(detections):
+                detection["element_id"] = index
 
         return detections, raw_outputs
 
@@ -1037,6 +1049,10 @@ class Holo15:
         task: Optional[str] = None,
         detect_multiple: bool = True,
         include_som: bool = True,
+        max_detections: Optional[int] = None,
+        min_confidence: Optional[float] = None,
+        return_raw_outputs: Optional[bool] = None,
+        performance_profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Parse UI screenshot using Holo 1.5-7B GGUF.
@@ -1046,11 +1062,29 @@ class Holo15:
             task: Optional specific task instruction (single element mode)
             detect_multiple: Whether to detect multiple elements (default: True)
             include_som: Whether to generate Set-of-Mark annotated image
+            max_detections: Optional cap for detections (overrides profile)
+            min_confidence: Optional confidence floor for returned detections
+            return_raw_outputs: Whether to include raw model outputs in response
+            performance_profile: Optional per-request profile override
 
         Returns:
             Dictionary with detected elements and metadata
         """
         start_time = time.time()
+
+        profile_key = (performance_profile or settings.active_profile).lower()
+        profile = PERFORMANCE_PROFILES.get(profile_key, PERFORMANCE_PROFILES[settings.active_profile])
+        effective_max = max(1, min(max_detections or settings.max_detections, 200))
+        confidence_floor = (
+            min_confidence
+            if min_confidence is not None
+            else settings.min_confidence_threshold
+        )
+        include_raw = (
+            return_raw_outputs
+            if return_raw_outputs is not None
+            else settings.return_raw_outputs or profile.get("return_raw_outputs", False)
+        )
 
         prepared_payload: Optional[Dict[str, Any]] = None
         raw_model_outputs: List[str] = []
@@ -1065,12 +1099,15 @@ class Holo15:
             )
             raw_model_outputs.extend(outputs)
             detections = [detection] if detection else []
+            if detections:
+                detections[0]["element_id"] = 0
         elif detect_multiple:
             # Multi-element mode: run multiple detection prompts
             prepared_payload = self._prepare_image_payload(image)
             detections, outputs = self.detect_multiple_elements(
                 image,
                 prepared_payload=prepared_payload,
+                max_detections=effective_max,
             )
             raw_model_outputs.extend(outputs)
         else:
@@ -1079,8 +1116,22 @@ class Holo15:
             detections, outputs = self.detect_multiple_elements(
                 image,
                 prepared_payload=prepared_payload,
+                max_detections=effective_max,
             )
             raw_model_outputs.extend(outputs)
+
+        if detections and confidence_floor is not None:
+            filtered: List[Dict[str, Any]] = []
+            for detection in detections:
+                confidence = float(detection.get("confidence", settings.default_confidence))
+                if confidence >= confidence_floor:
+                    detection["confidence"] = round(confidence, 4)
+                    filtered.append(detection)
+            detections = filtered
+
+        if detections:
+            for index, detection in enumerate(detections):
+                detection["element_id"] = index
 
         # Generate SOM annotated image if requested
         som_image = None
@@ -1101,12 +1152,15 @@ class Holo15:
             "processing_time_ms": round(processing_time, 2),
             "image_size": {"width": image.shape[1], "height": image.shape[0]},
             "device": self.device,
+            "profile": profile_key,
+            "max_detections": effective_max,
+            "min_confidence": round(confidence_floor, 3) if confidence_floor is not None else None,
         }
 
         if som_image:
             result["som_image"] = som_image
 
-        if raw_model_outputs:
+        if include_raw and raw_model_outputs:
             result["raw_model_outputs"] = raw_model_outputs
 
         return result

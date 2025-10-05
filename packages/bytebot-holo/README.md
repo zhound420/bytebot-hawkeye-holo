@@ -205,6 +205,11 @@ export OMNIPARSER_MAX_DETECTIONS=50
 bash scripts/patch-paddleocr.sh
 ```
 
+### NVIDIA GPU not detected in container
+1. Confirm Docker is passing the device: `docker compose config bytebot-holo | grep -A2 DeviceRequests` should list the NVIDIA capabilities.
+2. Restart the service: `docker compose up -d --build bytebot-holo` and check startup logs for `✓ GPU device nodes available` and `✓ CUDA libraries found`.
+3. Run an explicit check: `docker exec bytebot-holo python /app/scripts/verify-gpu.py` should exit with `Status: GPU Acceleration Available ✓`.
+
 ### Apple Silicon: Service crashes on startup
 If service fails with import errors, ensure all dependencies are installed:
 ```bash

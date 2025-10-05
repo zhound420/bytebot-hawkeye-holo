@@ -145,6 +145,14 @@ services:
     restart: unless-stopped
     ports:
       - "9989:9989"
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
     environment:
       - HOLO_HOST=0.0.0.0
       - HOLO_PORT=9989
@@ -155,6 +163,9 @@ services:
       - HOLO_DEVICE=${HOLO_DEVICE:-auto}
       - HOLO_MIN_CONFIDENCE=${HOLO_MIN_CONFIDENCE:-0.3}
       - HOLO_MODEL_DTYPE=${HOLO_MODEL_DTYPE:-float16}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=
     volumes:
       # Optional: mount weights to persist across rebuilds
       - holo_weights:/app/weights

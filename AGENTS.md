@@ -1,36 +1,35 @@
 # Repository Guidelines
 
-Contributors keep Hawkeye’s high-precision desktop agent dependable. Use this guide to align changes across services.
+Maintain Hawkeye’s desktop agent by aligning contributions with these workspace standards.
 
 ## Project Structure & Module Organization
-- `packages/bytebot-agent`: NestJS control plane with Prisma state and CV orchestration.
-- `packages/bytebot-ui`: Next.js command center served through `tsx server.ts`; static assets live in `static/`.
+- `packages/bytebot-agent`: NestJS control plane; Prisma schema in `prisma/`, feature modules under `src/`.
+- `packages/bytebot-ui`: Next.js command center served through `tsx server.ts`; global assets live in `static/`.
 - `packages/bytebot-cv` and `packages/bytebot-agent-cc`: OpenCV helpers, scalar polyfills, and camera control consumed by the agent.
-- Support modules: `packages/shared` (types/utilities), `packages/bytebotd` & `packages/bytebot-llm-proxy` (daemon + LiteLLM bridge), while `scripts/`, `docker/`, and `tests/` hold operational tooling and integration fixtures.
+- Shared tooling: `packages/shared` (types/utilities), `packages/bytebotd` and `packages/bytebot-llm-proxy` (daemon + LiteLLM bridge), with operational scripts in `scripts/`, container specs in `docker/`, Helm in `helm/`, and integration fixtures in `tests/`.
 
 ## Build, Test & Development Commands
-- `npm install` (root): installs all workspaces; requires Node 20+.
-- `npm run start:dev --workspace bytebot-agent`: watches the NestJS service and regenerates Prisma types.
-- `npm run dev --workspace bytebot-ui`: rebuilds shared packages then launches the UI proxy.
-- `./scripts/start-stack.sh` / `./scripts/stop-stack.sh`: orchestrate the full stack, OmniParser mode, and health checks.
-- `npm run build --workspace <workspace>`: produce ship-ready bundles before containerizing or pushing images.
+- `npm install`: bootstraps all workspaces (Node 20+).
+- `npm run start:dev --workspace bytebot-agent`: hot-reloads the NestJS service and regenerates Prisma types.
+- `npm run dev --workspace bytebot-ui`: rebuilds shared packages and launches the UI proxy for local inspection.
+- `./scripts/start-stack.sh` / `./scripts/stop-stack.sh`: bring up or tear down the full stack, including OmniParser and health checks.
+- `npm run build --workspace <workspace>`: produce optimized bundles ahead of container builds.
 
 ## Coding Style & Naming Conventions
-- TypeScript-first codebase; keep modules under `src/` with feature-oriented folder names.
-- Prettier enforces single quotes, trailing commas, and two-space indentation; run the `format` script per workspace before committing.
-- ESLint configs (`eslint.config.mjs`) extend the TS recommended set and warn on unhandled promises—`await` async helpers or document intentional detaches.
-- Use `camelCase` for functions/constants, `PascalCase` for classes and React components, kebab-case for UI filenames.
+- TypeScript-first, two-space indentation, single quotes, trailing commas—run the per-workspace `format` script before committing.
+- ESLint via `eslint.config.mjs` flags unawaited promises; `await` async helpers or comment intentional detaches.
+- Naming: `camelCase` for functions/constants, `PascalCase` for classes and React components, kebab-case for UI filenames and routes.
 
 ## Testing Guidelines
-- Backend: `npm test --workspace bytebot-agent` (Jest unit specs), `npm run test:e2e --workspace bytebot-agent`, and `npm run test:cov --workspace bytebot-agent` for coverage review.
-- Frontend: `npm test --workspace bytebot-ui` runs the TSX-based test runner; colocate `.test.ts(x)` files alongside components.
-- CV & ops: execute integration scripts in `tests/integration/` (Node or Bash). They assume the stack is live and emit diagnostics plus artifacts under `tests/images/`.
+- Backend: `npm test --workspace bytebot-agent` (Jest), `npm run test:e2e --workspace bytebot-agent`, and `npm run test:cov --workspace bytebot-agent` for coverage gates.
+- Frontend: `npm test --workspace bytebot-ui` exercises colocated `.test.ts(x)` files via the TSX runner.
+- CV & ops: run integration flows under `tests/integration/`; artifacts land in `tests/images/`.
 
 ## Commit & Pull Request Guidelines
-- Follow the existing Conventional Commit pattern (`feat:`, `fix:`, `chore:`) seen in history.
-- PRs should link issues, summarize behaviour changes, note test commands run, and attach screenshots or clips for UI or CV-visual tweaks.
-- Flag environment-sensitive work (GPU tuning, OmniParser toggles, env vars like `BYTEBOT_GRID_OVERLAY`) so reviewers can reproduce.
+- Use Conventional Commit prefixes (`feat:`, `fix:`, `chore:`) and keep scopes descriptive.
+- PRs should link issues, describe behavioural changes, list test commands executed, and attach screenshots or clips for UI/CV updates.
+- Flag environment-sensitive toggles (GPU tuning, OmniParser modes, env vars like `BYTEBOT_GRID_OVERLAY`) so reviewers can reproduce results.
 
-## Configuration & Security
-- Store secrets in `docker/.env`; keep real keys out of Git and document placeholders in `.env.defaults`.
-- Large CUDA/Holo assets are provisioned via `scripts/setup-holo.sh`—do not commit binaries. Capture any cache/bootstrap nuances in your PR description.
+## Security & Configuration Tips
+- Keep secrets in `docker/.env`; document placeholders in `.env.defaults`.
+- Treat large CUDA/Holo assets as external dependencies—fetch via `scripts/setup-holo.sh` rather than committing binaries.

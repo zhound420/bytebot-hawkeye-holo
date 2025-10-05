@@ -170,6 +170,34 @@ class Holo15:
 
         return None
 
+    def _parse_description(self, text: str) -> Optional[str]:
+        """
+        Parse description from model output.
+
+        Expected format: "Click(x, y) - <description>"
+
+        Args:
+            text: Model output text
+
+        Returns:
+            Description string or None if not found
+        """
+        # Look for description after coordinates
+        desc_patterns = [
+            r"Click\(\d+,\s*\d+\)\s*[-–—:]\s*(.+?)(?:\n|$)",  # Click(x, y) - description
+            r"\(\d+,\s*\d+\)\s*[-–—:]\s*(.+?)(?:\n|$)",      # (x, y) - description
+        ]
+
+        for pattern in desc_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                desc = match.group(1).strip()
+                # Clean up common suffixes
+                desc = re.sub(r'\.$', '', desc)  # Remove trailing period
+                return desc if desc else None
+
+        return None
+
     def localize_element(
         self,
         image: np.ndarray,
@@ -235,6 +263,9 @@ class Holo15:
                 print(f"  Warning: Failed to parse coordinates from output: {output_text}")
                 return None
 
+            # Parse description from output (e.g., "Click(x, y) - blue Settings button")
+            description = self._parse_description(output_text)
+
             # Scale coordinates back to original image size
             x, y = coords
             original_x = int(x * scale_factors['width_scale'])
@@ -263,16 +294,20 @@ class Holo15:
             if bbox_y + bbox_height > scale_factors['original_height']:
                 bbox_height = int(scale_factors['original_height']) - bbox_y
 
+            # Use parsed description if available, otherwise fall back to task instruction
+            element_caption = description if description else task_instruction
+
             detection = {
                 "bbox": [bbox_x, bbox_y, bbox_width, bbox_height],
                 "center": [original_x, original_y],
                 "confidence": settings.default_confidence,  # Holo doesn't provide confidence
                 "type": "clickable",
-                "caption": task_instruction,
+                "caption": element_caption,
                 "interactable": True,
-                "content": task_instruction,
+                "content": element_caption,
                 "source": "holo-localization",
                 "raw_output": output_text,
+                "task": task_instruction,  # Store original task for reference
             }
 
             return detection

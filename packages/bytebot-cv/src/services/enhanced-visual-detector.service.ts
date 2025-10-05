@@ -12,6 +12,7 @@ export interface EnhancedDetectionOptions {
   ocrRegion?: BoundingBox;
 
   // Holo 1.5-7B options
+  holoTask?: string; // Task-specific instruction for single-shot detection (e.g., "Find the VSCode icon")
   holoCaptions?: boolean; // Enable functional captions for detected elements
   holoConfidence?: number; // Minimum confidence threshold (0-1)
 
@@ -30,6 +31,8 @@ export interface EnhancedDetectionResult {
     holoTime?: number;
   };
   confidence: number;
+  somImage?: string; // Base64 encoded Set-of-Mark annotated image from Holo
+  elementMapping?: Map<number, string>; // Element number -> element ID mapping for SOM
 }
 
 @Injectable()
@@ -86,15 +89,15 @@ export class EnhancedVisualDetectorService {
 
     try {
       // Run Holo 1.5 and OCR in parallel since both are I/O-bound
-      const [holoResults, ocrResults] = await Promise.all([
+      const [holoResult, ocrResults] = await Promise.all([
         useHolo && this.holoClient
           ? (async () => {
               const holoStart = Date.now();
-              const results = await this.runHoloDetection(screenshotBuffer, options);
+              const result = await this.runHoloDetection(screenshotBuffer, options);
               performance.holoTime = Date.now() - holoStart;
-              return results;
+              return result;
             })()
-          : Promise.resolve([]),
+          : Promise.resolve({ elements: [], somImage: undefined, elementMapping: undefined }),
         useOCR
           ? (async () => {
               const ocrStart = Date.now();
@@ -105,11 +108,17 @@ export class EnhancedVisualDetectorService {
           : Promise.resolve([])
       ]);
 
-      if (holoResults.length > 0) {
+      // Extract SOM data from Holo result
+      let somImage: string | undefined;
+      let elementMapping: Map<number, string> | undefined;
+
+      if (holoResult.elements.length > 0) {
         methodsUsed.push('holo-1.5-7b');
-        allElements.push(...holoResults);
+        allElements.push(...holoResult.elements);
+        somImage = holoResult.somImage;
+        elementMapping = holoResult.elementMapping;
         // Log at INFO level so it's visible in logs (not just DEBUG)
-        this.logger.log(`🔍 Holo 1.5-7B localized ${holoResults.length} elements`);
+        this.logger.log(`🔍 Holo 1.5-7B localized ${holoResult.elements.length} elements`);
       }
 
       if (ocrResults.length > 0) {
@@ -137,7 +146,9 @@ export class EnhancedVisualDetectorService {
         elements: limitedElements,
         methodsUsed,
         performance,
-        confidence: avgConfidence
+        confidence: avgConfidence,
+        somImage, // Pass through SOM image if available
+        elementMapping, // Pass through element mapping if available
       };
 
     } catch (error) {
@@ -188,7 +199,10 @@ export class EnhancedVisualDetectorService {
 
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     // Track Holo 1.5-7B activity with device info
+    const detectionMode = options.holoTask ? 'single-shot' : 'multi-element';
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
+      mode: detectionMode,
+      task: options.holoTask || 'multi-element scan',
       captions: options.holoCaptions ?? true,
       confidence_threshold: options.holoConfidence ?? 0.3,
       device: 'loading',  // Will be updated after response
@@ -206,7 +220,10 @@ export class EnhancedVisualDetectorService {
       }
 
       // Call Holo 1.5-7B service with Buffer
+      // Use task-specific mode if task is provided, otherwise multi-element scan
       const response = await this.holoClient.parseScreenshot(screenshotBuffer, {
+        task: options.holoTask, // Task-specific instruction (e.g., "Find the VSCode icon")
+        detectMultiple: !options.holoTask, // Single-shot if task provided, multi-element otherwise
         includeCaptions: options.holoCaptions ?? true,
         minConfidence: options.holoConfidence ?? 0.3,
       });
@@ -244,11 +261,24 @@ export class EnhancedVisualDetectorService {
       }));
 
       this.cvActivity.stopMethod(activityId, true, elements);
-      return elements;
+
+      // Create element number -> ID mapping for SOM
+      const elementMapping = new Map<number, string>();
+      elements.forEach((element, index) => {
+        // Use element_id from response if available, otherwise use index
+        const elementNumber = response.elements[index]?.element_id ?? index;
+        elementMapping.set(elementNumber, element.id);
+      });
+
+      return {
+        elements,
+        somImage: response.som_image, // Base64 SOM-annotated image
+        elementMapping,
+      };
     } catch (error) {
       this.logger.warn('Holo 1.5-7B detection failed:', error.message);
       this.cvActivity.stopMethod(activityId, false, { error: error.message });
-      return [];
+      return { elements: [], somImage: undefined, elementMapping: undefined };
     }
   }
 
@@ -338,7 +368,9 @@ export class EnhancedVisualDetectorService {
       elements: [],
       methodsUsed: [],
       performance: { totalTime: 0 },
-      confidence: 0
+      confidence: 0,
+      somImage: undefined,
+      elementMapping: undefined,
     };
   }
 

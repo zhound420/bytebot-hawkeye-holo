@@ -31,8 +31,10 @@ import {
   MessageContentType,
   ToolResultContentBlock,
   TextContentBlock,
+  ImageContentBlock,
   ComputerDetectElementsToolUseBlock,
   ComputerClickElementToolUseBlock,
+  ComputerToolUseContentBlock,
   Coordinates,
 } from '@bytebot/shared';
 import {
@@ -180,6 +182,15 @@ export class AgentProcessor {
 
   // Store last enhanced detection result for telemetry
   private lastEnhancedResult: any = null;
+
+  // SOM (Set-of-Mark) state: maps screenshot hash to SOM data
+  private readonly somCache = new Map<string, {
+    somImage: string; // Base64 encoded SOM-annotated image
+    elementMapping: Map<number, string>; // element_number -> element_id
+    elementDescriptions: Map<number, string>; // element_number -> description (for semantic matching)
+    timestamp: number;
+  }>();
+  private readonly SOM_CACHE_TTL_MS = 30000; // 30 seconds - persist across multiple interactions
 
   constructor(
     private readonly tasksService: TasksService,
@@ -1043,7 +1054,10 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           }
 
           const result = await handleComputerToolUse(block, this.logger);
-          generatedToolResults.push(result);
+
+          // Inject SOM (Set-of-Mark) annotated image if available
+          const somResult = await this.injectSomImageIfAvailable(result, block);
+          generatedToolResults.push(somResult);
 
           if (
             isScreenshotToolUseBlock(block) ||
@@ -1392,6 +1406,43 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         elements = cachedElements;
         this.logger.debug(`Using cached detection results (${elements.length} elements)`);
       } else {
+        // NEW: Try semantic cache matching for task-specific queries
+        // If we have SOM data with descriptions, try to match the query against cached descriptions
+        if (params.description && !params.includeAll) {
+          const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+          const somData = this.somCache.get(screenshotHash);
+
+          if (somData && Date.now() - somData.timestamp < this.SOM_CACHE_TTL_MS) {
+            // We have cached SOM data - try semantic matching
+            let bestMatch: { elementId: string; score: number; description: string } | null = null;
+
+            for (const [elementNumber, elementId] of somData.elementMapping) {
+              const description = somData.elementDescriptions.get(elementNumber);
+              if (description) {
+                const score = scoreSemanticMatch(params.description, description);
+                if (!bestMatch || score > bestMatch.score) {
+                  bestMatch = { elementId, score, description };
+                }
+              }
+            }
+
+            // If we found a good match (>60%), use cached elements
+            if (bestMatch && bestMatch.score > 0.6) {
+              // Get from screenshot cache (should exist since SOM is cached)
+              const maybeElements = this.getScreenshotCacheEntry(screenshotBuffer);
+              if (maybeElements) {
+                elements = maybeElements;
+                this.logger.log(
+                  `🎯 Semantic cache hit: "${params.description}" matched "${bestMatch.description}" (${Math.round(bestMatch.score * 100)}% similarity)`
+                );
+                // Continue to response formatting
+              }
+            }
+          }
+        }
+
+        // If semantic matching didn't succeed, run full detection
+        if (!elements) {
         // Cache miss - run full detection pipeline
         const searchRegion = params.region
           ? this.normalizeRegion(params.region)
@@ -1409,6 +1460,8 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           screenshot,
           null, // No template for general detection
           {
+            // Use task-specific detection when searching for a specific element
+            holoTask: params.description && !params.includeAll ? params.description : undefined,
             // Let enhanced-visual-detector handle method selection automatically
             // OmniParser defaults to enabled when service is available
             confidenceThreshold: 0.5,
@@ -1422,8 +1475,34 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         // Store enhanced result for telemetry
         this.lastEnhancedResult = enhancedResult;
 
+        // Store SOM data if available
+        if (enhancedResult.somImage && enhancedResult.elementMapping) {
+          const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+
+          // Build element descriptions map for semantic matching
+          const elementDescriptions = new Map<number, string>();
+          for (const [elementNumber, elementId] of enhancedResult.elementMapping) {
+            // Find the element by ID
+            const element = elements.find(el => el.id === elementId);
+            if (element) {
+              // Use text, description, or type as description
+              const description = element.text || element.description || `${element.type} element`;
+              elementDescriptions.set(elementNumber, description);
+            }
+          }
+
+          this.somCache.set(screenshotHash, {
+            somImage: enhancedResult.somImage,
+            elementMapping: enhancedResult.elementMapping,
+            elementDescriptions,
+            timestamp: Date.now(),
+          });
+          this.logger.debug(`📍 Stored SOM data for screenshot (${enhancedResult.elementMapping.size} elements with descriptions)`);
+        }
+
         // Cache the results for future requests
         this.setScreenshotCacheEntry(screenshotBuffer, elements);
+        } // Close if (!elements) block from semantic matching
       }
       this.cacheDetectedElements(elements);
 
@@ -1671,8 +1750,37 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
   private async runComputerClickElement(
     params: ComputerClickElementInput,
   ): Promise<ClickElementResponse> {
+    // Handle SOM element number references (e.g., "element 5", "5", "number 3")
+    // Declare outside try block so it's accessible in catch
+    let elementId = params.element_id;
+
     try {
-      const element = this.getElementFromCache(params.element_id);
+      const somNumberMatch = elementId.match(/(?:element|number|box)?\s*(\d+)/i);
+
+      if (somNumberMatch) {
+        const elementNumber = parseInt(somNumberMatch[1], 10);
+
+        // Find the most recent SOM cache entry with this element number
+        let foundMapping: string | undefined;
+        let newestTimestamp = 0;
+
+        for (const [, somData] of this.somCache) {
+          if (somData.timestamp > newestTimestamp && somData.elementMapping.has(elementNumber)) {
+            foundMapping = somData.elementMapping.get(elementNumber);
+            newestTimestamp = somData.timestamp;
+          }
+        }
+
+        if (foundMapping) {
+          this.logger.log(`📍 SOM element reference detected: "${params.element_id}" → element ID "${foundMapping}"`);
+          elementId = foundMapping;
+        } else if (!isNaN(elementNumber) && elementNumber >= 0) {
+          // Element number provided but no mapping found
+          this.logger.warn(`📍 SOM element number ${elementNumber} not found in cache. Using element_id as-is.`);
+        }
+      }
+
+      const element = this.getElementFromCache(elementId);
 
       if (!element) {
         if (params.fallback_coordinates) {
@@ -1687,7 +1795,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             // Record fallback click (element not cached)
             const fallbackClickEntry: ClickHistoryEntry = {
               timestamp: new Date(),
-              elementId: params.element_id,
+              elementId,
               coordinates: params.fallback_coordinates,
               success: true,
               detectionMethod: 'fallback_coordinates',
@@ -1696,7 +1804,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
             return {
               success: true,
-              element_id: params.element_id,
+              element_id: elementId,
               coordinates_used: params.fallback_coordinates,
               detection_method: 'fallback_coordinates',
             };
@@ -1705,7 +1813,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           // Record failed fallback click
           const failedFallbackEntry: ClickHistoryEntry = {
             timestamp: new Date(),
-            elementId: params.element_id,
+            elementId,
             coordinates: params.fallback_coordinates,
             success: false,
             detectionMethod: 'fallback_coordinates',
@@ -1714,15 +1822,15 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
           return {
             success: false,
-            element_id: params.element_id,
-            error: `Element with ID ${params.element_id} not found; fallback coordinates failed`,
+            element_id: elementId,
+            error: `Element with ID ${elementId} not found; fallback coordinates failed`,
             coordinates_used: params.fallback_coordinates,
             detection_method: 'fallback_coordinates',
           };
         }
 
         throw new Error(
-          `Element with ID ${params.element_id} not found. Run computer_detect_elements first.`,
+          `Element with ID ${elementId} not found. Run computer_detect_elements first.`,
         );
       }
 
@@ -1739,12 +1847,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       if (result.success) {
         // Reinforce cache entry on successful click
-        this.reinforceCacheEntry(params.element_id);
+        this.reinforceCacheEntry(elementId);
 
         // Record click for telemetry
         const clickEntry: ClickHistoryEntry = {
           timestamp: new Date(),
-          elementId: params.element_id,
+          elementId,
           coordinates: clickTarget.coordinates,
           success: true,
           detectionMethod: element.metadata.detectionMethod || 'unknown',
@@ -1753,7 +1861,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
         return {
           success: true,
-          element_id: params.element_id,
+          element_id: elementId,
           coordinates_used: clickTarget.coordinates,
           detection_method: element.metadata.detectionMethod,
           confidence: element.confidence,
@@ -1771,12 +1879,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
         if (fallbackResult.success) {
           // Still reinforce even if fallback worked (element was detected, just coords were slightly off)
-          this.reinforceCacheEntry(params.element_id);
+          this.reinforceCacheEntry(elementId);
 
           // Record fallback click success for telemetry
           const fallbackClickEntry: ClickHistoryEntry = {
             timestamp: new Date(),
-            elementId: params.element_id,
+            elementId,
             coordinates: params.fallback_coordinates,
             success: true,
             detectionMethod: `${element.metadata.detectionMethod}_fallback`,
@@ -1785,7 +1893,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
           return {
             success: true,
-            element_id: params.element_id,
+            element_id: elementId,
             coordinates_used: params.fallback_coordinates,
             detection_method: `${element.metadata.detectionMethod}_fallback`,
             confidence: element.confidence,
@@ -1795,12 +1903,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       }
 
       // Downgrade cache entry on failed click
-      this.downgradeCacheEntry(params.element_id);
+      this.downgradeCacheEntry(elementId);
 
       // Record failed click for telemetry
       const failedClickEntry: ClickHistoryEntry = {
         timestamp: new Date(),
-        elementId: params.element_id,
+        elementId,
         coordinates: clickTarget.coordinates,
         success: false,
         detectionMethod: element.metadata.detectionMethod || 'unknown',
@@ -1809,8 +1917,8 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       return {
         success: false,
-        element_id: params.element_id,
-        error: `Failed to click element ${params.element_id}`,
+        element_id: elementId,
+        error: `Failed to click element ${elementId}`,
         detection_method: element.metadata.detectionMethod,
         confidence: element.confidence,
         element_text: element.text ?? null,
@@ -1820,13 +1928,79 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       this.logger.error(`Element click failed: ${message}`);
 
       // Downgrade cache entry on error (if element was tracked)
-      this.downgradeCacheEntry(params.element_id);
+      // Note: elementId may not be defined if error occurred during parsing
+      const idForCache = typeof elementId !== 'undefined' ? elementId : params.element_id;
+      this.downgradeCacheEntry(idForCache);
 
       return {
         success: false,
-        element_id: params.element_id,
+        element_id: idForCache,
         error: message,
       };
+    }
+  }
+
+  /**
+   * Inject SOM (Set-of-Mark) annotated image into screenshot tool results
+   * Replaces regular screenshots with numbered, annotated versions when available
+   */
+  private async injectSomImageIfAvailable(
+    result: ToolResultContentBlock,
+    block: ComputerToolUseContentBlock,
+  ): Promise<ToolResultContentBlock> {
+    // Only inject SOM for screenshot tools
+    if (
+      !isScreenshotToolUseBlock(block) &&
+      !isScreenshotRegionToolUseBlock(block) &&
+      !isScreenshotCustomRegionToolUseBlock(block)
+    ) {
+      return result;
+    }
+
+    try {
+      // Get the most recent screenshot (just captured)
+      const screenshotBuffer = await this.captureScreenshotBuffer();
+      const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+
+      // Check if we have SOM data for this screenshot
+      const somData = this.somCache.get(screenshotHash);
+      if (!somData || Date.now() - somData.timestamp > this.SOM_CACHE_TTL_MS) {
+        // No SOM data or expired - return original result
+        return result;
+      }
+
+      // Found SOM data! Replace the image content with SOM-annotated version
+      this.logger.log(`📍 Injecting SOM-annotated screenshot (${somData.elementMapping.size} numbered elements)`);
+
+      const newContent: MessageContentBlock[] = result.content.map((contentBlock): MessageContentBlock => {
+        if (contentBlock.type === MessageContentType.Image) {
+          // Replace with SOM image - explicitly type as ImageContentBlock
+          const somImageBlock: ImageContentBlock = {
+            type: MessageContentType.Image,
+            source: {
+              type: 'base64' as const,
+              media_type: 'image/png' as const,
+              data: somData.somImage,
+            },
+          };
+          return somImageBlock;
+        }
+        return contentBlock;
+      });
+
+      // Add a text block explaining the numbered elements
+      newContent.push({
+        type: MessageContentType.Text,
+        text: `\n**Note:** This screenshot shows ${somData.elementMapping.size} UI elements marked with red numbered boxes. You can reference these elements by their numbers (e.g., "element 5") for precise clicking.`,
+      });
+
+      return {
+        ...result,
+        content: newContent,
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to inject SOM image: ${error.message}`);
+      return result;
     }
   }
 

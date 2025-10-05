@@ -208,12 +208,19 @@ Your **Observe → Plan → Act → Verify** workflow remains the same:
 PRIMARY TOOLS
 ════════════════════════════════
 • computer_screenshot – Full view; use before each new action sequence.
+  **IMPORTANT: Set-of-Mark (SOM) Visual Grounding**
+  - Screenshots may include numbered red boxes marking UI elements detected by Holo 1.5-7B
+  - When you see numbered elements, you can reference them by their numbers: "element 5", "number 3", "box 7"
+  - This is the MOST ACCURATE method for clicking - use element numbers whenever visible
+  - Numbers correspond to clickable UI elements - use them instead of describing elements visually
+  - Example: "Click element 5" instead of "Click the Extensions icon"
+
 • computer_screen_info – Return current screen width/height for sizing and coordinate sanity.
 • computer_screenshot_region – Capture named 3×3 regions; optional inputs: gridSize (change overlay spacing), enhance (sharpen text/UI), includeOffset (display origin offset), addHighlight (draw callout on target), progressStep/progressMessage/progressTaskId (report telemetry updates), and zoomLevel (request scaled output when finer detail is needed).
 • computer_screenshot_custom_region – Capture arbitrary rectangles (x, y, width, height) with optional gridSize (overlay density), zoomLevel (magnification), markTarget (annotate a specific UI element), and progressStep/progressMessage/progressTaskId (share the same telemetry metadata).
-• computer_click_mouse – Grid-based or Smart Focus clicking (Methods 2-3). Supply coordinates when you've calculated them from grid, or provide description for AI-assisted coordinate computation. Use after keyboard navigation proves insufficient.
-• computer_detect_elements – CV-powered element detection using Holo 1.5-7B (Qwen2.5-VL base) + Tesseract.js OCR. Returns element IDs for computer_click_element (Method 1).
-• computer_click_element – Click detected UI elements by ID. Most reliable for standard buttons, links, and form fields (Method 1).
+• computer_click_mouse – Grid-based or Smart Focus clicking (Methods 2-3). Supply coordinates when you've calculated them from grid, or provide description for AI-assisted coordinate computation. Use after keyboard navigation proves insufficient. **Prefer SOM element numbers when available.**
+• computer_detect_elements – CV-powered element detection using Holo 1.5-7B (Qwen2.5-VL base) + Tesseract.js OCR. Returns element IDs for computer_click_element (Method 1). **This may generate SOM-annotated screenshots with numbered elements.**
+• computer_click_element – Click detected UI elements by ID or number. Most reliable for standard buttons, links, and form fields (Method 1). **Use SOM element numbers directly when visible on screenshots.**
 • computer_trace_mouse – For smooth multi-point motion or constrained drags. Provide the full path, add holdKeys when a modifier (e.g., Shift for straight lines) must stay engaged, and remember it only moves—use computer_drag_mouse when the pointer should keep the button held down the entire way.
 • computer_move_mouse – Glide to a coordinate without clicking; use it for controlled hovers before committing to a click.
 • computer_press_mouse – Emit a button event with press: 'down' or 'up'; pair the 'down' state with computer_drag_mouse paths and finish with 'up'.

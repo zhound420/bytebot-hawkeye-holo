@@ -39,6 +39,8 @@ export interface HoloResponse {
  * Parse request options
  */
 export interface HoloOptions {
+  task?: string; // Specific task instruction for single-element mode (e.g., "Find the VSCode icon")
+  detectMultiple?: boolean; // Detect multiple elements using various prompts (default: true)
   includeCaptions?: boolean;
   includeSom?: boolean;
   includeOcr?: boolean; // Deprecated - maintained for compatibility
@@ -183,7 +185,35 @@ export class HoloClientService {
   }
 
   /**
-   * Parse screenshot using Holo 1.5-7B
+   * Localize a specific UI element using task-specific instruction (single-shot mode)
+   * This is faster and more accurate than multi-element scanning when you know what you're looking for.
+   *
+   * @param imageBuffer - Screenshot image buffer
+   * @param task - Specific task instruction (e.g., "Find the VSCode icon on the desktop")
+   * @param includeSom - Generate Set-of-Mark annotated image (default: true)
+   * @returns Detection result with 1 element (or 0 if not found)
+   *
+   * @example
+   * const result = await holoClient.localizeElement(screenshot, "Find the Extensions icon in the activity bar");
+   * if (result.count > 0) {
+   *   const element = result.elements[0];
+   *   console.log(`Found at: (${element.center[0]}, ${element.center[1]})`);
+   * }
+   */
+  async localizeElement(
+    imageBuffer: Buffer,
+    task: string,
+    includeSom: boolean = true,
+  ): Promise<HoloResponse> {
+    return this.parseScreenshot(imageBuffer, {
+      task,
+      detectMultiple: false, // Single-shot mode
+      includeSom,
+    });
+  }
+
+  /**
+   * Parse screenshot using Holo 1.5-7B (multi-element or single-element mode)
    *
    * @param imageBuffer - Screenshot image buffer
    * @param options - Parsing options
@@ -206,6 +236,8 @@ export class HoloClientService {
       // Create request body (using official OmniParser demo defaults)
       const requestBody = {
         image: base64Image,
+        task: options.task ?? null, // Task-specific instruction for single-element mode
+        detect_multiple: options.detectMultiple ?? true, // Multi-element scan mode
         include_captions: options.includeCaptions ?? true,
         include_som: options.includeSom ?? true,
         include_ocr: options.includeOcr ?? true,

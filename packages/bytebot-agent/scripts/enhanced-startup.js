@@ -112,7 +112,8 @@ async function checkDatabaseState() {
   try {
     // Check if database has any tables
     const sqlFile = path.join(__dirname, 'check-tables.sql');
-    const result = execSync(`npx prisma db execute --file "${sqlFile}"`, {
+    const prismaSchema = path.join(__dirname, '..', 'prisma', 'schema.prisma');
+    const result = execSync(`npx prisma db execute --schema "${prismaSchema}" --file "${sqlFile}"`, {
       stdio: 'pipe',
       timeout: 10000
     });
@@ -128,11 +129,11 @@ async function checkDatabaseState() {
       });
       migrationStatus = 'up-to-date';
     } catch (statusError) {
-      if (statusError.message.includes('never been migrated')) {
+      if (statusError?.message?.includes?.('never been migrated')) {
         migrationStatus = 'never-migrated';
-      } else if (statusError.message.includes('following migrations have not yet been applied')) {
+      } else if (statusError?.message?.includes?.('following migrations have not yet been applied')) {
         migrationStatus = 'pending-migrations';
-      } else if (statusError.message.includes('P3005')) {
+      } else if (statusError?.message?.includes?.('P3005')) {
         migrationStatus = 'schema-drift';
       } else {
         migrationStatus = 'error';
@@ -190,9 +191,15 @@ async function baselineMigrations() {
       timeout: 60000
     });
     
-    console.log('[startup] ✓ Migration baseline established successfully');
+    // Ensure schema is in place even if migrations were only baselined
+    execSync('npx prisma db push --accept-data-loss --skip-generate', {
+      stdio: 'inherit',
+      timeout: 60000
+    });
+
+    console.log('[startup] ✓ Migration baseline established and schema synchronized');
     return true;
-    
+
   } catch (error) {
     console.log(`[startup] ⚠ Migration baseline failed: ${error.message}`);
     return false;
@@ -364,16 +371,30 @@ async function runPrismaOperations() {
       }
     }
     
-    // Final verification attempt
-    console.log('[startup] 2g. Final verification of schema consistency...');
-    if (await verifySchema()) {
-      console.log('[startup] ✓ Schema verification passed, continuing startup');
+    console.log('[startup] 2g. Ensuring database schema is migrated...');
+    try {
+      execSync('npx prisma migrate deploy', {
+        stdio: 'inherit',
+        timeout: 60000
+      });
+      console.log('[startup] ✓ Migrations applied as final safeguard');
       return;
+    } catch (deployErr) {
+      console.log(`[startup] ⚠ Final migration deploy failed: ${deployErr.message}`);
+      console.log('[startup] 2g.1. Attempting schema synchronization fallback...');
+      if (await syncSchema()) {
+        return;
+      }
+
+      console.log('[startup] 2g.2. Attempting schema verification...');
+      if (await verifySchema()) {
+        console.log('[startup] ✓ Schema verification passed, continuing startup');
+        return;
+      }
+
+      throw new Error('All migration strategies failed. Database may need manual intervention.');
     }
-    
-    // If we get here, all strategies failed
-    throw new Error('All migration strategies failed. Database may need manual intervention.');
-    
+
   } catch (error) {
     console.error('[startup] ✗ Prisma operations failed:');
     console.error(`[startup] Error: ${error.message}`);

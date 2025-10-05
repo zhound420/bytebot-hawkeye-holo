@@ -208,12 +208,12 @@ class Holo15:
                 model = Llama.from_pretrained(**llama_kwargs)
 
             actual_gpu_layers = getattr(model, "n_gpu_layers", None)
-            if self.device == "cuda" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
+            if self.device == "cuda" and (actual_gpu_layers is None or actual_gpu_layers == 0):
                 print(
                     "⚠ CUDA device requested but llama-cpp-python reports no GPU layers. "
                     "Reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
                 )
-            if self.device == "mps" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
+            if self.device == "mps" and (actual_gpu_layers is None or actual_gpu_layers == 0):
                 print(
                     "⚠ MPS device requested but Metal acceleration is disabled. "
                     "Reinstall with CMAKE_ARGS=\"-DLLAMA_METAL=on\" pip install --force-reinstall llama-cpp-python"

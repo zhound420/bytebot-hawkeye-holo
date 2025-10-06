@@ -662,6 +662,7 @@ Focus on words that would appear in UI element descriptions. Be specific and use
           }
         ],
         model.name,
+        model, // Pass model metadata for vision capability detection
         false, // No streaming needed
         this.abortController?.signal
       );
@@ -1091,6 +1092,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         systemPrompt,
         messages,
         model.name,
+        model, // Pass model metadata for vision capability detection
         true,
         this.abortController.signal,
       );
@@ -1148,6 +1150,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
               },
             ],
             model.name,
+            model, // Pass model metadata for vision capability detection
             false,
             this.abortController.signal,
           );

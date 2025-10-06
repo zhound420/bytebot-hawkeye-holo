@@ -23,7 +23,10 @@ import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
+import { supportsVision } from '../agent/vision-capability.util';
+import { transformImagesForNonVision } from '../agent/message-transformer.util';
 import { ModelCapabilityService } from '../models/model-capability.service';
 import { ModelTier } from '../models/model-capabilities.config';
 
@@ -89,23 +92,29 @@ export class ProxyService implements BytebotAgentService {
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string,
+    modelName: string,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
   ): Promise<BytebotAgentResponse> {
+    // Transform images to text for non-vision models
+    const processedMessages = supportsVision(modelMetadata)
+      ? messages  // Keep images for vision models
+      : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
+
     // Convert messages to Chat Completion format
     const chatMessages = this.formatMessagesForChatCompletion(
       systemPrompt,
-      messages,
+      processedMessages,
     );
     try {
       // Get model tier for tier-aware parameters
-      const tier = this.modelCapabilityService.getModelTier(model);
-      const reasoningEffort = this.getReasoningEffort(model, tier);
+      const tier = this.modelCapabilityService.getModelTier(modelName);
+      const reasoningEffort = this.getReasoningEffort(modelName, tier);
 
       // Prepare the Chat Completion request
       const completionRequest: OpenAI.Chat.ChatCompletionCreateParams = {
-        model,
+        model: modelName,
         messages: chatMessages,
         max_tokens: 8192,
         ...(useTools && { tools: proxyTools }),

@@ -14,7 +14,8 @@ export interface BytebotAgentService {
   generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string,
+    modelName: string,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean,
     signal?: AbortSignal,
   ): Promise<BytebotAgentResponse>;

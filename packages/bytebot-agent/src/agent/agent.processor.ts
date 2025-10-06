@@ -14,6 +14,9 @@ import {
   TaskType,
 } from '@prisma/client';
 import { AnthropicService } from '../anthropic/anthropic.service';
+import { ModelCapabilityService } from '../models/model-capability.service';
+import { ModelTier } from '../models/model-capabilities.config';
+import { LoopDetectionService } from './loop-detection.service';
 import {
   isComputerToolUseContentBlock,
   isSetTaskStatusToolUseBlock,
@@ -63,13 +66,14 @@ import {
   BytebotAgentResponse,
 } from './agent.types';
 import {
-  buildAgentSystemPrompt,
   SCREENSHOT_OBSERVATION_GUARD_MESSAGE,
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';
+import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
+import { isSOMEnabled } from './som-enhancement.util';
 
 type CachedDetectedElement = {
   element: DetectedElement;
@@ -201,8 +205,20 @@ export class AgentProcessor {
     attemptCount: number;
     lastAttemptTime: number;
   }[]>();
-  private readonly CV_REQUIRED_ATTEMPTS = 2; // Minimum CV attempts before allowing fallback
+  private readonly CV_REQUIRED_ATTEMPTS = 2; // Default minimum CV attempts (overridden by model tier)
   private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
+  private currentModelName: string | null = null; // Track current model for tier-based enforcement
+
+  // Pattern recognition: Track successful query patterns for learning feedback
+  private readonly successfulQueryPatterns = new Map<string, {
+    query: string;
+    applicationContext?: string;
+    successCount: number;
+    totalAttempts: number;
+    avgConfidence: number;
+    lastSuccess: number;
+  }>();
+  private readonly MAX_PATTERN_HISTORY = 50; // Limit pattern storage
 
   constructor(
     private readonly tasksService: TasksService,
@@ -216,6 +232,8 @@ export class AgentProcessor {
     private readonly elementDetector: ElementDetectorService,
     private readonly enhancedVisualDetector: EnhancedVisualDetectorService,
     private readonly cvActivityService: CVActivityIndicatorService,
+    private readonly modelCapabilityService: ModelCapabilityService,
+    private readonly loopDetectionService: LoopDetectionService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -418,15 +436,43 @@ export class AgentProcessor {
   }
 
   /**
+   * Get model-specific CV enforcement rules
+   */
+  private getModelEnforcementRules() {
+    if (!this.currentModelName) {
+      // Default rules if no model set (Tier 2 balanced)
+      return {
+        maxCvAttempts: this.CV_REQUIRED_ATTEMPTS,
+        allowClickViolations: false,
+        enforceCvFirst: true,
+        loopDetectionThreshold: 3,
+        tier: 'tier2' as const,
+      };
+    }
+
+    const rules = this.modelCapabilityService.getEnforcementRules(this.currentModelName);
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+
+    return {
+      ...rules,
+      tier,
+    };
+  }
+
+  /**
    * Check CV-first enforcement: Reject computer_click_mouse for UI elements if CV not tried
+   * Uses model-specific enforcement rules based on model tier
    */
   private checkCVFirstEnforcement(
     screenshotBuffer: Buffer,
     description: string | undefined,
     hasCoordinates: boolean,
   ): { allowed: boolean; reason?: string } {
-    // Skip enforcement if disabled
-    if (!this.enforceCVFirst) {
+    // Get model-specific enforcement rules
+    const rules = this.getModelEnforcementRules();
+
+    // Skip enforcement if disabled globally or for this model tier
+    if (!this.enforceCVFirst || !rules.enforceCvFirst) {
       return { allowed: true };
     }
 
@@ -440,20 +486,27 @@ export class AgentProcessor {
       return { allowed: true };
     }
 
-    // Check CV attempt count
+    // Check CV attempt count against model-specific max attempts
     const attemptCount = this.getCVAttemptCount(screenshotBuffer, description || '');
 
-    if (attemptCount < this.CV_REQUIRED_ATTEMPTS) {
-      const reason = `⚠️ CV-First Workflow Required
+    if (attemptCount < rules.maxCvAttempts) {
+      // Tier-specific messaging
+      const tierNote = rules.tier === 'tier3'
+        ? '\n\n💡 TIP: Your current model has weaker CV capabilities. Consider using keyboard shortcuts or alternative approaches if CV detection repeatedly fails.'
+        : rules.tier === 'tier1'
+        ? '\n\n✅ Your model has strong CV capabilities. CV detection should work reliably for most UI elements.'
+        : '';
 
-You MUST try computer_detect_elements at least ${this.CV_REQUIRED_ATTEMPTS} times before using computer_click_mouse for UI elements.
+      const reason = `⚠️ CV-First Workflow Required (Model Tier: ${rules.tier.toUpperCase()})
 
-Current CV attempts for "${description}": ${attemptCount}/${this.CV_REQUIRED_ATTEMPTS}
+You MUST try computer_detect_elements at least ${rules.maxCvAttempts} times before using computer_click_mouse for UI elements.
+
+Current CV attempts for "${description}": ${attemptCount}/${rules.maxCvAttempts}
 
 REQUIRED WORKFLOW:
 1. computer_detect_elements({ description: "${description}" })
 2. If no match: computer_detect_elements({ description: "", includeAll: true })
-3. If still fails (after ${this.CV_REQUIRED_ATTEMPTS} attempts): computer_click_mouse({ description: "${description}" })
+3. If still fails (after ${rules.maxCvAttempts} attempts): computer_click_mouse({ description: "${description}" })${tierNote}
 
 WHY: Holo 1.5-7B provides 89% click accuracy vs 60% for Smart Focus.
 This is MANDATORY for reliable desktop automation.`;
@@ -609,6 +662,7 @@ Focus on words that would appear in UI element descriptions. Be specific and use
           }
         ],
         model.name,
+        model, // Pass model metadata for vision capability detection
         false, // No streaming needed
         this.abortController?.signal
       );
@@ -914,10 +968,14 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         );
         this.isProcessing = false;
         this.currentTaskId = null;
+        this.currentModelName = null; // Clear model name on task completion
 
         // Clean up stuck detection state
         this.taskIterationCount.delete(taskId);
         this.taskLastActionTime.delete(taskId);
+
+        // Clean up loop detection history
+        this.loopDetectionService.clearTaskHistory(taskId);
 
         return;
       }
@@ -994,6 +1052,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       );
 
       const model = task.model as unknown as BytebotAgentModel;
+
+      // Set current model name for tier-based CV enforcement
+      this.currentModelName = model.name;
+      const modelTier = this.modelCapabilityService.getModelTier(model.name);
+      this.logger.debug(`Processing task with model: ${model.name} (tier: ${modelTier})`);
+
       let agentResponse: BytebotAgentResponse;
 
       const service = this.services[model.provider];
@@ -1014,10 +1078,21 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       const currentTime = now.toLocaleTimeString();
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+      // Get model-specific enforcement rules for tier-based prompts
+      const rules = this.getModelEnforcementRules();
+      const systemPrompt = buildTierSpecificAgentSystemPrompt(
+        rules.tier,
+        rules.maxCvAttempts,
+        currentDate,
+        currentTime,
+        timeZone,
+      );
+
       agentResponse = await service.generateMessage(
-        buildAgentSystemPrompt(currentDate, currentTime, timeZone),
+        systemPrompt,
         messages,
         model.name,
+        model, // Pass model metadata for vision capability detection
         true,
         this.abortController.signal,
       );
@@ -1075,6 +1150,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
               },
             ],
             model.name,
+            model, // Pass model metadata for vision capability detection
             false,
             this.abortController.signal,
           );
@@ -1155,6 +1231,15 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         }
 
         if (isComputerToolUseContentBlock(block)) {
+          // Record tool call for loop detection
+          if (this.currentTaskId) {
+            this.loopDetectionService.recordToolCall(
+              this.currentTaskId,
+              block.name,
+              block.input as Record<string, any>,
+            );
+          }
+
           if (isComputerDetectElementsToolUseBlock(block)) {
             const result = await this.handleComputerDetectElements(block);
             generatedToolResults.push(result);
@@ -1277,6 +1362,39 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         });
       }
 
+      // Check for loop detection after tool execution
+      if (this.currentTaskId) {
+        const rules = this.getModelEnforcementRules();
+        const loopResult = this.loopDetectionService.detectLoop(
+          this.currentTaskId,
+          rules.loopDetectionThreshold,
+        );
+
+        if (loopResult.isLoop) {
+          // Inject loop warning into conversation
+          this.logger.warn(
+            `Loop detected in task ${this.currentTaskId}: ${loopResult.pattern} (${loopResult.loopCount} times)`,
+          );
+
+          const loopWarning: TextContentBlock = {
+            type: MessageContentType.Text,
+            text: `⚠️ **LOOP DETECTED** ⚠️
+
+You've called the same tool with the same parameters ${loopResult.loopCount} times in a row.
+
+${loopResult.suggestion}
+
+**IMPORTANT:** Stop repeating the same action. Try a different approach or request help if you're stuck.`,
+          };
+
+          await this.messagesService.create({
+            content: [loopWarning],
+            role: Role.USER,
+            taskId: this.currentTaskId,
+          });
+        }
+      }
+
       // Surface internal CV activity (OmniParser detections) that aren't from explicit tool calls
       await this.surfaceInternalCVActivity(taskId, messageContentBlocks);
 
@@ -1355,6 +1473,341 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
     }
   }
 
+  /**
+   * Generate tier-aware recommendations for detection failures
+   * Adapts guidance based on model capabilities:
+   * - Tier1: CV-first with detailed semantic matching
+   * - Tier2: Balanced CV + keyboard fallback
+   * - Tier3: Keyboard-first with simple CV backup
+   */
+  private getTierAwareRecommendations(
+    description: string,
+    topCandidateId?: string,
+    hasSemanticScores: boolean = false,
+  ): string {
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+
+    // Tier 3: Keyboard-first with simple CV backup
+    if (tier === 'tier3') {
+      return `**RECOMMENDED ACTIONS (optimized for your model tier):**
+
+⌨️ **1. FASTEST & MOST RELIABLE: Use keyboard shortcuts instead**
+   Try these common approaches:
+   • VS Code Extensions: Ctrl+Shift+X → Type name → Tab to Install → Enter
+   • Firefox Address: Ctrl+L → Type URL → Enter
+   • General Navigation: Ctrl+F to find, Tab/Shift+Tab to navigate, Enter to activate
+
+🎯 **2. If keyboard doesn't work: Pick closest CV match**
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+🔍 **3. Or try simpler query:**
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+💡 **TIP:** Your model works best with keyboard shortcuts (simpler reasoning required than CV orchestration)`;
+    }
+
+    // Tier 2: Balanced CV + keyboard fallback
+    if (tier === 'tier2') {
+      return `**RECOMMENDED ACTIONS:**
+
+1. Pick closest match${hasSemanticScores ? ' (good semantic match found)' : ''}:
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+2. Try broader query:
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+3. See all elements:
+   computer_detect_elements({ description: "", includeAll: true })
+
+⌨️ **4. If CV keeps failing: Try keyboard shortcuts**
+   • Ctrl+P, Ctrl+Shift+P: Command palettes
+   • Ctrl+F: Find/search
+   • Tab/Shift+Tab: Navigate between elements
+
+💡 **TIP:** Your model has good CV capabilities, but keyboard shortcuts are a reliable fallback for tricky elements`;
+    }
+
+    // Tier 1: CV-first with detailed semantic matching
+    return `**RECOMMENDED ACTIONS:**
+
+1. Pick closest match${hasSemanticScores ? ` (${Math.round((topCandidateId ? 0.75 : 0.5) * 100)}% semantic match)` : ''}:
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+2. Try broader query with visual synonyms:
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+3. Use discovery mode for full element inventory:
+   computer_detect_elements({ description: "", includeAll: true })
+
+💡 **TIP:** Your model excels at semantic matching. Try rephrasing queries to focus on visual appearance (e.g., "gear icon" instead of "settings button")`;
+  }
+
+  /**
+   * Generate detailed diagnostics and recovery actions for click failures
+   * Helps models understand why clicks fail and what to try next
+   */
+  private getClickFailureDiagnostics(
+    elementId: string,
+    failureType: 'not_found' | 'verification_failed' | 'exception',
+    element?: DetectedElement,
+    coordinates?: Coordinates,
+    errorMessage?: string,
+  ): string {
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+    let diagnosis = '';
+
+    // Explain what happened
+    if (failureType === 'not_found') {
+      diagnosis = `❌ **Click failed:** Element "${elementId}" not found in cache\n\n`;
+      diagnosis += `**Diagnosis:**\n`;
+      diagnosis += `- Element may have expired from cache (30-60s lifetime)\n`;
+      diagnosis += `- Detection may have failed or timed out\n`;
+      diagnosis += `- Element ID may be incorrect\n\n`;
+    } else if (failureType === 'verification_failed') {
+      diagnosis = `❌ **Click failed:** Element "${element?.text || element?.description || elementId}" at (${coordinates?.x}, ${coordinates?.y})\n\n`;
+      diagnosis += `**Diagnosis:**\n`;
+      diagnosis += `- Target coordinates: (${coordinates?.x}, ${coordinates?.y})\n`;
+      diagnosis += `- Click verification: UI unchanged after click\n`;
+      diagnosis += `- Possible causes:\n`;
+      diagnosis += `  1. Element moved between detection and click\n`;
+      diagnosis += `  2. Coordinates slightly off (element edge vs center)\n`;
+      diagnosis += `  3. Wrong element selected (${element?.text || 'similar element'} exists, but wrong instance)\n`;
+      diagnosis += `  4. Element not interactive or disabled\n\n`;
+    } else {
+      diagnosis = `❌ **Click failed:** ${errorMessage || 'Unknown error'}\n\n`;
+    }
+
+    // Add tier-specific recovery actions
+    if (tier === 'tier3') {
+      diagnosis += `**RECOVERY ACTIONS (optimized for your model tier):**\n\n`;
+      diagnosis += `⌨️ **1. RECOMMENDED: Use keyboard shortcuts instead**\n`;
+      diagnosis += `   • More reliable than clicking for your model tier\n`;
+      diagnosis += `   • VS Code: Ctrl+Shift+X (extensions), Ctrl+P (quick open), Ctrl+F (find)\n`;
+      diagnosis += `   • General: Tab to navigate, Enter to activate, Ctrl+F to search\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `🔍 **2. Re-detect with simpler query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "install" })\n\n`;
+        diagnosis += `🎯 **3. Use discovery mode to see all elements:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "", includeAll: true })`;
+      } else {
+        diagnosis += `🔍 **2. Re-detect and try again:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'install button'}" })\n`;
+        diagnosis += `   → Fresh detection with current UI state\n\n`;
+        diagnosis += `🎯 **3. If CV keeps failing: Grid-based click as last resort**\n`;
+        diagnosis += `   Take new screenshot and manually identify coordinates`;
+      }
+    } else if (tier === 'tier2') {
+      diagnosis += `**RECOVERY ACTIONS:**\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `1. **Re-detect element:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "your query here" })\n\n`;
+        diagnosis += `2. **Try broader query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "button" })\n\n`;
+        diagnosis += `3. **Use keyboard shortcut:**\n`;
+        diagnosis += `   • Ctrl+Shift+P: Command palette\n`;
+        diagnosis += `   • Ctrl+F: Find/search\n`;
+        diagnosis += `   • Tab navigation + Enter`;
+      } else {
+        diagnosis += `1. **Re-detect with more specific query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'target'} for [specific context]" })\n`;
+        diagnosis += `   → Example: "install button for cline" instead of just "install"\n\n`;
+        diagnosis += `2. **Try keyboard shortcut:**\n`;
+        diagnosis += `   Often more reliable for tricky elements\n\n`;
+        diagnosis += `3. **Use fallback coordinates:**\n`;
+        diagnosis += `   computer_click_element({ element_id: "new_id", fallback_coordinates: { x: ${(coordinates?.x || 0) + 10}, y: ${(coordinates?.y || 0) + 5} } })`;
+      }
+    } else {
+      // Tier 1: Detailed CV guidance
+      diagnosis += `**RECOVERY ACTIONS:**\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `1. **Re-detect with refined query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "specific visual description" })\n`;
+        diagnosis += `   → Use visual terms: colors, shapes, icons, text labels\n\n`;
+        diagnosis += `2. **Use discovery mode for context:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "", includeAll: true })\n`;
+        diagnosis += `   → See full UI element inventory\n\n`;
+        diagnosis += `3. **Try semantic variations:**\n`;
+        diagnosis += `   → "install button" vs "add button" vs "plus icon"`;
+      } else {
+        diagnosis += `1. **Re-detect with enhanced specificity:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'target'} [add context: location/color/size]" })\n`;
+        diagnosis += `   → Example: "install button in extensions panel"\n`;
+        diagnosis += `   → Fresh coordinates reflect current UI state\n\n`;
+        diagnosis += `2. **Analyze element positioning:**\n`;
+        diagnosis += `   - Detection coordinates: (${element?.coordinates.x}, ${element?.coordinates.y})\n`;
+        diagnosis += `   - Detection confidence: ${element?.confidence ? (element.confidence * 100).toFixed(0) : 'unknown'}%\n`;
+        diagnosis += `   - Element type: ${element?.type || 'unknown'}\n`;
+        diagnosis += `   → Low confidence or wrong type may indicate incorrect match\n\n`;
+        diagnosis += `3. **Use fallback with offset:**\n`;
+        diagnosis += `   computer_click_element({ element_id: "new_id", fallback_coordinates: { x: ${(coordinates?.x || 0) + 10}, y: ${(coordinates?.y || 0) + 5} } })`;
+      }
+    }
+
+    return diagnosis;
+  }
+
+  /**
+   * Explain what keywords matched/missed in semantic matching
+   * Helps models understand why certain elements scored higher
+   */
+  private getSemanticMatchExplanation(
+    query: string,
+    elementDescription: string,
+    score: number
+  ): string {
+    if (score === 0) {
+      return '';
+    }
+
+    // Normalize and split into keywords
+    const normalize = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 2); // Filter out very short words
+
+    const queryKeywords = normalize(query);
+    const elementKeywords = normalize(elementDescription);
+
+    // Find matched and missed keywords
+    const matched: string[] = [];
+    const missed: string[] = [];
+
+    for (const keyword of queryKeywords) {
+      // Check for exact match or partial match (for synonyms/variations)
+      const hasMatch = elementKeywords.some(
+        ek => ek.includes(keyword) || keyword.includes(ek)
+      );
+      if (hasMatch) {
+        matched.push(`"${keyword}"`);
+      } else {
+        missed.push(`"${keyword}"`);
+      }
+    }
+
+    if (matched.length === 0 && missed.length === 0) {
+      return '';
+    }
+
+    let explanation = '';
+    if (matched.length > 0) {
+      explanation += `   ✅ Matched: ${matched.join(', ')}`;
+    }
+    if (missed.length > 0) {
+      if (explanation) explanation += '\n';
+      explanation += `   ❌ Missed: ${missed.join(', ')}`;
+
+      // Add context hint for why this might still be a good match
+      if (score > 0.5 && missed.length > 0) {
+        explanation += ` (element has related/synonymous terms)`;
+      }
+    }
+
+    return explanation;
+  }
+
+  /**
+   * Record successful query pattern for future learning suggestions
+   */
+  private recordSuccessfulPattern(
+    query: string,
+    confidence: number,
+    applicationContext?: string
+  ): void {
+    const key = `${applicationContext || 'global'}:${query.toLowerCase().trim()}`;
+
+    const existing = this.successfulQueryPatterns.get(key);
+    if (existing) {
+      existing.successCount++;
+      existing.totalAttempts++;
+      existing.avgConfidence =
+        (existing.avgConfidence * (existing.successCount - 1) + confidence) /
+        existing.successCount;
+      existing.lastSuccess = Date.now();
+    } else {
+      // Limit pattern storage
+      if (this.successfulQueryPatterns.size >= this.MAX_PATTERN_HISTORY) {
+        // Remove oldest pattern
+        let oldestKey: string | null = null;
+        let oldestTime = Date.now();
+        for (const [k, v] of this.successfulQueryPatterns) {
+          if (v.lastSuccess < oldestTime) {
+            oldestTime = v.lastSuccess;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey) {
+          this.successfulQueryPatterns.delete(oldestKey);
+        }
+      }
+
+      this.successfulQueryPatterns.set(key, {
+        query,
+        applicationContext,
+        successCount: 1,
+        totalAttempts: 1,
+        avgConfidence: confidence,
+        lastSuccess: Date.now(),
+      });
+    }
+  }
+
+  /**
+   * Get pattern-based suggestions for failed queries
+   * Returns tips based on successful patterns in similar contexts
+   */
+  private getPatternSuggestions(
+    failedQuery: string,
+    applicationContext?: string
+  ): string {
+    // Find similar successful patterns
+    const contextPatterns: Array<{
+      pattern: any;
+      similarity: number;
+    }> = [];
+
+    for (const [key, pattern] of this.successfulQueryPatterns) {
+      // Filter by application context if available
+      if (applicationContext && pattern.applicationContext === applicationContext) {
+        // Calculate simple keyword similarity
+        const failedKeywords = failedQuery.toLowerCase().split(/\s+/);
+        const patternKeywords = pattern.query.toLowerCase().split(/\s+/);
+        const commonKeywords = failedKeywords.filter(k =>
+          patternKeywords.some(pk => pk.includes(k) || k.includes(pk))
+        );
+        const similarity = commonKeywords.length / Math.max(failedKeywords.length, 1);
+
+        if (similarity > 0.3 && pattern.successCount > 2) {
+          contextPatterns.push({ pattern, similarity });
+        }
+      }
+    }
+
+    if (contextPatterns.length === 0) {
+      return '';
+    }
+
+    // Sort by success rate and similarity
+    contextPatterns.sort((a, b) => {
+      const scoreA =
+        (a.pattern.successCount / a.pattern.totalAttempts) * a.similarity;
+      const scoreB =
+        (b.pattern.successCount / b.pattern.totalAttempts) * b.similarity;
+      return scoreB - scoreA;
+    });
+
+    const topPattern = contextPatterns[0].pattern;
+    const successRate = Math.round(
+      (topPattern.successCount / topPattern.totalAttempts) * 100
+    );
+
+    return `\n\n💡 **TIP:** Similar queries like "${topPattern.query}" have ${successRate}% success rate in ${topPattern.applicationContext || 'this context'}. Try simpler, UI-focused descriptions.`;
+  }
+
   private async handleComputerDetectElements(
     block: ComputerDetectElementsToolUseBlock,
   ): Promise<ToolResultContentBlock> {
@@ -1412,16 +1865,46 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           const matchStr = hasSemanticScores
             ? `match: ${Math.round(candidate.score * 100)}%`
             : `no semantic match`;
-          return `${i + 1}. [${el.id}] "${desc}" (${matchStr}, conf: ${el.confidence.toFixed(2)}) at ${location}`;
+
+          // Add match explanation for top 3 candidates with semantic scores
+          let matchLine = `${i + 1}. [${el.id}] "${desc}" (${matchStr}, conf: ${el.confidence.toFixed(2)}) at ${location}`;
+
+          if (hasSemanticScores && i < 3 && candidate.score > 0) {
+            const explanation = this.getSemanticMatchExplanation(
+              description,
+              desc,
+              candidate.score
+            );
+            if (explanation) {
+              matchLine += '\n' + explanation;
+            }
+          }
+
+          return matchLine;
         }).join('\n');
 
         if (hasSemanticScores) {
-          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Pick closest match: computer_click_element({ element_id: "${detection.topCandidates[0].element.id}" })\n2. Try broader query: computer_detect_elements({ description: "button" })\n3. See all: computer_detect_elements({ description: "", includeAll: true })`;
+          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n`;
+          text += this.getTierAwareRecommendations(
+            description,
+            detection.topCandidates[0].element.id,
+            true
+          );
+          // Add pattern-based suggestions if available
+          text += this.getPatternSuggestions(description, this.currentApplicationContext);
         } else {
-          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Use computer_detect_elements({ description: "", includeAll: true }) to see full list with descriptions\n2. Look at these element descriptions and pick one by ID\n3. Try a different query based on what you see`;
+          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n`;
+          text += this.getTierAwareRecommendations(
+            description,
+            detection.topCandidates[0]?.element.id,
+            false
+          );
+          // Add pattern-based suggestions if available
+          text += this.getPatternSuggestions(description, this.currentApplicationContext);
         }
       } else if (detection.totalDetected > 0) {
-        text += `\n\n**RECOMMENDED ACTION:** Use computer_detect_elements({ description: "", includeAll: true }) to see all ${detection.totalDetected} elements with descriptions`;
+        text += `\n\n${detection.totalDetected} elements detected but no candidates to show.\n\n`;
+        text += this.getTierAwareRecommendations(description, undefined, false);
       }
 
       content.push({
@@ -1488,6 +1971,27 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       type: MessageContentType.Text,
       text: `\n<details>\n<summary>📊 Raw Detection Data (JSON)</summary>\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n</details>`,
     });
+
+    // Add SOM-annotated screenshot if available
+    const screenshotBuffer = await this.captureScreenshotBuffer();
+    const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+    const somData = this.somCache.get(screenshotHash);
+
+    if (somData && Date.now() - somData.timestamp < this.SOM_CACHE_TTL_MS && isSOMEnabled()) {
+      this.logger.log(`📍 Including SOM-annotated screenshot with ${somData.elementMapping.size} numbered elements`);
+      content.push({
+        type: MessageContentType.Image,
+        source: {
+          data: somData.somImage,
+          media_type: 'image/png',
+          type: 'base64',
+        },
+      });
+      content.push({
+        type: MessageContentType.Text,
+        text: `\n**📍 Visual Guide:** The screenshot above shows detected elements with numbered boxes [0], [1], [2], etc. You can reference elements by their visible number for easier identification.`,
+      });
+    }
 
     return {
       type: MessageContentType.ToolResult,
@@ -1883,6 +2387,18 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       };
       this.cvActivityService.recordDetection(detectionEntry);
 
+      // Record successful query pattern for learning feedback
+      if (matchingElements.length > 0 && params.description) {
+        const avgConfidence =
+          matchingElements.reduce((sum, el) => sum + el.confidence, 0) /
+          matchingElements.length;
+        this.recordSuccessfulPattern(
+          params.description,
+          avgConfidence,
+          this.currentApplicationContext
+        );
+      }
+
       return {
         elements: matchingElements,
         count: matchingElements.length,
@@ -1979,7 +2495,13 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           return {
             success: false,
             element_id: elementId,
-            error: `Element with ID ${elementId} not found; fallback coordinates failed`,
+            error: this.getClickFailureDiagnostics(
+              elementId,
+              'not_found',
+              undefined,
+              params.fallback_coordinates,
+              'Fallback coordinates failed'
+            ),
             coordinates_used: params.fallback_coordinates,
             detection_method: 'fallback_coordinates',
           };
@@ -2074,7 +2596,13 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       return {
         success: false,
         element_id: elementId,
-        error: `Failed to click element ${elementId}`,
+        error: this.getClickFailureDiagnostics(
+          elementId,
+          'verification_failed',
+          element,
+          clickTarget.coordinates,
+          'Click verification failed - UI unchanged'
+        ),
         detection_method: element.metadata.detectionMethod,
         confidence: element.confidence,
         element_text: element.text ?? null,
@@ -2091,7 +2619,13 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       return {
         success: false,
         element_id: idForCache,
-        error: message,
+        error: this.getClickFailureDiagnostics(
+          idForCache,
+          'exception',
+          undefined,
+          undefined,
+          message
+        ),
       };
     }
   }

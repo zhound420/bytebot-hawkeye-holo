@@ -13,6 +13,9 @@ import { AgentAnalyticsService } from './agent.analytics';
 import { ProxyModule } from 'src/proxy/proxy.module';
 import { BytebotCvModule, EnhancedCVModule } from '@bytebot/cv';
 import { LearningMetricsController } from './learning-metrics.controller';
+import { ModelCapabilityModule } from '../models/model-capability.module';
+import { LoopDetectionService } from './loop-detection.service';
+import { FallbackStrategyService } from './fallback-strategy.service';
 
 @Module({
   imports: [
@@ -26,6 +29,7 @@ import { LearningMetricsController } from './learning-metrics.controller';
     ProxyModule,
     BytebotCvModule,
     EnhancedCVModule, // @Global() module - NestJS will reuse the same instance
+    ModelCapabilityModule, // Tier-based model CV enforcement
   ],
   controllers: [LearningMetricsController],
   providers: [
@@ -33,6 +37,8 @@ import { LearningMetricsController } from './learning-metrics.controller';
     AgentScheduler,
     InputCaptureService,
     AgentAnalyticsService,
+    LoopDetectionService, // Detect repetitive tool call patterns
+    FallbackStrategyService, // Intelligent fallback recommendations
   ],
   exports: [AgentProcessor],
 })

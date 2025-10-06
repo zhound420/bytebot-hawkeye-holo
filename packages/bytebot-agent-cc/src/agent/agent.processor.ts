@@ -36,10 +36,9 @@ import {
   BytebotAgentService,
   BytebotAgentResponse,
 } from './agent.types';
-import {
-  buildAgentSystemPrompt,
-  SUMMARIZATION_SYSTEM_PROMPT,
-} from './agent.constants';
+import { SUMMARIZATION_SYSTEM_PROMPT } from './agent.constants';
+import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
+import { ModelCapabilityService } from '../models/model-capability.service';
 import { query } from '@anthropic-ai/claude-code';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -58,6 +57,7 @@ export class AgentProcessor {
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly modelCapabilityService: ModelCapabilityService,
   ) {
     this.logger.log('AgentProcessor initialized');
   }
@@ -186,6 +186,36 @@ export class AgentProcessor {
 
       this.logger.log(`Processing iteration for task ID: ${taskId}`);
 
+      // Get tier-specific system prompt based on model capabilities
+      const modelName = task.model?.name || 'claude-sonnet-4.5';
+      const tier = this.modelCapabilityService.getModelTier(modelName);
+      const rules = this.modelCapabilityService.getEnforcementRules(modelName);
+
+      const now = new Date();
+      const currentDate = now.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const currentTime = now.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+      const systemPrompt = buildTierSpecificAgentSystemPrompt(
+        tier,
+        rules.maxCvAttempts,
+        currentDate,
+        currentTime,
+        timeZone,
+      );
+
+      this.logger.debug(
+        `Using tier-specific prompt for model ${modelName} (tier: ${tier})`,
+      );
+
       // Refresh abort controller for this iteration to avoid accumulating
       // "abort" listeners on a single AbortSignal across iterations.
       this.abortController = new AbortController();
@@ -193,7 +223,7 @@ export class AgentProcessor {
         prompt: task.description,
         options: {
           abortController: this.abortController,
-          appendSystemPrompt: buildAgentSystemPrompt(),
+          appendSystemPrompt: systemPrompt,
           permissionMode: 'bypassPermissions',
           mcpServers: {
             desktop: {

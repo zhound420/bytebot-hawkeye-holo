@@ -23,14 +23,22 @@ import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
+import { supportsVision } from '../agent/vision-capability.util';
+import { transformImagesForNonVision } from '../agent/message-transformer.util';
+import { ModelCapabilityService } from '../models/model-capability.service';
+import { ModelTier } from '../models/model-capabilities.config';
 
 @Injectable()
 export class ProxyService implements BytebotAgentService {
   private readonly openai: OpenAI;
   private readonly logger = new Logger(ProxyService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly modelCapabilityService: ModelCapabilityService,
+  ) {
     const proxyUrl = this.configService.get<string>('BYTEBOT_LLM_PROXY_URL');
 
     if (!proxyUrl) {
@@ -47,28 +55,70 @@ export class ProxyService implements BytebotAgentService {
   }
 
   /**
+   * Get tier-aware reasoning effort for models that support it
+   * @param model - Model name
+   * @param tier - Model tier (tier1/tier2/tier3)
+   * @returns reasoning_effort value or undefined if not supported
+   */
+  private getReasoningEffort(
+    model: string,
+    tier: ModelTier,
+  ): 'low' | 'medium' | 'high' | undefined {
+    // Only o1, o3, o4 models support reasoning_effort
+    const normalizedModel = model.toLowerCase();
+    const supportsReasoningEffort =
+      normalizedModel.includes('o1') ||
+      normalizedModel.includes('o3') ||
+      normalizedModel.includes('o4');
+
+    if (!supportsReasoningEffort) {
+      return undefined;
+    }
+
+    // Map tier to reasoning effort
+    switch (tier) {
+      case 'tier1':
+        return 'high'; // Best quality for flagship models
+      case 'tier2':
+        return 'medium'; // Balanced for mid-tier models
+      case 'tier3':
+        return 'low'; // Fast for budget models
+    }
+  }
+
+  /**
    * Main method to generate messages using the Chat Completions API
    */
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string,
+    modelName: string,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
   ): Promise<BytebotAgentResponse> {
+    // Transform images to text for non-vision models
+    const processedMessages = supportsVision(modelMetadata)
+      ? messages  // Keep images for vision models
+      : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
+
     // Convert messages to Chat Completion format
     const chatMessages = this.formatMessagesForChatCompletion(
       systemPrompt,
-      messages,
+      processedMessages,
     );
     try {
+      // Get model tier for tier-aware parameters
+      const tier = this.modelCapabilityService.getModelTier(modelName);
+      const reasoningEffort = this.getReasoningEffort(modelName, tier);
+
       // Prepare the Chat Completion request
       const completionRequest: OpenAI.Chat.ChatCompletionCreateParams = {
-        model,
+        model: modelName,
         messages: chatMessages,
         max_tokens: 8192,
         ...(useTools && { tools: proxyTools }),
-        reasoning_effort: 'high',
+        ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
       };
 
       // Make the API call

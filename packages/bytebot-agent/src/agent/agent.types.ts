@@ -14,7 +14,8 @@ export interface BytebotAgentService {
   generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string,
+    modelName: string,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean,
     signal?: AbortSignal,
   ): Promise<BytebotAgentResponse>;
@@ -26,6 +27,13 @@ export interface BytebotAgentModel {
   title: string;
   contextWindow?: number;
   supportsVision?: boolean;
+  // LiteLLM metadata for advanced routing and tier detection
+  inputCost?: number; // Cost per input token (e.g., 0.000002 for tier1)
+  outputCost?: number; // Cost per output token
+  maxTokens?: number; // Maximum output tokens
+  latency?: number; // Average latency in ms
+  supportsPromptCaching?: boolean; // Anthropic cache_control support
+  supportsReasoningEffort?: boolean; // OpenAI o3/o1 reasoning_effort support
 }
 
 export class BytebotAgentInterrupt extends Error {

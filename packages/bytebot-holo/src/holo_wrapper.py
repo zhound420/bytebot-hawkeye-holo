@@ -599,6 +599,96 @@ class Holo15:
 
         return detections
 
+    @staticmethod
+    def _is_prompt_instruction(text: str) -> bool:
+        """
+        Check if text looks like a prompt instruction rather than a UI element label.
+
+        Prompt instructions typically:
+        - Start with imperative verbs (Identify, Highlight, List, Surface, Find...)
+        - Contain instructions like "such as", "that appear", "elements like"
+        - Are longer/more verbose than typical UI labels
+        """
+        if not text or len(text) < 5:
+            return False
+
+        normalized = text.lower().strip()
+
+        # Check for prompt instruction keywords
+        prompt_starters = [
+            "identify ",
+            "highlight ",
+            "list ",
+            "surface ",
+            "find ",
+            "locate ",
+            "detect ",
+            "show ",
+            "point out ",
+            "mark ",
+        ]
+
+        prompt_phrases = [
+            "such as",
+            "that appear",
+            "elements like",
+            "controls such",
+            "the user might",
+            "interactive elements",
+            "ui elements",
+        ]
+
+        # Check if it starts with a prompt verb
+        for starter in prompt_starters:
+            if normalized.startswith(starter):
+                return True
+
+        # Check if it contains prompt instruction phrases
+        for phrase in prompt_phrases:
+            if phrase in normalized:
+                return True
+
+        # Check if it's suspiciously long (typical UI labels are short)
+        # Most real UI labels are < 50 chars
+        if len(text) > 60:
+            # But allow if it looks like actual content (has specific nouns)
+            specific_ui_terms = ["button", "icon", "menu", "tab", "input", "field", "link", "window"]
+            has_specific_term = any(term in normalized for term in specific_ui_terms)
+            if not has_specific_term:
+                return True
+
+        return False
+
+    @staticmethod
+    def _clean_element_label(label: str, fallback: str = "UI element") -> str:
+        """
+        Clean and validate element label, replacing prompt instructions with fallback.
+
+        Args:
+            label: Raw label from model output
+            fallback: Fallback label to use if input is invalid
+
+        Returns:
+            Cleaned label or fallback if label is a prompt instruction
+        """
+        if not label or not label.strip():
+            return fallback
+
+        cleaned = label.strip()
+
+        # Filter out prompt instructions
+        if Holo15._is_prompt_instruction(cleaned):
+            print(f"⚠ Filtered prompt instruction from label: \"{cleaned[:60]}...\"")
+            return fallback
+
+        # Additional cleanup: remove common prefixes from actual labels
+        prefixes_to_remove = ["a ", "an ", "the "]
+        for prefix in prefixes_to_remove:
+            if cleaned.lower().startswith(prefix) and len(cleaned) > len(prefix) + 5:
+                cleaned = cleaned[len(prefix):]
+
+        return cleaned
+
     def _element_dict_to_detection(
         self,
         element: Dict[str, Any],
@@ -638,12 +728,15 @@ class Holo15:
             if normalized_y is not None:
                 y = normalized_y * scale_factors['resized_height']
 
-        label = (
+        raw_label = (
             element.get("label")
             or element.get("description")
             or element.get("name")
             or fallback_label
         )
+
+        # Clean and validate label, filtering out prompt instructions
+        label = self._clean_element_label(raw_label, fallback_label)
 
         element_type = element.get("type") or element.get("category") or "clickable"
         confidence = self._coerce_float(element.get("confidence"))

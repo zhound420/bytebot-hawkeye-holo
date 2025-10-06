@@ -117,12 +117,31 @@ export class TasksController {
             model.litellm_params?.supports_vision === true ||
             model.litellm_params?.supports_image_input === true;
 
+          // Extract LiteLLM metadata for advanced routing
+          const modelName = model.litellm_params.model.toLowerCase();
+          const inputCost = model.model_info?.input_cost_per_token;
+          const outputCost = model.model_info?.output_cost_per_token;
+          const maxTokens = model.model_info?.max_output_tokens || model.max_tokens;
+          const contextWindow = model.model_info?.max_input_tokens || 128000;
+
+          // Detect advanced feature support
+          const supportsPromptCaching = modelName.includes('anthropic/claude');
+          const supportsReasoningEffort =
+            modelName.includes('o1') ||
+            modelName.includes('o3') ||
+            modelName.includes('o4');
+
           return {
             provider: 'proxy',
             name: model.litellm_params.model,
             title: model.model_name,
-            contextWindow: 128000,
+            contextWindow,
             supportsVision,
+            inputCost,
+            outputCost,
+            maxTokens,
+            supportsPromptCaching,
+            supportsReasoningEffort,
           } satisfies BytebotAgentModel;
         });
 

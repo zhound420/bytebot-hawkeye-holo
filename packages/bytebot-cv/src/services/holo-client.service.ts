@@ -82,6 +82,8 @@ export interface HoloGPUInfo {
   memory_utilization_percent: number | null;
 }
 
+export type ModelTier = 'tier1' | 'tier2' | 'tier3';
+
 /**
  * Client service for Holo 1.5-7B REST API
  *
@@ -97,6 +99,8 @@ export class HoloClientService {
   private isHealthy: boolean = false;
   private modelStatus: HoloModelStatus | null = null;
   private gpuInfo: HoloGPUInfo | null = null;
+  private gpuPollInterval: NodeJS.Timeout | null = null;
+  private isPollingGpu: boolean = false; // Debounce flag for GPU polling
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
@@ -109,9 +113,106 @@ export class HoloClientService {
       this.checkHealth().catch((err) => {
         this.logger.warn(`Holo 1.5-7B health check failed: ${err.message}`);
       });
+
+      // Start real-time GPU polling (every 3 seconds)
+      this.startGPUPolling();
     } else {
       this.logger.log('Holo 1.5-7B integration disabled');
     }
+  }
+
+  /**
+   * Start periodic GPU info polling for real-time VRAM updates
+   */
+  private startGPUPolling(): void {
+    // Poll every 3 seconds for real-time GPU metrics
+    this.gpuPollInterval = setInterval(async () => {
+      // Debounce: Skip if previous poll still running
+      if (this.isPollingGpu) {
+        this.logger.debug('Skipping GPU poll - previous request still in progress');
+        return;
+      }
+
+      if (this.isHealthy) {
+        this.isPollingGpu = true;
+        await this.fetchGPUInfo().catch((err) => {
+          this.logger.debug(`GPU polling failed: ${err.message}`);
+        }).finally(() => {
+          this.isPollingGpu = false;
+        });
+      }
+    }, 3000);
+
+    this.logger.debug('GPU polling started (3s interval)');
+  }
+
+  /**
+   * Stop GPU polling (cleanup)
+   */
+  stopGPUPolling(): void {
+    if (this.gpuPollInterval) {
+      clearInterval(this.gpuPollInterval);
+      this.gpuPollInterval = null;
+      this.logger.debug('GPU polling stopped');
+    }
+  }
+
+  /**
+   * Select optimal performance profile based on model tier and task complexity
+   *
+   * Different model tiers have different reasoning capabilities - profiles should match:
+   * - Tier 1 (strong reasoning): Can handle more elements, benefits from 'balanced' profile
+   * - Tier 2 (medium reasoning): Good balance with 'speed' profile
+   * - Tier 3 (limited reasoning): Simpler is better, 'speed' with reduced max_detections
+   *
+   * @param tier - Model tier (tier1/tier2/tier3)
+   * @param taskComplexity - Optional task complexity hint ('simple'/'complex')
+   * @returns Recommended performance profile
+   */
+  selectProfileForTier(
+    tier: ModelTier,
+    taskComplexity?: 'simple' | 'complex',
+  ): 'speed' | 'balanced' | 'quality' {
+    // Tier 1: Strong reasoning models can handle more elements
+    if (tier === 'tier1') {
+      if (taskComplexity === 'complex') {
+        return 'quality'; // Max coverage for complex tasks
+      }
+      return 'balanced'; // Good balance of speed + coverage
+    }
+
+    // Tier 2: Medium reasoning works well with speed profile
+    if (tier === 'tier2') {
+      if (taskComplexity === 'complex') {
+        return 'balanced'; // More coverage for complex tasks
+      }
+      return 'speed'; // Fast for simple tasks
+    }
+
+    // Tier 3: Limited reasoning - keep it simple and fast
+    return 'speed'; // Always speed for tier3 (simpler is better)
+  }
+
+  /**
+   * Get tier-specific max detections limit
+   *
+   * Tier 3 models benefit from fewer elements (less overwhelming)
+   *
+   * @param tier - Model tier
+   * @param profile - Performance profile
+   * @returns Recommended max detections
+   */
+  getTierMaxDetections(
+    tier: ModelTier,
+    profile: 'speed' | 'balanced' | 'quality',
+  ): number {
+    // Tier 3: Reduce element count for simpler reasoning
+    if (tier === 'tier3') {
+      return profile === 'speed' ? 10 : profile === 'balanced' ? 15 : 20;
+    }
+
+    // Tier 1 & 2: Use standard profile limits
+    return profile === 'speed' ? 20 : profile === 'balanced' ? 40 : 100;
   }
 
   /**
@@ -213,7 +314,9 @@ export class HoloClientService {
   async fetchGPUInfo(): Promise<HoloGPUInfo | null> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      // Use shorter timeout for GPU info (should be fast)
+      const gpuTimeout = 5000; // 5 seconds - GPU info should respond quickly
+      const timeoutId = setTimeout(() => controller.abort(), gpuTimeout);
 
       const response = await fetch(`${this.baseUrl}/gpu-info`, {
         signal: controller.signal,
@@ -266,6 +369,45 @@ export class HoloClientService {
       detectMultiple: false, // Single-shot mode
       includeSom,
     });
+  }
+
+  /**
+   * Parse screenshot with tier-aware optimizations
+   *
+   * Automatically selects optimal performance profile and max detections
+   * based on model tier capabilities.
+   *
+   * @param imageBuffer - Screenshot image buffer
+   * @param tier - Model tier (tier1/tier2/tier3)
+   * @param options - Parsing options (profile/maxDetections overridden if not specified)
+   * @returns Detected UI elements with tier-optimized settings
+   */
+  async parseScreenshotWithTier(
+    imageBuffer: Buffer,
+    tier: ModelTier,
+    options: HoloOptions = {},
+  ): Promise<HoloResponse> {
+    // Auto-select profile if not explicitly provided
+    if (!options.performanceProfile) {
+      options.performanceProfile = this.selectProfileForTier(tier);
+      this.logger.debug(
+        `Tier-aware profile selection: ${tier} → ${options.performanceProfile}`,
+      );
+    }
+
+    // Auto-select max detections if not explicitly provided
+    if (!options.maxDetections) {
+      options.maxDetections = this.getTierMaxDetections(
+        tier,
+        options.performanceProfile,
+      );
+      this.logger.debug(
+        `Tier-aware max detections: ${tier} → ${options.maxDetections}`,
+      );
+    }
+
+    // Use standard parseScreenshot with tier-optimized options
+    return this.parseScreenshot(imageBuffer, options);
   }
 
   /**

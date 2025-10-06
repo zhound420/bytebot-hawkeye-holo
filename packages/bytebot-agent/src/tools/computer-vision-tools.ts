@@ -84,7 +84,7 @@ export const computerClickElementSchema = z.object({
   element_id: z
     .string()
     .min(1)
-    .describe('ID of the element from detect_elements response'),
+    .describe('ID of the element from detect_elements response. Can also be a visible element number from the SOM-annotated screenshot (e.g., "5", "element 3", "box 12").'),
   fallback_coordinates: z
     .object({
       x: z.number(),
@@ -103,7 +103,7 @@ const computerClickElementJsonSchema = {
   properties: {
     element_id: {
       type: 'string' as const,
-      description: 'ID of the element from detect_elements response',
+      description: 'ID of the element from detect_elements response. Can also be a visible element number from the SOM-annotated screenshot (e.g., "5", "element 3", "box 12").',
     },
     fallback_coordinates: {
       ...coordinateJsonSchema,

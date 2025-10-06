@@ -209,6 +209,7 @@ export class AgentProcessor {
   private readonly CV_REQUIRED_ATTEMPTS = 2; // Default minimum CV attempts (overridden by model tier)
   private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
   private currentModelName: string | null = null; // Track current model for tier-based enforcement
+  private currentModel: BytebotAgentModel | null = null; // Store full model for vision capability checks
 
   // Pattern recognition: Track successful query patterns for learning feedback
   private readonly successfulQueryPatterns = new Map<string, {
@@ -1056,6 +1057,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // Set current model name for tier-based CV enforcement
       this.currentModelName = model.name;
+      this.currentModel = model; // Store full model for vision capability checks
       const modelTier = this.modelCapabilityService.getModelTier(model.name);
       this.logger.debug(`Processing task with model: ${model.name} (tier: ${modelTier})`);
 
@@ -1300,9 +1302,13 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             isScreenshotRegionToolUseBlock(block) ||
             isScreenshotCustomRegionToolUseBlock(block)
           ) {
-            this.pendingScreenshotObservation = true;
-            mustClearObservationThisReply = true;
-            observationBlockedInReply = false;
+            // Only require observation for vision models
+            // Non-vision models receive text descriptions and can proceed immediately
+            if (this.currentModel && supportsVision(this.currentModel)) {
+              this.pendingScreenshotObservation = true;
+              mustClearObservationThisReply = true;
+              observationBlockedInReply = false;
+            }
 
             // Automatically enrich screenshots with OmniParser detection in the background
             // This runs async and doesn't block the iteration
@@ -3023,6 +3029,7 @@ ${loopResult.suggestion}
 
     this.isProcessing = false;
     this.currentTaskId = null;
+    this.currentModel = null; // Clear model reference
     this.pendingScreenshotObservation = false;
     this.elementCache.clear();
   }

@@ -38,9 +38,13 @@ def get_gpu_info() -> dict:
             memory_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
             memory_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
 
+            # Use MAX of allocated and reserved to show actual usage
+            # (reserved might be 0 before first inference, but allocated shows real usage)
+            memory_used = max(memory_allocated, memory_reserved)
+
             gpu_info["gpu_memory_total_mb"] = int(total_memory)
-            gpu_info["gpu_memory_used_mb"] = int(memory_reserved)  # Use reserved as "used"
-            gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_reserved)
+            gpu_info["gpu_memory_used_mb"] = int(memory_used)
+            gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_used)
 
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and settings.device == "mps":
             # Apple Silicon - MPS doesn't provide detailed memory info

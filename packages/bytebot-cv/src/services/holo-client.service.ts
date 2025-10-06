@@ -98,6 +98,7 @@ export class HoloClientService {
   private modelStatus: HoloModelStatus | null = null;
   private gpuInfo: HoloGPUInfo | null = null;
   private gpuPollInterval: NodeJS.Timeout | null = null;
+  private isPollingGpu: boolean = false; // Debounce flag for GPU polling
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
@@ -124,9 +125,18 @@ export class HoloClientService {
   private startGPUPolling(): void {
     // Poll every 3 seconds for real-time GPU metrics
     this.gpuPollInterval = setInterval(async () => {
+      // Debounce: Skip if previous poll still running
+      if (this.isPollingGpu) {
+        this.logger.debug('Skipping GPU poll - previous request still in progress');
+        return;
+      }
+
       if (this.isHealthy) {
+        this.isPollingGpu = true;
         await this.fetchGPUInfo().catch((err) => {
           this.logger.debug(`GPU polling failed: ${err.message}`);
+        }).finally(() => {
+          this.isPollingGpu = false;
         });
       }
     }, 3000);
@@ -244,7 +254,9 @@ export class HoloClientService {
   async fetchGPUInfo(): Promise<HoloGPUInfo | null> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      // Use shorter timeout for GPU info (should be fast)
+      const gpuTimeout = 5000; // 5 seconds - GPU info should respond quickly
+      const timeoutId = setTimeout(() => controller.abort(), gpuTimeout);
 
       const response = await fetch(`${this.baseUrl}/gpu-info`, {
         signal: controller.signal,

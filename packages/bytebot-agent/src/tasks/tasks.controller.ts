@@ -152,10 +152,9 @@ export class TasksController {
 
           // Detect advanced feature support
           const supportsPromptCaching = modelName.includes('anthropic/claude');
-          const supportsReasoningEffort =
-            modelName.includes('o1') ||
-            modelName.includes('o3') ||
-            modelName.includes('o4');
+          // Note: OpenAI's API rejects reasoning_effort for o-series models despite LiteLLM metadata claiming support
+          // Disabled until verified which models actually support it
+          const supportsReasoningEffort = false;
 
           return {
             provider: 'proxy',

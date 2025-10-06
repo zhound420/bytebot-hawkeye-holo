@@ -123,10 +123,6 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
-  - model_name: openrouter-grok-4-fast-free
-    litellm_params:
-      model: openrouter/x-ai/grok-4-fast:free
-      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: openrouter-gemini-2.5-flash
     litellm_params:
       model: openrouter/google/gemini-2.5-flash

@@ -25,6 +25,32 @@ model_list:
     litellm_params:
       model: openai/o3
       api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o3-mini
+    litellm_params:
+      model: openai/o3-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o1
+    litellm_params:
+      model: openai/o1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o1-mini
+    litellm_params:
+      model: openai/o1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o1-preview
+    litellm_params:
+      model: openai/o1-preview
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
   - model_name: gpt-4o-mini
     litellm_params:
       model: openai/gpt-4o-mini
@@ -116,6 +142,54 @@ model_list:
   - model_name: openrouter-glm-4.6
     litellm_params:
       model: openrouter/z-ai/glm-4.6
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-deepseek-r1
+    litellm_params:
+      model: openrouter/deepseek/deepseek-r1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-deepseek-r1-distill-qwen-32b
+    litellm_params:
+      model: openrouter/deepseek/deepseek-r1-distill-qwen-32b
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-deepseek-r1-distill-llama-70b
+    litellm_params:
+      model: openrouter/deepseek/deepseek-r1-distill-llama-70b
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-qwen-plus
+    litellm_params:
+      model: openrouter/qwen/qwen-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-qwen-turbo
+    litellm_params:
+      model: openrouter/qwen/qwen-turbo
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-qwen-max
+    litellm_params:
+      model: openrouter/qwen/qwen-max
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-claude-3-haiku
+    litellm_params:
+      model: openrouter/anthropic/claude-3-haiku
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-mistral-large
+    litellm_params:
+      model: openrouter/mistralai/mistral-large
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false

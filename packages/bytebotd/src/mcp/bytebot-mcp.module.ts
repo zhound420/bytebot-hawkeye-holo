@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { McpModule } from '@rekog/mcp-nest';
+import { EnhancedCVModule } from '@bytebot/cv';
 import { ComputerUseModule } from '../computer-use/computer-use.module';
 import { ComputerUseTools } from './computer-use.tools';
 
 @Module({
   imports: [
     ComputerUseModule,
+    EnhancedCVModule,
     McpModule.forRoot({
       name: 'bytebotd',
       version: '0.0.1',

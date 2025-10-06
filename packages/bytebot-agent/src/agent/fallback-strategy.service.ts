@@ -291,9 +291,9 @@ export class FallbackStrategyService {
 
     const normalizedPattern = pattern.toLowerCase();
 
-    for (const [key, shortcuts] of Object.entries(shortcuts)) {
+    for (const [key, keyShortcuts] of Object.entries(shortcuts)) {
       if (normalizedPattern.includes(key)) {
-        return shortcuts;
+        return keyShortcuts;
       }
     }
 

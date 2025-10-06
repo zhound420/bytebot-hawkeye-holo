@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { AnthropicService } from '../anthropic/anthropic.service';
 import { ModelCapabilityService } from '../models/model-capability.service';
+import { ModelTier } from '../models/model-capabilities.config';
 import { LoopDetectionService } from './loop-detection.service';
 import {
   isComputerToolUseContentBlock,
@@ -1457,6 +1458,243 @@ ${loopResult.suggestion}
     }
   }
 
+  /**
+   * Generate tier-aware recommendations for detection failures
+   * Adapts guidance based on model capabilities:
+   * - Tier1: CV-first with detailed semantic matching
+   * - Tier2: Balanced CV + keyboard fallback
+   * - Tier3: Keyboard-first with simple CV backup
+   */
+  private getTierAwareRecommendations(
+    description: string,
+    topCandidateId?: string,
+    hasSemanticScores: boolean = false,
+  ): string {
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+
+    // Tier 3: Keyboard-first with simple CV backup
+    if (tier === 'tier3') {
+      return `**RECOMMENDED ACTIONS (optimized for your model tier):**
+
+⌨️ **1. FASTEST & MOST RELIABLE: Use keyboard shortcuts instead**
+   Try these common approaches:
+   • VS Code Extensions: Ctrl+Shift+X → Type name → Tab to Install → Enter
+   • Firefox Address: Ctrl+L → Type URL → Enter
+   • General Navigation: Ctrl+F to find, Tab/Shift+Tab to navigate, Enter to activate
+
+🎯 **2. If keyboard doesn't work: Pick closest CV match**
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+🔍 **3. Or try simpler query:**
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+💡 **TIP:** Your model works best with keyboard shortcuts (simpler reasoning required than CV orchestration)`;
+    }
+
+    // Tier 2: Balanced CV + keyboard fallback
+    if (tier === 'tier2') {
+      return `**RECOMMENDED ACTIONS:**
+
+1. Pick closest match${hasSemanticScores ? ' (good semantic match found)' : ''}:
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+2. Try broader query:
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+3. See all elements:
+   computer_detect_elements({ description: "", includeAll: true })
+
+⌨️ **4. If CV keeps failing: Try keyboard shortcuts**
+   • Ctrl+P, Ctrl+Shift+P: Command palettes
+   • Ctrl+F: Find/search
+   • Tab/Shift+Tab: Navigate between elements
+
+💡 **TIP:** Your model has good CV capabilities, but keyboard shortcuts are a reliable fallback for tricky elements`;
+    }
+
+    // Tier 1: CV-first with detailed semantic matching
+    return `**RECOMMENDED ACTIONS:**
+
+1. Pick closest match${hasSemanticScores ? ` (${Math.round((topCandidateId ? 0.75 : 0.5) * 100)}% semantic match)` : ''}:
+   computer_click_element({ element_id: "${topCandidateId || 'see_above'}" })
+
+2. Try broader query with visual synonyms:
+   computer_detect_elements({ description: "${description.split(' ')[0]}" })
+
+3. Use discovery mode for full element inventory:
+   computer_detect_elements({ description: "", includeAll: true })
+
+💡 **TIP:** Your model excels at semantic matching. Try rephrasing queries to focus on visual appearance (e.g., "gear icon" instead of "settings button")`;
+  }
+
+  /**
+   * Generate detailed diagnostics and recovery actions for click failures
+   * Helps models understand why clicks fail and what to try next
+   */
+  private getClickFailureDiagnostics(
+    elementId: string,
+    failureType: 'not_found' | 'verification_failed' | 'exception',
+    element?: DetectedElement,
+    coordinates?: Coordinates,
+    errorMessage?: string,
+  ): string {
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+    let diagnosis = '';
+
+    // Explain what happened
+    if (failureType === 'not_found') {
+      diagnosis = `❌ **Click failed:** Element "${elementId}" not found in cache\n\n`;
+      diagnosis += `**Diagnosis:**\n`;
+      diagnosis += `- Element may have expired from cache (30-60s lifetime)\n`;
+      diagnosis += `- Detection may have failed or timed out\n`;
+      diagnosis += `- Element ID may be incorrect\n\n`;
+    } else if (failureType === 'verification_failed') {
+      diagnosis = `❌ **Click failed:** Element "${element?.text || element?.description || elementId}" at (${coordinates?.x}, ${coordinates?.y})\n\n`;
+      diagnosis += `**Diagnosis:**\n`;
+      diagnosis += `- Target coordinates: (${coordinates?.x}, ${coordinates?.y})\n`;
+      diagnosis += `- Click verification: UI unchanged after click\n`;
+      diagnosis += `- Possible causes:\n`;
+      diagnosis += `  1. Element moved between detection and click\n`;
+      diagnosis += `  2. Coordinates slightly off (element edge vs center)\n`;
+      diagnosis += `  3. Wrong element selected (${element?.text || 'similar element'} exists, but wrong instance)\n`;
+      diagnosis += `  4. Element not interactive or disabled\n\n`;
+    } else {
+      diagnosis = `❌ **Click failed:** ${errorMessage || 'Unknown error'}\n\n`;
+    }
+
+    // Add tier-specific recovery actions
+    if (tier === 'tier3') {
+      diagnosis += `**RECOVERY ACTIONS (optimized for your model tier):**\n\n`;
+      diagnosis += `⌨️ **1. RECOMMENDED: Use keyboard shortcuts instead**\n`;
+      diagnosis += `   • More reliable than clicking for your model tier\n`;
+      diagnosis += `   • VS Code: Ctrl+Shift+X (extensions), Ctrl+P (quick open), Ctrl+F (find)\n`;
+      diagnosis += `   • General: Tab to navigate, Enter to activate, Ctrl+F to search\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `🔍 **2. Re-detect with simpler query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "install" })\n\n`;
+        diagnosis += `🎯 **3. Use discovery mode to see all elements:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "", includeAll: true })`;
+      } else {
+        diagnosis += `🔍 **2. Re-detect and try again:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'install button'}" })\n`;
+        diagnosis += `   → Fresh detection with current UI state\n\n`;
+        diagnosis += `🎯 **3. If CV keeps failing: Grid-based click as last resort**\n`;
+        diagnosis += `   Take new screenshot and manually identify coordinates`;
+      }
+    } else if (tier === 'tier2') {
+      diagnosis += `**RECOVERY ACTIONS:**\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `1. **Re-detect element:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "your query here" })\n\n`;
+        diagnosis += `2. **Try broader query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "button" })\n\n`;
+        diagnosis += `3. **Use keyboard shortcut:**\n`;
+        diagnosis += `   • Ctrl+Shift+P: Command palette\n`;
+        diagnosis += `   • Ctrl+F: Find/search\n`;
+        diagnosis += `   • Tab navigation + Enter`;
+      } else {
+        diagnosis += `1. **Re-detect with more specific query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'target'} for [specific context]" })\n`;
+        diagnosis += `   → Example: "install button for cline" instead of just "install"\n\n`;
+        diagnosis += `2. **Try keyboard shortcut:**\n`;
+        diagnosis += `   Often more reliable for tricky elements\n\n`;
+        diagnosis += `3. **Use fallback coordinates:**\n`;
+        diagnosis += `   computer_click_element({ element_id: "new_id", fallback_coordinates: { x: ${(coordinates?.x || 0) + 10}, y: ${(coordinates?.y || 0) + 5} } })`;
+      }
+    } else {
+      // Tier 1: Detailed CV guidance
+      diagnosis += `**RECOVERY ACTIONS:**\n\n`;
+
+      if (failureType === 'not_found') {
+        diagnosis += `1. **Re-detect with refined query:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "specific visual description" })\n`;
+        diagnosis += `   → Use visual terms: colors, shapes, icons, text labels\n\n`;
+        diagnosis += `2. **Use discovery mode for context:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "", includeAll: true })\n`;
+        diagnosis += `   → See full UI element inventory\n\n`;
+        diagnosis += `3. **Try semantic variations:**\n`;
+        diagnosis += `   → "install button" vs "add button" vs "plus icon"`;
+      } else {
+        diagnosis += `1. **Re-detect with enhanced specificity:**\n`;
+        diagnosis += `   computer_detect_elements({ description: "${element?.text || 'target'} [add context: location/color/size]" })\n`;
+        diagnosis += `   → Example: "install button in extensions panel"\n`;
+        diagnosis += `   → Fresh coordinates reflect current UI state\n\n`;
+        diagnosis += `2. **Analyze element positioning:**\n`;
+        diagnosis += `   - Detection coordinates: (${element?.coordinates.x}, ${element?.coordinates.y})\n`;
+        diagnosis += `   - Detection confidence: ${element?.confidence ? (element.confidence * 100).toFixed(0) : 'unknown'}%\n`;
+        diagnosis += `   - Element type: ${element?.type || 'unknown'}\n`;
+        diagnosis += `   → Low confidence or wrong type may indicate incorrect match\n\n`;
+        diagnosis += `3. **Use fallback with offset:**\n`;
+        diagnosis += `   computer_click_element({ element_id: "new_id", fallback_coordinates: { x: ${(coordinates?.x || 0) + 10}, y: ${(coordinates?.y || 0) + 5} } })`;
+      }
+    }
+
+    return diagnosis;
+  }
+
+  /**
+   * Explain what keywords matched/missed in semantic matching
+   * Helps models understand why certain elements scored higher
+   */
+  private getSemanticMatchExplanation(
+    query: string,
+    elementDescription: string,
+    score: number
+  ): string {
+    if (score === 0) {
+      return '';
+    }
+
+    // Normalize and split into keywords
+    const normalize = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 2); // Filter out very short words
+
+    const queryKeywords = normalize(query);
+    const elementKeywords = normalize(elementDescription);
+
+    // Find matched and missed keywords
+    const matched: string[] = [];
+    const missed: string[] = [];
+
+    for (const keyword of queryKeywords) {
+      // Check for exact match or partial match (for synonyms/variations)
+      const hasMatch = elementKeywords.some(
+        ek => ek.includes(keyword) || keyword.includes(ek)
+      );
+      if (hasMatch) {
+        matched.push(`"${keyword}"`);
+      } else {
+        missed.push(`"${keyword}"`);
+      }
+    }
+
+    if (matched.length === 0 && missed.length === 0) {
+      return '';
+    }
+
+    let explanation = '';
+    if (matched.length > 0) {
+      explanation += `   ✅ Matched: ${matched.join(', ')}`;
+    }
+    if (missed.length > 0) {
+      if (explanation) explanation += '\n';
+      explanation += `   ❌ Missed: ${missed.join(', ')}`;
+
+      // Add context hint for why this might still be a good match
+      if (score > 0.5 && missed.length > 0) {
+        explanation += ` (element has related/synonymous terms)`;
+      }
+    }
+
+    return explanation;
+  }
+
   private async handleComputerDetectElements(
     block: ComputerDetectElementsToolUseBlock,
   ): Promise<ToolResultContentBlock> {
@@ -1514,16 +1752,42 @@ ${loopResult.suggestion}
           const matchStr = hasSemanticScores
             ? `match: ${Math.round(candidate.score * 100)}%`
             : `no semantic match`;
-          return `${i + 1}. [${el.id}] "${desc}" (${matchStr}, conf: ${el.confidence.toFixed(2)}) at ${location}`;
+
+          // Add match explanation for top 3 candidates with semantic scores
+          let matchLine = `${i + 1}. [${el.id}] "${desc}" (${matchStr}, conf: ${el.confidence.toFixed(2)}) at ${location}`;
+
+          if (hasSemanticScores && i < 3 && candidate.score > 0) {
+            const explanation = this.getSemanticMatchExplanation(
+              description,
+              desc,
+              candidate.score
+            );
+            if (explanation) {
+              matchLine += '\n' + explanation;
+            }
+          }
+
+          return matchLine;
         }).join('\n');
 
         if (hasSemanticScores) {
-          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Pick closest match: computer_click_element({ element_id: "${detection.topCandidates[0].element.id}" })\n2. Try broader query: computer_detect_elements({ description: "button" })\n3. See all: computer_detect_elements({ description: "", includeAll: true })`;
+          text += `\n\nTop ${detection.topCandidates.length} closest matches:\n${topMatches}\n\n`;
+          text += this.getTierAwareRecommendations(
+            description,
+            detection.topCandidates[0].element.id,
+            true
+          );
         } else {
-          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n**RECOMMENDED ACTIONS:**\n1. Use computer_detect_elements({ description: "", includeAll: true }) to see full list with descriptions\n2. Look at these element descriptions and pick one by ID\n3. Try a different query based on what you see`;
+          text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n`;
+          text += this.getTierAwareRecommendations(
+            description,
+            detection.topCandidates[0]?.element.id,
+            false
+          );
         }
       } else if (detection.totalDetected > 0) {
-        text += `\n\n**RECOMMENDED ACTION:** Use computer_detect_elements({ description: "", includeAll: true }) to see all ${detection.totalDetected} elements with descriptions`;
+        text += `\n\n${detection.totalDetected} elements detected but no candidates to show.\n\n`;
+        text += this.getTierAwareRecommendations(description, undefined, false);
       }
 
       content.push({
@@ -2081,7 +2345,13 @@ ${loopResult.suggestion}
           return {
             success: false,
             element_id: elementId,
-            error: `Element with ID ${elementId} not found; fallback coordinates failed`,
+            error: this.getClickFailureDiagnostics(
+              elementId,
+              'not_found',
+              undefined,
+              params.fallback_coordinates,
+              'Fallback coordinates failed'
+            ),
             coordinates_used: params.fallback_coordinates,
             detection_method: 'fallback_coordinates',
           };
@@ -2176,7 +2446,13 @@ ${loopResult.suggestion}
       return {
         success: false,
         element_id: elementId,
-        error: `Failed to click element ${elementId}`,
+        error: this.getClickFailureDiagnostics(
+          elementId,
+          'verification_failed',
+          element,
+          clickTarget.coordinates,
+          'Click verification failed - UI unchanged'
+        ),
         detection_method: element.metadata.detectionMethod,
         confidence: element.confidence,
         element_text: element.text ?? null,
@@ -2193,7 +2469,13 @@ ${loopResult.suggestion}
       return {
         success: false,
         element_id: idForCache,
-        error: message,
+        error: this.getClickFailureDiagnostics(
+          idForCache,
+          'exception',
+          undefined,
+          undefined,
+          message
+        ),
       };
     }
   }

@@ -1,5 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UniversalUIElement } from '../interfaces/universal-element.interface';
+
+/**
+ * Universal element types for cross-detection compatibility
+ */
+export type UniversalElementType = 'button' | 'text_input' | 'clickable' | 'menu_item';
+
+/**
+ * Universal UI element interface (used by Holo conversion methods)
+ */
+export interface UniversalUIElement {
+  id: string;
+  type: UniversalElementType;
+  bounds: { x: number; y: number; width: number; height: number };
+  clickPoint: { x: number; y: number };
+  confidence: number;
+  text?: string;
+  semanticRole?: string;
+  description: string;
+}
 
 /**
  * Holo 1.5-7B detection result from the Python service

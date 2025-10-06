@@ -169,31 +169,6 @@ export class EnhancedVisualDetectorService {
     }
   }
 
-  /**
-   * Quick UI element detection using Holo 1.5-7B only
-   * Optimized for speed over comprehensiveness
-   */
-  async quickDetectElements(
-    screenshotBuffer: Buffer,
-    options: Partial<EnhancedDetectionOptions> = {}
-  ): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useOCR: false,
-      maxResults: 10,
-      ...options
-    });
-  }
-
-  /**
-   * Specialized button detection using Holo 1.5-7B for precision localization
-   */
-  async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useHolo: true, // Use Holo 1.5-7B for UI element detection
-      useOCR: false,
-    });
-  }
-
   private async runOCRDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     return this.cvActivity.executeWithTracking(
       'ocr-detection',

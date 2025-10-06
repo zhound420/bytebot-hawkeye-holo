@@ -42,7 +42,6 @@ import {
   Coordinates,
 } from '@bytebot/shared';
 import {
-  ElementDetectorService,
   DetectedElement,
   BoundingBox,
   ClickTarget,
@@ -236,7 +235,6 @@ export class AgentProcessor {
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
-    private readonly elementDetector: ElementDetectorService,
     private readonly enhancedVisualDetector: EnhancedVisualDetectorService,
     private readonly cvActivityService: CVActivityIndicatorService,
     private readonly modelCapabilityService: ModelCapabilityService,
@@ -2258,17 +2256,12 @@ ${loopResult.suggestion}
         };
       }
 
-      let matchingElement =
-        await this.elementDetector.findElementByDescription(
-          elements,
-          params.description,
-        );
-
       // Track top candidates for helpful feedback when no match found
       const topCandidates: Array<{ element: any; score: number }> = [];
 
-      // If no match found, try semantic matching with visual synonym expansion
-      if (!matchingElement && elements.length > 0) {
+      // Try semantic matching with visual synonym expansion
+      let matchingElement = null;
+      if (elements.length > 0) {
         this.logger.debug(
           `No exact match for "${params.description}", trying semantic matching with visual synonym expansion`
         );
@@ -2571,8 +2564,15 @@ ${loopResult.suggestion}
         );
       }
 
-      const clickTarget: ClickTarget =
-        await this.elementDetector.getClickCoordinates(element);
+      // Extract click coordinates from element's center point
+      const clickTarget: ClickTarget = {
+        coordinates: {
+          x: Math.round(element.coordinates.centerX),
+          y: Math.round(element.coordinates.centerY),
+        },
+        method: element.metadata.detectionMethod,
+        confidence: element.confidence,
+      };
 
       const result = await this.handleComputerClickMouse({
         x: clickTarget.coordinates.x,

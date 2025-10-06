@@ -97,6 +97,7 @@ export class HoloClientService {
   private isHealthy: boolean = false;
   private modelStatus: HoloModelStatus | null = null;
   private gpuInfo: HoloGPUInfo | null = null;
+  private gpuPollInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
@@ -109,8 +110,38 @@ export class HoloClientService {
       this.checkHealth().catch((err) => {
         this.logger.warn(`Holo 1.5-7B health check failed: ${err.message}`);
       });
+
+      // Start real-time GPU polling (every 3 seconds)
+      this.startGPUPolling();
     } else {
       this.logger.log('Holo 1.5-7B integration disabled');
+    }
+  }
+
+  /**
+   * Start periodic GPU info polling for real-time VRAM updates
+   */
+  private startGPUPolling(): void {
+    // Poll every 3 seconds for real-time GPU metrics
+    this.gpuPollInterval = setInterval(async () => {
+      if (this.isHealthy) {
+        await this.fetchGPUInfo().catch((err) => {
+          this.logger.debug(`GPU polling failed: ${err.message}`);
+        });
+      }
+    }, 3000);
+
+    this.logger.debug('GPU polling started (3s interval)');
+  }
+
+  /**
+   * Stop GPU polling (cleanup)
+   */
+  stopGPUPolling(): void {
+    if (this.gpuPollInterval) {
+      clearInterval(this.gpuPollInterval);
+      this.gpuPollInterval = null;
+      this.logger.debug('GPU polling stopped');
     }
   }
 

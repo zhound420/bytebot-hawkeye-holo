@@ -1308,13 +1308,14 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
               this.pendingScreenshotObservation = true;
               mustClearObservationThisReply = true;
               observationBlockedInReply = false;
-            }
 
-            // Automatically enrich screenshots with OmniParser detection in the background
-            // This runs async and doesn't block the iteration
-            this.enrichScreenshotWithOmniParser().catch(err => {
-              this.logger.warn(`Background OmniParser enrichment failed: ${err.message}`);
-            });
+              // Automatically enrich screenshots with OmniParser detection in the background
+              // Only for vision models - non-vision models don't use visual element detection
+              // This runs async and doesn't block the iteration
+              this.enrichScreenshotWithOmniParser().catch(err => {
+                this.logger.warn(`Background OmniParser enrichment failed: ${err.message}`);
+              });
+            }
           }
         }
 

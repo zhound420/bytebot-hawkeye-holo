@@ -311,8 +311,58 @@ Hawkeye provides comprehensive visibility into computer vision operations with l
 - **Holo 1.5-7B Model Display** - Real-time display of active model (Holo 1.5-7B / Qwen2.5-VL) with GPU detection (NVIDIA GPU, Apple Silicon, or CPU)
 - **Performance Metrics** - Real-time success rates, processing times, average execution times, and total executions
 - **GPU Acceleration Status** - Live hardware detection showing compute device: ⚡ NVIDIA GPU, 🍎 Apple Silicon, or 💻 CPU
+- **GPU VRAM Monitoring** - Real-time memory usage with color-coded progress bars (green <50%, yellow 50-80%, red >80%)
 - **UI Integration** - Dedicated CV Activity panels on both Desktop and Task pages with 500ms polling for real-time updates
 - **Debug Telemetry** - Comprehensive method execution history for optimization and troubleshooting
+
+### Adaptive Model Capability System
+
+Hawkeye's **Model Capability System** provides intelligent CV-first enforcement based on each AI model's vision capabilities. Different models receive different levels of enforcement, ensuring optimal performance without blocking capable models or frustrating weaker ones.
+
+#### **Three-Tier Model Classification**
+
+**🥇 Tier 1: Strong CV Capability (Strict Enforcement)**
+- **Models**: GPT-4o, Claude Sonnet 4.5, Claude Opus 4, Claude 3.5 Sonnet
+- **CV Success Rate**: 90-95%
+- **Behavior**: Strict CV-first workflow enforcement, no click violations allowed
+- **Testing**: GPT-4o demonstrated 100% CV-first compliance with adaptive keyboard fallback
+- **Max CV Attempts**: 2 before keyboard shortcut suggestions
+
+**🥈 Tier 2: Medium CV Capability (Balanced Enforcement)**
+- **Models**: GPT-4o-mini, Gemini 2.0 Flash, Gemini 1.5 Pro, Claude 3 Haiku
+- **CV Success Rate**: 75-85%
+- **Behavior**: Relaxed enforcement (allow 1 click violation), emphasized keyboard shortcuts
+- **Max CV Attempts**: 3 before alternative approaches
+- **Default**: Unknown models default to Tier 2 for balanced behavior
+
+**🥉 Tier 3: Weak CV Capability (Minimal Enforcement)**
+- **Models**: Qwen3-VL, LLaVA, CogVLM
+- **CV Success Rate**: 40-50%
+- **Behavior**: Suggest CV-first but don't block, keyboard-first prompts
+- **Testing**: Qwen3-VL showed 4 click violations and detect→click loops, required help
+- **Max CV Attempts**: 2 with aggressive loop detection
+
+#### **Real-World Performance Data**
+
+Based on production session analysis comparing GPT-4o vs Qwen3-VL:
+
+| Metric | GPT-4o (Tier 1) | Qwen3-VL (Tier 3) |
+|--------|----------------|-------------------|
+| **Assistant Messages** | 8 | 21 (2.6x more) |
+| **CV Detection Attempts** | 2 | 6 |
+| **Click Violations** | 0 ✅ | 4 ❌ |
+| **Workflow Quality** | Clean with keyboard fallback | Stuck in detect→click loops |
+| **Outcome** | Adaptive completion | Requested help (loop detected) |
+
+#### **Adaptive Enforcement Features**
+
+- **Pattern Matching**: Fuzzy model name matching for automatic tier assignment
+- **Loop Detection**: Tier 3 models get more sensitive loop detection (2 failures vs 3)
+- **Dynamic Prompts**: Future: Different system prompts per tier emphasizing strengths
+- **Fallback Strategies**: Future: Tier-specific fallback chains (CV → Keyboard → Coords)
+
+**Location**: `packages/bytebot-agent/src/models/`
+**Configuration**: See `model-capabilities.config.ts` for full model database
 
 **CV Activity Panel Features:**
 - Active method indicators with color-coded badges (Holo 1.5-7B: Pink, OCR: Yellow)

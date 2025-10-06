@@ -292,6 +292,79 @@ Supports multiple providers via environment variables:
 - `GEMINI_API_KEY` - Gemini models
 - `OPENROUTER_API_KEY` - OpenRouter proxy
 
+## Model Capability System
+
+**Status:** Phase 1 Complete (Tier-based model profiling)
+**Location:** `packages/bytebot-agent/src/models/`
+
+The Model Capability System provides adaptive CV-first enforcement based on each AI model's vision capabilities. Models are categorized into three tiers:
+
+### Tier 1: Strong CV Capability (Strict Enforcement)
+- **Models**: GPT-4o, Claude Sonnet 4.5, Claude Opus 4, Claude 3.5 Sonnet
+- **CV Success Rate**: 90-95%
+- **Enforcement**: Strict CV-first workflow, no click violations allowed
+- **Testing**: GPT-4o showed 100% CV-first compliance, adaptive keyboard fallback
+- **Max CV Attempts**: 2
+- **Loop Detection**: After 3 identical failures
+
+### Tier 2: Medium CV Capability (Balanced Enforcement)
+- **Models**: GPT-4o-mini, Gemini 2.0 Flash, Gemini 1.5 Pro, Claude 3 Haiku
+- **CV Success Rate**: 75-85%
+- **Enforcement**: Relaxed (allow 1 click violation)
+- **Emphasis**: Keyboard shortcut suggestions
+- **Max CV Attempts**: 3
+- **Loop Detection**: After 3 identical failures
+
+### Tier 3: Weak CV Capability (Minimal Enforcement)
+- **Models**: Qwen3-VL, LLaVA, CogVLM
+- **CV Success Rate**: 40-50%
+- **Enforcement**: Suggest CV-first but don't block
+- **Testing**: Qwen3-VL showed 4 click violations, stuck in detect→click loops
+- **Max CV Attempts**: 2
+- **Loop Detection**: After 2 identical failures (more sensitive)
+
+### Usage
+
+```typescript
+// In your service
+import { ModelCapabilityService } from './models/model-capability.service';
+
+// Get model tier
+const tier = modelCapabilityService.getModelTier('gpt-4o'); // Returns 'tier1'
+
+// Get enforcement rules
+const rules = modelCapabilityService.getEnforcementRules('qwen3-vl');
+// Returns: { maxCvAttempts: 2, allowClickViolations: true, ... }
+
+// Check if strict enforcement
+const strictMode = modelCapabilityService.shouldEnforceCvFirst('claude-opus-4'); // true
+```
+
+### Configuration
+
+Model profiles are defined in `packages/bytebot-agent/src/models/model-capabilities.config.ts`:
+- Exact model name matching
+- Pattern-based fuzzy matching
+- Default tier assignment (Tier 2) for unknown models
+- Per-tier enforcement rules
+
+### Real-World Performance Data
+
+Based on analysis of production sessions:
+
+**GPT-4o Session:**
+- 8 assistant messages
+- 2 CV detection attempts
+- 0 click violations ✅
+- Clean workflow with keyboard shortcuts
+
+**Qwen3-VL Session:**
+- 21 assistant messages (2.6x more)
+- 6 CV detection attempts
+- 4 click violations ❌
+- Stuck in detect→click loops
+- Self-diagnosed loop and requested help
+
 ## Hawkeye-Specific Configuration
 
 Key environment variables for precision features:

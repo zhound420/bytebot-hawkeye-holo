@@ -208,6 +208,17 @@ export class AgentProcessor {
   private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
   private currentModelName: string | null = null; // Track current model for tier-based enforcement
 
+  // Pattern recognition: Track successful query patterns for learning feedback
+  private readonly successfulQueryPatterns = new Map<string, {
+    query: string;
+    applicationContext?: string;
+    successCount: number;
+    totalAttempts: number;
+    avgConfidence: number;
+    lastSuccess: number;
+  }>();
+  private readonly MAX_PATTERN_HISTORY = 50; // Limit pattern storage
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -1695,6 +1706,104 @@ ${loopResult.suggestion}
     return explanation;
   }
 
+  /**
+   * Record successful query pattern for future learning suggestions
+   */
+  private recordSuccessfulPattern(
+    query: string,
+    confidence: number,
+    applicationContext?: string
+  ): void {
+    const key = `${applicationContext || 'global'}:${query.toLowerCase().trim()}`;
+
+    const existing = this.successfulQueryPatterns.get(key);
+    if (existing) {
+      existing.successCount++;
+      existing.totalAttempts++;
+      existing.avgConfidence =
+        (existing.avgConfidence * (existing.successCount - 1) + confidence) /
+        existing.successCount;
+      existing.lastSuccess = Date.now();
+    } else {
+      // Limit pattern storage
+      if (this.successfulQueryPatterns.size >= this.MAX_PATTERN_HISTORY) {
+        // Remove oldest pattern
+        let oldestKey: string | null = null;
+        let oldestTime = Date.now();
+        for (const [k, v] of this.successfulQueryPatterns) {
+          if (v.lastSuccess < oldestTime) {
+            oldestTime = v.lastSuccess;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey) {
+          this.successfulQueryPatterns.delete(oldestKey);
+        }
+      }
+
+      this.successfulQueryPatterns.set(key, {
+        query,
+        applicationContext,
+        successCount: 1,
+        totalAttempts: 1,
+        avgConfidence: confidence,
+        lastSuccess: Date.now(),
+      });
+    }
+  }
+
+  /**
+   * Get pattern-based suggestions for failed queries
+   * Returns tips based on successful patterns in similar contexts
+   */
+  private getPatternSuggestions(
+    failedQuery: string,
+    applicationContext?: string
+  ): string {
+    // Find similar successful patterns
+    const contextPatterns: Array<{
+      pattern: any;
+      similarity: number;
+    }> = [];
+
+    for (const [key, pattern] of this.successfulQueryPatterns) {
+      // Filter by application context if available
+      if (applicationContext && pattern.applicationContext === applicationContext) {
+        // Calculate simple keyword similarity
+        const failedKeywords = failedQuery.toLowerCase().split(/\s+/);
+        const patternKeywords = pattern.query.toLowerCase().split(/\s+/);
+        const commonKeywords = failedKeywords.filter(k =>
+          patternKeywords.some(pk => pk.includes(k) || k.includes(pk))
+        );
+        const similarity = commonKeywords.length / Math.max(failedKeywords.length, 1);
+
+        if (similarity > 0.3 && pattern.successCount > 2) {
+          contextPatterns.push({ pattern, similarity });
+        }
+      }
+    }
+
+    if (contextPatterns.length === 0) {
+      return '';
+    }
+
+    // Sort by success rate and similarity
+    contextPatterns.sort((a, b) => {
+      const scoreA =
+        (a.pattern.successCount / a.pattern.totalAttempts) * a.similarity;
+      const scoreB =
+        (b.pattern.successCount / b.pattern.totalAttempts) * b.similarity;
+      return scoreB - scoreA;
+    });
+
+    const topPattern = contextPatterns[0].pattern;
+    const successRate = Math.round(
+      (topPattern.successCount / topPattern.totalAttempts) * 100
+    );
+
+    return `\n\n💡 **TIP:** Similar queries like "${topPattern.query}" have ${successRate}% success rate in ${topPattern.applicationContext || 'this context'}. Try simpler, UI-focused descriptions.`;
+  }
+
   private async handleComputerDetectElements(
     block: ComputerDetectElementsToolUseBlock,
   ): Promise<ToolResultContentBlock> {
@@ -1777,6 +1886,8 @@ ${loopResult.suggestion}
             detection.topCandidates[0].element.id,
             true
           );
+          // Add pattern-based suggestions if available
+          text += this.getPatternSuggestions(description, this.currentApplicationContext);
         } else {
           text += `\n\nYour query didn't match any element descriptions. Here are the ${detection.topCandidates.length} detected elements (sorted by confidence):\n${topMatches}\n\n`;
           text += this.getTierAwareRecommendations(
@@ -1784,6 +1895,8 @@ ${loopResult.suggestion}
             detection.topCandidates[0]?.element.id,
             false
           );
+          // Add pattern-based suggestions if available
+          text += this.getPatternSuggestions(description, this.currentApplicationContext);
         }
       } else if (detection.totalDetected > 0) {
         text += `\n\n${detection.totalDetected} elements detected but no candidates to show.\n\n`;
@@ -2248,6 +2361,18 @@ ${loopResult.suggestion}
         })),
       };
       this.cvActivityService.recordDetection(detectionEntry);
+
+      // Record successful query pattern for learning feedback
+      if (matchingElements.length > 0 && params.description) {
+        const avgConfidence =
+          matchingElements.reduce((sum, el) => sum + el.confidence, 0) /
+          matchingElements.length;
+        this.recordSuccessfulPattern(
+          params.description,
+          avgConfidence,
+          this.currentApplicationContext
+        );
+      }
 
       return {
         elements: matchingElements,

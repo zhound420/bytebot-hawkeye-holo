@@ -1307,14 +1307,7 @@ async function screenshot(
   console.log('Taking screenshot');
 
   try {
-    // Use wrapper that handles SOM enhancement
     const result = await getScreenshot(options);
-
-    // Log if SOM was applied
-    if (result.somApplied) {
-      console.log(`Screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
-    }
-
     return { image: result.image, offset: result.offset };
   } catch (error) {
     console.error('Error in screenshot action:', error);
@@ -1363,13 +1356,7 @@ async function screenshotRegion(input: {
   console.log(`Taking focused screenshot for region: ${input.region}`);
 
   try {
-    // Use wrapper that handles SOM enhancement
     const result = await getScreenshotRegion(input as any);
-
-    // Log if SOM was applied
-    if (result.somApplied) {
-      console.log(`Region screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
-    }
 
     return {
       image: result.image,
@@ -1406,13 +1393,7 @@ async function screenshotCustomRegion(input: {
   );
 
   try {
-    // Use wrapper that handles SOM enhancement
     const result = await getScreenshotCustomRegion(input as any);
-
-    // Log if SOM was applied
-    if (result.somApplied) {
-      console.log(`Custom region screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
-    }
 
     return {
       image: result.image,

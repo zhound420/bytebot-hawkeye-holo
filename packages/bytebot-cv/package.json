@@ -10,12 +10,9 @@
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "canvas": "^2.11.2",
-    "fuzzysearch": "^1.0.3",
-    "lodash": "^4.17.21",
     "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.17.7",
     "@types/node": "^20.17.27",
     "typescript": "^5.7.3"
   },

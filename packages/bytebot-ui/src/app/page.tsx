@@ -7,9 +7,9 @@ import { ChatInput } from "@/components/messages/ChatInput";
 import { useRouter } from "next/navigation";
 import { startTask } from "@/utils/taskUtils";
 import { Model } from "@/types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TaskList } from "@/components/tasks/TaskList";
 import { MODEL_STORAGE_KEY, selectInitialModel } from "./modelStorage";
+import { ModelSelect } from "@/components/ui/model-select";
 
 interface StockPhotoProps {
   src: string;
@@ -180,25 +180,12 @@ export default function Home() {
                   minLines={3}
                 />
                 <div className="mt-2">
-                  <Select
-                    value={selectedModel?.name}
-                    onValueChange={(val) =>
-                      updateSelectedModel(
-                        models.find((m) => m.name === val) || null,
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.name} value={m.name}>
-                          {m.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ModelSelect
+                    models={models}
+                    selectedModel={selectedModel}
+                    onModelChange={updateSelectedModel}
+                    className="w-auto"
+                  />
                 </div>
               </div>
 
@@ -238,25 +225,12 @@ export default function Home() {
                   minLines={3}
                 />
                 <div className="mt-2">
-                  <Select
-                    value={selectedModel?.name}
-                    onValueChange={(val) =>
-                      updateSelectedModel(
-                        models.find((m) => m.name === val) || null,
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.name} value={m.name}>
-                          {m.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ModelSelect
+                    models={models}
+                    selectedModel={selectedModel}
+                    onModelChange={updateSelectedModel}
+                    className="w-auto"
+                  />
                 </div>
               </div>
 

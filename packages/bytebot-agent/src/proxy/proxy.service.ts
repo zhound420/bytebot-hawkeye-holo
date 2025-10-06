@@ -56,22 +56,18 @@ export class ProxyService implements BytebotAgentService {
 
   /**
    * Get tier-aware reasoning effort for models that support it
-   * @param model - Model name
+   * @param modelMetadata - Model metadata from LiteLLM proxy
    * @param tier - Model tier (tier1/tier2/tier3)
    * @returns reasoning_effort value or undefined if not supported
    */
   private getReasoningEffort(
-    model: string,
+    modelMetadata: BytebotAgentModel,
     tier: ModelTier,
   ): 'low' | 'medium' | 'high' | undefined {
-    // Only o1, o3, o4 models support reasoning_effort
-    const normalizedModel = model.toLowerCase();
-    const supportsReasoningEffort =
-      normalizedModel.includes('o1') ||
-      normalizedModel.includes('o3') ||
-      normalizedModel.includes('o4');
-
-    if (!supportsReasoningEffort) {
+    // Only send reasoning_effort if model explicitly supports it
+    // Note: OpenAI's API rejects this parameter for o1-mini despite LiteLLM metadata claiming support
+    // Disabled until we verify which models actually support it
+    if (!modelMetadata.supportsReasoningEffort) {
       return undefined;
     }
 
@@ -110,7 +106,7 @@ export class ProxyService implements BytebotAgentService {
     try {
       // Get model tier for tier-aware parameters
       const tier = this.modelCapabilityService.getModelTier(modelName);
-      const reasoningEffort = this.getReasoningEffort(modelName, tier);
+      const reasoningEffort = this.getReasoningEffort(modelMetadata, tier);
 
       // Prepare the Chat Completion request
       const completionRequest: OpenAI.Chat.ChatCompletionCreateParams = {

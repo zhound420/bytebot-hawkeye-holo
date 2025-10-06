@@ -14,7 +14,7 @@
  */
 
 import { Message } from '@prisma/client';
-import { MessageContentBlock, MessageContentType, ImageContentBlock } from '@bytebot/shared';
+import { MessageContentBlock, MessageContentType, ImageContentBlock, ToolResultContentBlock } from '@bytebot/shared';
 import { generateTextDescription, extractImageMetadata } from './image-text-description.util';
 import { Logger } from '@nestjs/common';
 
@@ -46,6 +46,7 @@ export function transformImagesForNonVision(messages: Message[]): Message[] {
 
     // Transform content blocks
     const transformedContent = contentBlocks.map((block) => {
+      // Handle top-level images
       if (block.type === MessageContentType.Image) {
         imageCount++;
         transformedCount++;
@@ -63,7 +64,39 @@ export function transformImagesForNonVision(messages: Message[]): Message[] {
         return textBlock;
       }
 
-      // Preserve all non-image blocks
+      // Handle images nested in ToolResult blocks (from computer_screenshot, etc.)
+      if (block.type === MessageContentType.ToolResult) {
+        const toolResult = block as ToolResultContentBlock;
+        const transformedToolContent = toolResult.content.map((content) => {
+          if (content.type === MessageContentType.Image) {
+            imageCount++;
+            transformedCount++;
+
+            // Extract metadata if available
+            const metadata = extractImageMetadata(content as ImageContentBlock);
+
+            // Generate text description
+            const textBlock = generateTextDescription(content as ImageContentBlock, metadata);
+
+            logger.debug(
+              `Transformed nested image in ToolResult to text: "${textBlock.text.substring(0, 60)}..."`,
+            );
+
+            return textBlock;
+          }
+
+          // Preserve all non-image content in ToolResult
+          return content;
+        });
+
+        // Return ToolResult with transformed content
+        return {
+          ...toolResult,
+          content: transformedToolContent,
+        };
+      }
+
+      // Preserve all other blocks unchanged
       return block;
     });
 

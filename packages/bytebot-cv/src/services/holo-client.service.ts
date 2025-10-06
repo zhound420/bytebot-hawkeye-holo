@@ -1,5 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UniversalUIElement } from '../interfaces/universal-element.interface';
+
+/**
+ * Universal element types for cross-detection compatibility
+ */
+export type UniversalElementType = 'button' | 'text_input' | 'clickable' | 'menu_item';
+
+/**
+ * Universal UI element interface (used by Holo conversion methods)
+ */
+export interface UniversalUIElement {
+  id: string;
+  type: UniversalElementType;
+  bounds: { x: number; y: number; width: number; height: number };
+  clickPoint: { x: number; y: number };
+  confidence: number;
+  text?: string;
+  semanticRole?: string;
+  description: string;
+}
 
 /**
  * Holo 1.5-7B detection result from the Python service
@@ -101,6 +119,7 @@ export class HoloClientService {
   private gpuInfo: HoloGPUInfo | null = null;
   private gpuPollInterval: NodeJS.Timeout | null = null;
   private isPollingGpu: boolean = false; // Debounce flag for GPU polling
+  private detectionInProgress: boolean = false; // Pause polling during detection (Phase 2.3)
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
@@ -123,10 +142,19 @@ export class HoloClientService {
 
   /**
    * Start periodic GPU info polling for real-time VRAM updates
+   * Optimized (Phase 2.3):
+   * - Increased interval from 3s to 5s
+   * - Pauses during detection to reduce service load
    */
   private startGPUPolling(): void {
-    // Poll every 3 seconds for real-time GPU metrics
+    // Poll every 5 seconds for real-time GPU metrics (increased from 3s - Phase 2.3)
     this.gpuPollInterval = setInterval(async () => {
+      // Skip if detection in progress (Phase 2.3)
+      if (this.detectionInProgress) {
+        this.logger.debug('Skipping GPU poll - detection in progress');
+        return;
+      }
+
       // Debounce: Skip if previous poll still running
       if (this.isPollingGpu) {
         this.logger.debug('Skipping GPU poll - previous request still in progress');
@@ -141,9 +169,9 @@ export class HoloClientService {
           this.isPollingGpu = false;
         });
       }
-    }, 3000);
+    }, 5000);
 
-    this.logger.debug('GPU polling started (3s interval)');
+    this.logger.debug('GPU polling started (5s interval, pauses during detection)');
   }
 
   /**
@@ -427,6 +455,9 @@ export class HoloClientService {
 
     const startTime = Date.now();
 
+    // Pause GPU polling during detection (Phase 2.3)
+    this.detectionInProgress = true;
+
     try {
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
@@ -481,6 +512,9 @@ export class HoloClientService {
         `Holo 1.5-7B error after ${elapsed}ms: ${error.message}`,
       );
       throw error;
+    } finally {
+      // Resume GPU polling after detection completes (Phase 2.3)
+      this.detectionInProgress = false;
     }
   }
 

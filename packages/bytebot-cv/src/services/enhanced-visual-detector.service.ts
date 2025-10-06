@@ -81,33 +81,44 @@ export class EnhancedVisualDetectorService {
     const holoAvailable = await this.holoClient?.isAvailable() ?? false;
 
     const {
-      useOCR = false, // OCR is expensive, use as fallback only
-      useHolo = holoAvailable, // Use Holo 1.5-7B, defaults to enabled when service healthy
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
     } = options;
 
+    // Use let for useOCR to allow Phase 3.2 optimization (conditional skip)
+    let useOCR = options.useOCR ?? false; // OCR is expensive, use as fallback only
+    const useHolo = options.useHolo ?? holoAvailable; // Use Holo 1.5-7B, defaults to enabled when service healthy
+
     try {
-      // Run Holo 1.5 and OCR in parallel since both are I/O-bound
-      const [holoResult, ocrResults] = await Promise.all([
-        useHolo && this.holoClient
-          ? (async () => {
-              const holoStart = Date.now();
-              const result = await this.runHoloDetection(screenshotBuffer, options);
-              performance.holoTime = Date.now() - holoStart;
-              return result;
-            })()
-          : Promise.resolve({ elements: [], somImage: undefined, elementMapping: undefined }),
-        useOCR
-          ? (async () => {
-              const ocrStart = Date.now();
-              const results = await this.runOCRDetection(screenshotBuffer, options);
-              performance.ocrTime = Date.now() - ocrStart;
-              return results;
-            })()
-          : Promise.resolve([])
-      ]);
+      // Phase 3.2: Run Holo first, skip OCR if Holo succeeds with high confidence
+      let holoResult: { elements: DetectedElement[]; somImage?: string; elementMapping?: Map<number, string> } =
+        { elements: [], somImage: undefined, elementMapping: undefined };
+      let ocrResults: DetectedElement[] = [];
+
+      // Run Holo detection if enabled
+      if (useHolo && this.holoClient) {
+        const holoStart = Date.now();
+        holoResult = await this.runHoloDetection(screenshotBuffer, options);
+        performance.holoTime = Date.now() - holoStart;
+
+        // Check if Holo succeeded with high confidence (Phase 3.2)
+        // If so, skip OCR to save time
+        if (holoResult.elements.length >= 5) {
+          const avgConfidence = holoResult.elements.reduce((sum, el) => sum + el.confidence, 0) / holoResult.elements.length;
+          if (avgConfidence >= 0.7) {
+            this.logger.debug(`Holo succeeded with high confidence (${Math.round(avgConfidence * 100)}%, ${holoResult.elements.length} elements) - skipping OCR`);
+            useOCR = false; // Override - skip OCR
+          }
+        }
+      }
+
+      // Run OCR only if needed (Phase 3.2)
+      if (useOCR) {
+        const ocrStart = Date.now();
+        ocrResults = await this.runOCRDetection(screenshotBuffer, options);
+        performance.ocrTime = Date.now() - ocrStart;
+      }
 
       // Extract SOM data from Holo result
       let somImage: string | undefined;
@@ -156,31 +167,6 @@ export class EnhancedVisualDetectorService {
       this.logger.error('Enhanced detection failed:', error.message);
       return this.createEmptyResult();
     }
-  }
-
-  /**
-   * Quick UI element detection using Holo 1.5-7B only
-   * Optimized for speed over comprehensiveness
-   */
-  async quickDetectElements(
-    screenshotBuffer: Buffer,
-    options: Partial<EnhancedDetectionOptions> = {}
-  ): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useOCR: false,
-      maxResults: 10,
-      ...options
-    });
-  }
-
-  /**
-   * Specialized button detection using Holo 1.5-7B for precision localization
-   */
-  async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useHolo: true, // Use Holo 1.5-7B for UI element detection
-      useOCR: false,
-    });
   }
 
   private async runOCRDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {

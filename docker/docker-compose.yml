@@ -39,6 +39,7 @@ services:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
       - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
     depends_on:
       bytebot-holo:
         condition: service_healthy
@@ -87,6 +88,7 @@ services:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
       - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
     depends_on:
       postgres:
         condition: service_started

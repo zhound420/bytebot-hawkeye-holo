@@ -23,6 +23,7 @@ import {
   isScreenshotCustomRegionToolUseBlock,
   isComputerDetectElementsToolUseBlock,
   isComputerClickElementToolUseBlock,
+  isClickMouseToolUseBlock,
   SetTaskStatusToolUseBlock,
 } from '@bytebot/shared';
 
@@ -192,6 +193,17 @@ export class AgentProcessor {
   }>();
   private readonly SOM_CACHE_TTL_MS = 30000; // 30 seconds - persist across multiple interactions
 
+  // CV-First Workflow Enforcement: Track detection attempts to ensure CV is tried before fallback
+  private readonly cvDetectionAttempts = new Map<string, {
+    taskId: string;
+    screenshotHash: string;
+    description: string;
+    attemptCount: number;
+    lastAttemptTime: number;
+  }[]>();
+  private readonly CV_REQUIRED_ATTEMPTS = 2; // Minimum CV attempts before allowing fallback
+  private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -348,6 +360,108 @@ export class AgentProcessor {
         .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
       this.screenshotCache.delete(oldestKey);
     }
+  }
+
+  /**
+   * Track CV detection attempt for CV-first enforcement
+   */
+  private trackCVDetectionAttempt(screenshotBuffer: Buffer, description: string): void {
+    if (!this.enforceCVFirst || !this.currentTaskId) return;
+
+    const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+    const key = `${this.currentTaskId}_${screenshotHash}_${description}`;
+
+    const attempts = this.cvDetectionAttempts.get(key) || [];
+    attempts.push({
+      taskId: this.currentTaskId,
+      screenshotHash,
+      description,
+      attemptCount: attempts.length + 1,
+      lastAttemptTime: Date.now(),
+    });
+
+    this.cvDetectionAttempts.set(key, attempts);
+
+    this.logger.debug(`CV detection attempt ${attempts.length} tracked for "${description}"`);
+  }
+
+  /**
+   * Get number of CV detection attempts for current screenshot + description
+   */
+  private getCVAttemptCount(screenshotBuffer: Buffer, description: string): number {
+    if (!this.enforceCVFirst || !this.currentTaskId) return 999; // Skip enforcement if disabled
+
+    const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+    const key = `${this.currentTaskId}_${screenshotHash}_${description}`;
+    const attempts = this.cvDetectionAttempts.get(key) || [];
+
+    return attempts.length;
+  }
+
+  /**
+   * Check if description suggests a UI element (vs coordinates or non-UI)
+   */
+  private isUIElementDescription(description: string | undefined): boolean {
+    if (!description || description.trim().length === 0) return false;
+
+    // UI element keywords that suggest this should use CV detection
+    const uiKeywords = [
+      'button', 'icon', 'field', 'input', 'text', 'search', 'menu', 'link',
+      'tab', 'dropdown', 'checkbox', 'radio', 'toggle', 'switch', 'slider',
+      'dialog', 'modal', 'popup', 'window', 'panel', 'sidebar', 'toolbar',
+      'header', 'footer', 'navigation', 'list', 'item', 'option', 'label',
+      'form', 'select', 'textarea', 'scroll', 'bar', 'badge', 'chip', 'card'
+    ];
+
+    const descLower = description.toLowerCase();
+    return uiKeywords.some(keyword => descLower.includes(keyword));
+  }
+
+  /**
+   * Check CV-first enforcement: Reject computer_click_mouse for UI elements if CV not tried
+   */
+  private checkCVFirstEnforcement(
+    screenshotBuffer: Buffer,
+    description: string | undefined,
+    hasCoordinates: boolean,
+  ): { allowed: boolean; reason?: string } {
+    // Skip enforcement if disabled
+    if (!this.enforceCVFirst) {
+      return { allowed: true };
+    }
+
+    // Allow if coordinates provided without description (grid-based clicking)
+    if (hasCoordinates && !description) {
+      return { allowed: true };
+    }
+
+    // Allow if description doesn't suggest UI element
+    if (!this.isUIElementDescription(description)) {
+      return { allowed: true };
+    }
+
+    // Check CV attempt count
+    const attemptCount = this.getCVAttemptCount(screenshotBuffer, description || '');
+
+    if (attemptCount < this.CV_REQUIRED_ATTEMPTS) {
+      const reason = `⚠️ CV-First Workflow Required
+
+You MUST try computer_detect_elements at least ${this.CV_REQUIRED_ATTEMPTS} times before using computer_click_mouse for UI elements.
+
+Current CV attempts for "${description}": ${attemptCount}/${this.CV_REQUIRED_ATTEMPTS}
+
+REQUIRED WORKFLOW:
+1. computer_detect_elements({ description: "${description}" })
+2. If no match: computer_detect_elements({ description: "", includeAll: true })
+3. If still fails (after ${this.CV_REQUIRED_ATTEMPTS} attempts): computer_click_mouse({ description: "${description}" })
+
+WHY: Holo 1.5-7B provides 89% click accuracy vs 60% for Smart Focus.
+This is MANDATORY for reliable desktop automation.`;
+
+      return { allowed: false, reason };
+    }
+
+    return { allowed: true };
   }
 
   /**
@@ -1053,6 +1167,41 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             continue;
           }
 
+          // CV-First Enforcement: Check if computer_click_mouse requires CV detection first
+          if (isClickMouseToolUseBlock(block)) {
+            try {
+              const screenshotBuffer = await this.captureScreenshotBuffer();
+              const hasCoordinates = !!block.input.coordinates;
+              const description = block.input.description;
+
+              const enforcement = this.checkCVFirstEnforcement(
+                screenshotBuffer,
+                description,
+                hasCoordinates,
+              );
+
+              if (!enforcement.allowed) {
+                // Reject click with helpful error message
+                this.logger.warn(`CV-first enforcement blocked computer_click_mouse: ${description || 'coordinates'}`);
+                generatedToolResults.push({
+                  type: MessageContentType.ToolResult,
+                  tool_use_id: block.id,
+                  content: [
+                    {
+                      type: MessageContentType.Text,
+                      text: enforcement.reason || 'CV-first workflow required',
+                    },
+                  ],
+                  is_error: true,
+                });
+                continue;
+              }
+            } catch (enforcementError) {
+              this.logger.error(`CV-first enforcement check failed: ${enforcementError.message}`);
+              // Continue with click if enforcement check fails (failsafe)
+            }
+          }
+
           const result = await handleComputerToolUse(block, this.logger);
 
           // Inject SOM (Set-of-Mark) annotated image if available
@@ -1476,6 +1625,11 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
         // Store enhanced result for telemetry
         this.lastEnhancedResult = enhancedResult;
+
+        // Track CV detection attempt for enforcement (if description provided)
+        if (params.description) {
+          this.trackCVDetectionAttempt(screenshotBuffer, params.description);
+        }
 
         // Store SOM data if available
         if (enhancedResult.somImage && enhancedResult.elementMapping) {

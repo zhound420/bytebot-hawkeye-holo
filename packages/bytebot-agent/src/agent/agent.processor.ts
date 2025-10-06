@@ -14,6 +14,8 @@ import {
   TaskType,
 } from '@prisma/client';
 import { AnthropicService } from '../anthropic/anthropic.service';
+import { ModelCapabilityService } from '../models/model-capability.service';
+import { LoopDetectionService } from './loop-detection.service';
 import {
   isComputerToolUseContentBlock,
   isSetTaskStatusToolUseBlock,
@@ -67,6 +69,7 @@ import {
   SCREENSHOT_OBSERVATION_GUARD_MESSAGE,
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';
+import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
@@ -201,8 +204,9 @@ export class AgentProcessor {
     attemptCount: number;
     lastAttemptTime: number;
   }[]>();
-  private readonly CV_REQUIRED_ATTEMPTS = 2; // Minimum CV attempts before allowing fallback
+  private readonly CV_REQUIRED_ATTEMPTS = 2; // Default minimum CV attempts (overridden by model tier)
   private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
+  private currentModelName: string | null = null; // Track current model for tier-based enforcement
 
   constructor(
     private readonly tasksService: TasksService,
@@ -216,6 +220,8 @@ export class AgentProcessor {
     private readonly elementDetector: ElementDetectorService,
     private readonly enhancedVisualDetector: EnhancedVisualDetectorService,
     private readonly cvActivityService: CVActivityIndicatorService,
+    private readonly modelCapabilityService: ModelCapabilityService,
+    private readonly loopDetectionService: LoopDetectionService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -418,15 +424,43 @@ export class AgentProcessor {
   }
 
   /**
+   * Get model-specific CV enforcement rules
+   */
+  private getModelEnforcementRules() {
+    if (!this.currentModelName) {
+      // Default rules if no model set (Tier 2 balanced)
+      return {
+        maxCvAttempts: this.CV_REQUIRED_ATTEMPTS,
+        allowClickViolations: false,
+        enforceCvFirst: true,
+        loopDetectionThreshold: 3,
+        tier: 'tier2' as const,
+      };
+    }
+
+    const rules = this.modelCapabilityService.getEnforcementRules(this.currentModelName);
+    const tier = this.modelCapabilityService.getModelTier(this.currentModelName);
+
+    return {
+      ...rules,
+      tier,
+    };
+  }
+
+  /**
    * Check CV-first enforcement: Reject computer_click_mouse for UI elements if CV not tried
+   * Uses model-specific enforcement rules based on model tier
    */
   private checkCVFirstEnforcement(
     screenshotBuffer: Buffer,
     description: string | undefined,
     hasCoordinates: boolean,
   ): { allowed: boolean; reason?: string } {
-    // Skip enforcement if disabled
-    if (!this.enforceCVFirst) {
+    // Get model-specific enforcement rules
+    const rules = this.getModelEnforcementRules();
+
+    // Skip enforcement if disabled globally or for this model tier
+    if (!this.enforceCVFirst || !rules.enforceCvFirst) {
       return { allowed: true };
     }
 
@@ -440,20 +474,27 @@ export class AgentProcessor {
       return { allowed: true };
     }
 
-    // Check CV attempt count
+    // Check CV attempt count against model-specific max attempts
     const attemptCount = this.getCVAttemptCount(screenshotBuffer, description || '');
 
-    if (attemptCount < this.CV_REQUIRED_ATTEMPTS) {
-      const reason = `⚠️ CV-First Workflow Required
+    if (attemptCount < rules.maxCvAttempts) {
+      // Tier-specific messaging
+      const tierNote = rules.tier === 'tier3'
+        ? '\n\n💡 TIP: Your current model has weaker CV capabilities. Consider using keyboard shortcuts or alternative approaches if CV detection repeatedly fails.'
+        : rules.tier === 'tier1'
+        ? '\n\n✅ Your model has strong CV capabilities. CV detection should work reliably for most UI elements.'
+        : '';
 
-You MUST try computer_detect_elements at least ${this.CV_REQUIRED_ATTEMPTS} times before using computer_click_mouse for UI elements.
+      const reason = `⚠️ CV-First Workflow Required (Model Tier: ${rules.tier.toUpperCase()})
 
-Current CV attempts for "${description}": ${attemptCount}/${this.CV_REQUIRED_ATTEMPTS}
+You MUST try computer_detect_elements at least ${rules.maxCvAttempts} times before using computer_click_mouse for UI elements.
+
+Current CV attempts for "${description}": ${attemptCount}/${rules.maxCvAttempts}
 
 REQUIRED WORKFLOW:
 1. computer_detect_elements({ description: "${description}" })
 2. If no match: computer_detect_elements({ description: "", includeAll: true })
-3. If still fails (after ${this.CV_REQUIRED_ATTEMPTS} attempts): computer_click_mouse({ description: "${description}" })
+3. If still fails (after ${rules.maxCvAttempts} attempts): computer_click_mouse({ description: "${description}" })${tierNote}
 
 WHY: Holo 1.5-7B provides 89% click accuracy vs 60% for Smart Focus.
 This is MANDATORY for reliable desktop automation.`;
@@ -914,10 +955,14 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         );
         this.isProcessing = false;
         this.currentTaskId = null;
+        this.currentModelName = null; // Clear model name on task completion
 
         // Clean up stuck detection state
         this.taskIterationCount.delete(taskId);
         this.taskLastActionTime.delete(taskId);
+
+        // Clean up loop detection history
+        this.loopDetectionService.clearTaskHistory(taskId);
 
         return;
       }
@@ -994,6 +1039,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       );
 
       const model = task.model as unknown as BytebotAgentModel;
+
+      // Set current model name for tier-based CV enforcement
+      this.currentModelName = model.name;
+      const modelTier = this.modelCapabilityService.getModelTier(model.name);
+      this.logger.debug(`Processing task with model: ${model.name} (tier: ${modelTier})`);
+
       let agentResponse: BytebotAgentResponse;
 
       const service = this.services[model.provider];
@@ -1014,8 +1065,18 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       const currentTime = now.toLocaleTimeString();
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+      // Get model-specific enforcement rules for tier-based prompts
+      const rules = this.getModelEnforcementRules();
+      const systemPrompt = buildTierSpecificAgentSystemPrompt(
+        rules.tier,
+        rules.maxCvAttempts,
+        currentDate,
+        currentTime,
+        timeZone,
+      );
+
       agentResponse = await service.generateMessage(
-        buildAgentSystemPrompt(currentDate, currentTime, timeZone),
+        systemPrompt,
         messages,
         model.name,
         true,
@@ -1155,6 +1216,15 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         }
 
         if (isComputerToolUseContentBlock(block)) {
+          // Record tool call for loop detection
+          if (this.currentTaskId) {
+            this.loopDetectionService.recordToolCall(
+              this.currentTaskId,
+              block.name,
+              block.input as Record<string, any>,
+            );
+          }
+
           if (isComputerDetectElementsToolUseBlock(block)) {
             const result = await this.handleComputerDetectElements(block);
             generatedToolResults.push(result);
@@ -1275,6 +1345,39 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           role: Role.USER,
           taskId,
         });
+      }
+
+      // Check for loop detection after tool execution
+      if (this.currentTaskId) {
+        const rules = this.getModelEnforcementRules();
+        const loopResult = this.loopDetectionService.detectLoop(
+          this.currentTaskId,
+          rules.loopDetectionThreshold,
+        );
+
+        if (loopResult.isLoop) {
+          // Inject loop warning into conversation
+          this.logger.warn(
+            `Loop detected in task ${this.currentTaskId}: ${loopResult.pattern} (${loopResult.loopCount} times)`,
+          );
+
+          const loopWarning: TextContentBlock = {
+            type: MessageContentType.Text,
+            text: `⚠️ **LOOP DETECTED** ⚠️
+
+You've called the same tool with the same parameters ${loopResult.loopCount} times in a row.
+
+${loopResult.suggestion}
+
+**IMPORTANT:** Stop repeating the same action. Try a different approach or request help if you're stuck.`,
+          };
+
+          await this.messagesService.create({
+            content: [loopWarning],
+            role: Role.USER,
+            taskId: this.currentTaskId,
+          });
+        }
       }
 
       // Surface internal CV activity (OmniParser detections) that aren't from explicit tool calls

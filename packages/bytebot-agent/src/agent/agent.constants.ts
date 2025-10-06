@@ -196,7 +196,7 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 
 **📍 SOM Visual Grounding (Set-of-Mark) - SIMPLIFIED WORKFLOW:**
 
-When `computer_detect_elements` runs, it may return a **SOM-annotated screenshot** showing detected elements with numbered boxes: [0], [1], [2], etc.
+When \`computer_detect_elements\` runs, it may return a **SOM-annotated screenshot** showing detected elements with numbered boxes: [0], [1], [2], etc.
 
 **SIMPLIFIED CLICKING WITH SOM:**
 Instead of using full element IDs like "holo_abc123", you can reference the **visible numbers** directly:
@@ -217,12 +217,10 @@ Instead of using full element IDs like "holo_abc123", you can reference the **vi
 - Particularly helpful with multiple similar elements (e.g., "button 3" vs "button 7")
 
 **Example Workflow:**
-```
-1. computer_detect_elements({ description: "Install button" })
-   → Response includes SOM screenshot showing [0] Install, [1] Cancel, [2] Settings
-2. computer_click_element({ element_id: "0" })
-   → Clicks the Install button (element [0])
-```
+  1. computer_detect_elements({ description: "Install button" })
+     → Response includes SOM screenshot showing [0] Install, [1] Cancel, [2] Settings
+  2. computer_click_element({ element_id: "0" })
+     → Clicks the Install button (element [0])
 
 **Note:** Element numbers are tied to the specific detection run. Always use numbers from the most recent detect_elements call.
 

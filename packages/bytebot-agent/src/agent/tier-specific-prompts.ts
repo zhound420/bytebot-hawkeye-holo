@@ -257,7 +257,7 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 
 **📍 SOM Visual Grounding (Set-of-Mark) - POWERFUL SIMPLIFICATION:**
 
-When `computer_detect_elements` completes, it may return a **SOM-annotated screenshot** with numbered boxes overlaid on each detected element.
+When \`computer_detect_elements\` completes, it may return a **SOM-annotated screenshot** with numbered boxes overlaid on each detected element.
 
 **LEVERAGE YOUR STRONG REASONING:**
 - Instead of tracking full element IDs like "holo_abc123", simply reference the **visible number**
@@ -271,12 +271,10 @@ When `computer_detect_elements` completes, it may return a **SOM-annotated scree
 4. **Error Recovery**: If wrong element clicked, easy to identify the correct number from screenshot
 
 **Workflow with SOM:**
-```
-1. computer_detect_elements({ description: "button" })
-   → Returns SOM screenshot showing [0] Install, [1] Cancel, [2] Help
-2. Analyze the screenshot visually to identify target
-3. computer_click_element({ element_id: "0" })  // Direct number reference
-```
+  1. computer_detect_elements({ description: "button" })
+     → Returns SOM screenshot showing [0] Install, [1] Cancel, [2] Help
+  2. Analyze the screenshot visually to identify target
+  3. computer_click_element({ element_id: "0" })  // Direct number reference
 
 **When SOM Unavailable:**
 - Fall back to using full element IDs from the detection response
@@ -338,11 +336,9 @@ When available, detection may return a screenshot with numbered boxes [0], [1], 
 - Reduces confusion with multiple similar elements
 
 **Example:**
-```
-computer_detect_elements({ description: "button" })
-→ Screenshot shows: [0] Install, [1] Cancel, [2] Help
-computer_click_element({ element_id: "0" })  // Click Install
-```
+  computer_detect_elements({ description: "button" })
+  → Screenshot shows: [0] Install, [1] Cancel, [2] Help
+  computer_click_element({ element_id: "0" })  // Click Install
 
 Use element numbers when available; fall back to IDs if not.
 

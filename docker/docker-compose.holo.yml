@@ -37,7 +37,7 @@ services:
     environment:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
     depends_on:
       bytebot-holo:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
     environment:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
     depends_on:
       bytebot-holo:
         condition: service_healthy

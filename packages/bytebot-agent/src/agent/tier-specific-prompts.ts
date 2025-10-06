@@ -48,24 +48,46 @@ export function getTierSpecificCVInstructions(
   }
 
   // Tier 3: Limited Reasoning or Tool Use - Minimal enforcement, keyboard-first
-  return `6. **💡 SUGGESTED: KEYBOARD-FIRST WITH CV ASSISTANCE**
+  return `6. **💡 KEYBOARD-FIRST WORKFLOW (Optimized for Your Model)**
    **RECOMMENDED APPROACH FOR UI INTERACTION:**
 
-   ⌨️ **PRIMARY METHOD: KEYBOARD SHORTCUTS (Your model tier):**
-   1. Try keyboard shortcuts FIRST:
-      - Tab/Shift+Tab for navigation
-      - Ctrl+P, Ctrl+Shift+P for command palettes
-      - Ctrl+F for find/search dialogs
-      - App-specific shortcuts (Ctrl+T new tab, etc.)
+   ⌨️ **PRIMARY METHOD: KEYBOARD SHORTCUTS (Simplest & Most Reliable):**
 
-   🎯 **SECONDARY: CV-ASSISTED CLICKING:**
-   - computer_detect_elements({ description: "target element" })
-   - computer_click_element({ element_id: "..." })
-   - If CV fails ${maxCvAttempts} times, try computer_click_mouse
+   **Common Workflows:**
+   • **VS Code - Install Extension:**
+     1. Ctrl+Shift+X (open Extensions panel)
+     2. Type extension name in search
+     3. Tab repeatedly until you hear/see "Install" button
+     4. Enter to install
 
-   ⚠️ **YOUR MODEL NOTE:** Your model may struggle with complex tool orchestration. Keyboard shortcuts are more reliable for your tier - they require simpler reasoning. Use CV detection as an assist, not primary method.
+   • **Firefox - Navigate to URL:**
+     1. Ctrl+L (focus address bar)
+     2. Type URL
+     3. Enter
 
-   **FALLBACK CHAIN:** Keyboard → CV detection → Grid clicking. This order works best for your model's capabilities.`;
+   • **File Manager - Open File:**
+     1. Ctrl+L (focus location bar)
+     2. Type path
+     3. Enter, then arrow keys to select file
+     4. Enter to open
+
+   • **General Navigation:**
+     - Tab/Shift+Tab: Move between interactive elements
+     - Enter/Space: Activate focused element
+     - Ctrl+F: Open find dialog (then type search term + Enter)
+     - Esc: Close dialogs/cancel
+
+   🎯 **SECONDARY: CV-ASSISTED CLICKING (When keyboard fails):**
+   1. computer_detect_elements({ description: "target element" })
+   2. computer_click_element({ element_id: "..." })
+   3. If CV fails ${maxCvAttempts} times, use computer_click_mouse with coordinates
+
+   ⚠️ **YOUR MODEL TIER:** Keyboard shortcuts require simpler reasoning than CV tool orchestration. Always try keyboard first - it's faster and more reliable for your capabilities.
+
+   **DECISION TREE:**
+   - CAN I use keyboard shortcuts? → YES → Use keyboard (computer_press_keys)
+   - Need to click specific element? → computer_detect_elements + computer_click_element
+   - CV detection failed twice? → computer_click_mouse with coordinates from grid`;
 }
 
 /**

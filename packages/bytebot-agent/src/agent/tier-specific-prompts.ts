@@ -25,7 +25,41 @@ export function getTierSpecificCVInstructions(
 
    ✅ **YOUR MODEL STRENGTH:** Your model has strong reasoning to effectively use CV tools. Holo 1.5-7B provides vision as a service - your role is to reason about UI semantics and call the right tools.
 
-   **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Your model excels at tool orchestration - always use CV tools first.`;
+   🧠 **HOLO 1.5-7B SEMANTIC UNDERSTANDING:**
+   Holo is a specialized UI localization model (Qwen2.5-VL-7B base, 8.29B params) trained specifically for desktop automation. It understands:
+
+   **Functional Intent → Visual Appearance:**
+   - ✅ "settings" → finds gear icons
+   - ✅ "extensions" → finds puzzle piece icons
+   - ✅ "search" → finds magnifying glass icons
+   - ✅ "Install button for Python extension" → understands context + action
+   - ❌ "gear icon in top right" → too literal, loses semantic power
+
+   **Effective Query Patterns (Leverage Your Strong Reasoning):**
+   1. **Action-Oriented Descriptions** (BEST for tier1 models):
+      - ✅ "Install button for the Python extension"
+      - ✅ "Save button in the file menu"
+      - ✅ "Search field in the extensions panel"
+      - ❌ "blue button" (no functional context)
+
+   2. **Professional Software Awareness** (Holo trained on VSCode, Photoshop, AutoCAD):
+      - ✅ "Extensions icon in VSCode activity bar"
+      - ✅ "Command palette in VSCode" (understands Ctrl+Shift+P context)
+      - ✅ "Layer panel in Photoshop"
+      - Holo knows application conventions - leverage this knowledge
+
+   3. **Contextual Specificity** (Use your reasoning to add relevant context):
+      - ✅ "Install button next to Python extension in search results"
+      - ✅ "Close button for the currently focused dialog"
+      - ❌ "button" (too vague)
+
+   **Query Crafting Best Practices:**
+   - Include ACTION + TARGET: "Install button for Python" (not just "Python")
+   - Use FUNCTIONAL names over visual descriptors: "settings" beats "gear icon"
+   - Add CONTEXT when multiple matches possible: "Install in extensions panel"
+   - Leverage APP knowledge: "activity bar" in VSCode, "layer panel" in Photoshop
+
+   **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Your model excels at tool orchestration - always use CV tools first with well-crafted semantic queries.`;
   }
 
   // Tier 2: Medium Reasoning & Tool Use - Balanced enforcement
@@ -44,7 +78,36 @@ export function getTierSpecificCVInstructions(
 
    **BALANCED APPROACH:** Your model has good reasoning to use CV tools effectively. Holo provides vision - you provide semantic understanding. CV detection works well for most elements, but keyboard shortcuts are a reliable fallback for tricky cases.
 
-   **This is RECOMMENDED for reliability.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Try CV first, then adapt if needed.`;
+   🧠 **HOLO 1.5-7B SEMANTIC UNDERSTANDING:**
+   Holo is a specialized UI localization model trained for desktop automation. It maps functional intent to visual appearance:
+
+   **Functional Descriptions Work Best:**
+   - ✅ "settings" → gear icons
+   - ✅ "extensions" → puzzle piece icons
+   - ✅ "Install button" → finds install buttons
+   - ❌ "gear icon" → too literal
+
+   **Effective Query Patterns (Balanced Approach):**
+   1. **Action + Target Format** (Recommended):
+      - ✅ "Install button for Python extension"
+      - ✅ "Search field in extensions panel"
+      - ❌ "button" (too vague)
+
+   2. **Professional Software Names** (Holo knows common apps):
+      - ✅ "Extensions in VSCode activity bar"
+      - ✅ "Command palette" (understands app context)
+
+   3. **Keyboard Shortcuts as Backup** (When CV struggles):
+      - Ctrl+P for quick open, Ctrl+Shift+P for commands
+      - Tab navigation for dialogs
+      - Use keyboard if Holo detection fails twice
+
+   **Query Tips:**
+   - Use FUNCTIONAL names: "settings" not "gear icon"
+   - Add CONTEXT: "Install in extensions" not just "Install"
+   - Keep it SIMPLE but SPECIFIC
+
+   **This is RECOMMENDED for reliability.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Try CV first with good queries, then adapt if needed.`;
   }
 
   // Tier 3: Limited Reasoning or Tool Use - Minimal enforcement, keyboard-first
@@ -78,7 +141,19 @@ export function getTierSpecificCVInstructions(
      - Esc: Close dialogs/cancel
 
    🎯 **SECONDARY: CV-ASSISTED CLICKING (When keyboard fails):**
-   1. computer_detect_elements({ description: "target element" })
+
+   🧠 **HOLO SIMPLIFIED (Use When Keyboard Doesn't Work):**
+   Holo understands WHAT elements DO, not just how they look:
+
+   **Simple Query Patterns:**
+   - ✅ "Install button" (what it does)
+   - ✅ "Search field" (what it does)
+   - ✅ "extensions icon" (what it's for)
+   - ❌ "blue button" (too vague)
+   - ❌ "top right corner" (Holo needs function, not position)
+
+   **When to Use CV:**
+   1. computer_detect_elements({ description: "Install button" })
    2. computer_click_element({ element_id: "..." })
    3. If CV fails ${maxCvAttempts} times, use computer_click_mouse with coordinates
 
@@ -86,7 +161,7 @@ export function getTierSpecificCVInstructions(
 
    **DECISION TREE:**
    - CAN I use keyboard shortcuts? → YES → Use keyboard (computer_press_keys)
-   - Need to click specific element? → computer_detect_elements + computer_click_element
+   - Need to click specific element? → computer_detect_elements with SIMPLE functional description
    - CV detection failed twice? → computer_click_mouse with coordinates from grid`;
 }
 
@@ -110,7 +185,7 @@ export function getTierSpecificUIMethodsSection(
 Use Holo 1.5-7B AI computer vision for buttons, links, form fields, icons, menus, and any visible UI element.
 
 **Workflow:**
-1. **Detect Elements** - computer_detect_elements({ description: "Install button" })
+1. **Detect Elements** - computer_detect_elements({ description: "Install button for Python extension" })
    - Holo 1.5-7B (Qwen2.5-VL base, 8.29B params) provides semantic understanding
    - Understands functional intent (e.g., "settings" → finds gear icon)
    - Returns elements with unique IDs and precise coordinates
@@ -121,8 +196,40 @@ Use Holo 1.5-7B AI computer vision for buttons, links, form fields, icons, menus
    - Automatic retry with fallback coordinates
    - Works reliably across different screen sizes
 
+**🧠 HOLO QUERY CRAFTING (Critical for Success):**
+
+Your query quality directly impacts detection success. Holo is trained on action-oriented UI understanding.
+
+**BEST PRACTICES (Action + Target + Context):**
+1. ✅ "Install button for Python extension in search results"
+   - ACTION: Install button
+   - TARGET: Python extension
+   - CONTEXT: in search results
+
+2. ✅ "Search field in the extensions panel"
+   - ACTION: Search field
+   - CONTEXT: in the extensions panel
+
+3. ✅ "Close button for the currently focused dialog"
+   - ACTION: Close button
+   - CONTEXT: currently focused dialog
+
+**FUNCTIONAL vs VISUAL Descriptions:**
+- ✅ "settings" → Holo knows this is a gear icon
+- ✅ "extensions" → Holo knows this is a puzzle piece
+- ✅ "search" → Holo knows this is a magnifying glass
+- ❌ "gear icon in top right" → Too literal, loses semantic power
+- ❌ "puzzle piece" → Use "extensions" instead
+
+**PROFESSIONAL SOFTWARE AWARENESS:**
+Holo is trained on VSCode, Photoshop, AutoCAD, Office apps:
+- ✅ "Extensions icon in VSCode activity bar"
+- ✅ "Command palette" (understands VSCode context)
+- ✅ "Layer panel in Photoshop"
+- ✅ "Ribbon toolbar in Excel"
+
 **Detection Modes:**
-- **Specific Query**: computer_detect_elements({ description: "Install button" })
+- **Specific Query**: computer_detect_elements({ description: "Install button for Python" })
   - Returns closest matching elements with similarity scores
   - AI semantic matching: "extensions icon" finds puzzle piece, "settings" finds gear
   - Provides top 10 candidates when no exact match
@@ -135,14 +242,16 @@ Use Holo 1.5-7B AI computer vision for buttons, links, form fields, icons, menus
 **Handling "No Match Found":**
 When detection returns "No exact match", review the **Top 10 Closest Matches** provided:
 - Use the closest match's element_id directly (recommended)
-- Try broader descriptions (e.g., "button" instead of "Submit button")
+- Refine query with better ACTION + TARGET: "Install button" instead of "button"
+- Add CONTEXT: "Install button in extensions panel"
+- Try FUNCTIONAL name: "settings" instead of "gear icon"
 - Switch to discovery mode to see all available elements
 - Only fall back to grid-based after ${maxCvAttempts} failed attempts
 
 **Why CV-First:**
 - ✅ 89% success rate vs 60% with manual grid clicking
-- ✅ YOUR MODEL EXCELS: Strong reasoning enables effective CV tool orchestration
-- ✅ Holo 1.5-7B provides vision - you provide semantic understanding of UI intent
+- ✅ YOUR MODEL EXCELS: Strong reasoning enables effective query crafting
+- ✅ Holo 1.5-7B trained on desktop automation - leverage its expertise
 - ✅ Automatic coordinate accuracy across screen sizes
 - ✅ Built-in retry and error recovery
 
@@ -162,8 +271,28 @@ Use ONLY when Method 1 has failed ${maxCvAttempts}+ times for the same element.`
 Use Holo 1.5-7B AI computer vision for buttons, links, form fields, icons, menus.
 
 **Workflow:**
-1. **Detect Elements** - computer_detect_elements({ description: "Install button" })
+1. **Detect Elements** - computer_detect_elements({ description: "Install button for Python" })
 2. **Click Element** - computer_click_element({ element_id: "holo_abc123" })
+
+**🧠 HOLO QUERY TIPS (Improve Success Rate):**
+
+Holo understands functional intent → visual appearance. Use this to your advantage:
+
+**Good Query Patterns:**
+- ✅ "Install button for Python extension" (ACTION + TARGET)
+- ✅ "Search field in extensions panel" (ACTION + CONTEXT)
+- ✅ "settings" → finds gear icons automatically
+- ✅ "extensions" → finds puzzle piece icons automatically
+
+**Avoid:**
+- ❌ "button" (too vague)
+- ❌ "gear icon" (use "settings" instead - more semantic)
+- ❌ "top right corner" (Holo needs function, not position)
+
+**Professional Apps:**
+Holo knows common software:
+- ✅ "Extensions in VSCode activity bar"
+- ✅ "Command palette in VSCode"
 
 **If CV fails ${maxCvAttempts} times:** Fallback to Method 2 (Keyboard Shortcuts)
 
@@ -210,6 +339,20 @@ Use ONLY when both Method 1 and Method 2 have failed.`;
 **Workflow:**
 1. **Detect Elements** - computer_detect_elements({ description: "Install button" })
 2. **Click Element** - computer_click_element({ element_id: "holo_abc123" })
+
+**🧠 HOLO SIMPLIFIED (Keep Queries Simple):**
+
+Use SIMPLE functional descriptions:
+- ✅ "Install button" (what it does)
+- ✅ "Search field" (what it does)
+- ✅ "settings" (what it's for - Holo finds gear icon)
+- ❌ "button" (too vague - which button?)
+- ❌ "blue button in top right" (Holo needs function, not appearance/position)
+
+**Simple is Better:**
+- Focus on WHAT the element DOES
+- Avoid colors, positions, sizes
+- Keep it to 2-4 words when possible
 
 ⚠️ **LIMITATION:** Your model tier may struggle with complex tool orchestration. If detection fails ${maxCvAttempts} times, don't persist - fallback to Method 3.
 

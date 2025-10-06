@@ -7,10 +7,10 @@ from pydantic_settings import BaseSettings
 
 
 DEFAULT_DETECTION_PROMPTS: List[str] = [
-    "List the most prominent buttons or calls to action the user can click.",
-    "Identify navigation controls such as tabs, menus, or sidebar entries that appear interactive.",
-    "Highlight form elements like text inputs, search fields, or dropdown selectors.",
-    "Surface key icons in toolbars or system trays that a desktop user might interact with soon.",
+    "Locate all clickable buttons that perform actions (Install, Save, Open, Close, Submit, etc.)",
+    "Find all navigation controls for moving between sections (tabs, menus, sidebar entries, breadcrumbs)",
+    "Identify all input fields where users can enter or select data (search boxes, text inputs, dropdowns, checkboxes)",
+    "Detect all toolbar and system icons that provide quick access to features (settings, extensions, tools, notifications)",
 ]
 
 PERFORMANCE_PROFILES: Dict[str, Dict[str, Any]] = {
@@ -103,9 +103,10 @@ class Settings(BaseSettings):
         "(3) NO explanations or reasoning, (4) Start response immediately with { or [ character."
     )
     holo_guidelines: str = (
-        "You are looking at a UI screenshot. Identify interactive elements like buttons, icons, inputs, and links. "
-        "For each element, provide the center point coordinates in pixels relative to the image dimensions. "
-        "Be precise and only report elements you can clearly see."
+        "You are a desktop automation expert analyzing a UI screenshot. Identify interactive elements based on their FUNCTION, not appearance. "
+        "Focus on what elements DO: buttons that perform actions (Install, Save, Close), navigation that moves between sections (tabs, menus), "
+        "input fields for data entry (search, text, dropdowns), and functional icons (settings gear, extensions puzzle piece, tools). "
+        "For each element, provide center point coordinates in pixels and a functional label. Be precise and specific."
     )
     single_detection_format: str = (
         "Return a JSON object with: {\"x\": <integer>, \"y\": <integer>, \"label\": \"brief description\"}. "
@@ -118,8 +119,9 @@ class Settings(BaseSettings):
     )
     discovery_prompt: str = (
         "Identify the top {max_detections} interactive UI elements in this screenshot. "
-        "Look for: buttons, icons, menu items, input fields, links, and clickable controls. "
-        "For each element, provide center coordinates and a brief label."
+        "Focus on action-oriented elements: buttons (Install, Save, Close, etc.), navigation controls (tabs, menus), "
+        "input fields (search, text entry, dropdowns), and functional icons (settings, extensions, tools). "
+        "For each element, provide center coordinates and a functional label describing what it does."
     )
     multi_detection_format: str = (
         "START YOUR RESPONSE WITH THIS EXACT FORMAT (no preamble):\n"

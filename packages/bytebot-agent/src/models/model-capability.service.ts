@@ -162,11 +162,65 @@ export class ModelCapabilityService {
   }
 
   /**
+   * Score model tier based on metadata thresholds
+   * @param metadata - Model metadata (inputCost, contextWindow, etc.)
+   * @returns Tier or null if metadata doesn't match any threshold
+   */
+  private scoreFromMetadata(metadata: {
+    inputCost?: number;
+    contextWindow?: number;
+  }): ModelTier | null {
+    // Tier 1: Premium pricing OR large context
+    const tier1Thresholds = MODEL_CAPABILITIES.metadataThresholds.tier1;
+    if (
+      (metadata.inputCost !== undefined &&
+        tier1Thresholds.inputCostMin !== undefined &&
+        metadata.inputCost >= tier1Thresholds.inputCostMin) ||
+      (metadata.contextWindow !== undefined &&
+        tier1Thresholds.contextWindowMin !== undefined &&
+        metadata.contextWindow >= tier1Thresholds.contextWindowMin)
+    ) {
+      return 'tier1';
+    }
+
+    // Tier 3: Budget pricing
+    const tier3Thresholds = MODEL_CAPABILITIES.metadataThresholds.tier3;
+    if (
+      metadata.inputCost !== undefined &&
+      tier3Thresholds.inputCostMax !== undefined &&
+      metadata.inputCost <= tier3Thresholds.inputCostMax
+    ) {
+      return 'tier3';
+    }
+
+    // Tier 2: Mid-range (fallback if not tier1 or tier3)
+    const tier2Thresholds = MODEL_CAPABILITIES.metadataThresholds.tier2;
+    if (
+      (metadata.inputCost !== undefined &&
+        tier2Thresholds.inputCostMin !== undefined &&
+        tier2Thresholds.inputCostMax !== undefined &&
+        metadata.inputCost >= tier2Thresholds.inputCostMin &&
+        metadata.inputCost < tier2Thresholds.inputCostMax) ||
+      (metadata.contextWindow !== undefined &&
+        tier2Thresholds.contextWindowMin !== undefined &&
+        metadata.contextWindow >= tier2Thresholds.contextWindowMin)
+    ) {
+      return 'tier2';
+    }
+
+    return null;
+  }
+
+  /**
    * Get the tier for a given model
    * @param modelName - Model identifier (e.g., "gpt-4o", "openai/gpt-4o")
+   * @param metadata - Optional model metadata for Layer 4 detection
    * @returns Model tier (tier1, tier2, or tier3)
    */
-  getModelTier(modelName: string): ModelTier {
+  getModelTier(
+    modelName: string,
+    metadata?: { inputCost?: number; contextWindow?: number },
+  ): ModelTier {
     if (!modelName) {
       this.logger.warn('No model name provided, using default tier');
       return MODEL_CAPABILITIES.defaultTier;
@@ -216,10 +270,16 @@ export class ModelCapabilityService {
       }
     }
 
-    // Layer 4: Metadata scoring (future - use LiteLLM proxy metadata)
-    // TODO: Implement metadata-based scoring using inputCost, contextWindow, etc.
-    // const metadataTier = this.scoreFromMetadata(modelMetadata);
-    // if (metadataTier) return metadataTier;
+    // Layer 4: Metadata scoring (use LiteLLM proxy metadata)
+    if (metadata) {
+      const metadataTier = this.scoreFromMetadata(metadata);
+      if (metadataTier) {
+        this.logger.log(
+          `Model "${modelName}" matched tier ${metadataTier} via metadata scoring (cost: ${metadata.inputCost}, context: ${metadata.contextWindow})`,
+        );
+        return metadataTier;
+      }
+    }
 
     // Layer 5: Safe default tier
     this.logger.log(

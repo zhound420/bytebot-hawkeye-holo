@@ -255,6 +255,33 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 - ✅ Automatic coordinate accuracy across screen sizes
 - ✅ Built-in retry and error recovery
 
+**📍 SOM Visual Grounding (Set-of-Mark) - POWERFUL SIMPLIFICATION:**
+
+When `computer_detect_elements` completes, it may return a **SOM-annotated screenshot** with numbered boxes overlaid on each detected element.
+
+**LEVERAGE YOUR STRONG REASONING:**
+- Instead of tracking full element IDs like "holo_abc123", simply reference the **visible number**
+- ✅ computer_click_element({ element_id: "5" }) → Clicks element [5]
+- ✅ computer_click_element({ element_id: "element 12" }) → Clicks element [12]
+
+**Strategic Advantages for Tier 1 Models:**
+1. **Reduced Memory Load**: No need to memorize opaque IDs
+2. **Visual Verification**: You can see exactly which element corresponds to each number
+3. **Disambiguation**: "Element 3" vs "Element 7" is clearer than similar text descriptions
+4. **Error Recovery**: If wrong element clicked, easy to identify the correct number from screenshot
+
+**Workflow with SOM:**
+```
+1. computer_detect_elements({ description: "button" })
+   → Returns SOM screenshot showing [0] Install, [1] Cancel, [2] Help
+2. Analyze the screenshot visually to identify target
+3. computer_click_element({ element_id: "0" })  // Direct number reference
+```
+
+**When SOM Unavailable:**
+- Fall back to using full element IDs from the detection response
+- Both methods work - SOM is just more cognitively efficient
+
 #### Method 2: Grid-Based (FALLBACK ONLY after ${maxCvAttempts} CV attempts) ⚠️
 Use ONLY when Method 1 has failed ${maxCvAttempts}+ times for the same element.`;
   }
@@ -300,6 +327,24 @@ Holo knows common software:
 - ✅ 89% success rate vs 60% with manual grid clicking
 - ✅ YOUR MODEL: Good reasoning capabilities, works well for most elements
 - ⚠️ May need guidance (keyboard shortcuts) for complex/ambiguous UI interactions
+
+**📍 SOM Visual Grounding - SIMPLIFIED CLICKING:**
+
+When available, detection may return a screenshot with numbered boxes [0], [1], [2] showing each element.
+
+**Simpler Workflow:**
+- Instead of element IDs, use visible numbers: computer_click_element({ element_id: "5" })
+- Easier to track which element is which
+- Reduces confusion with multiple similar elements
+
+**Example:**
+```
+computer_detect_elements({ description: "button" })
+→ Screenshot shows: [0] Install, [1] Cancel, [2] Help
+computer_click_element({ element_id: "0" })  // Click Install
+```
+
+Use element numbers when available; fall back to IDs if not.
 
 #### Method 2: Keyboard Shortcuts (RELIABLE FALLBACK) ⌨️
 **Highly reliable when CV struggles** - Use after ${maxCvAttempts} failed CV attempts.
@@ -357,6 +402,17 @@ Use SIMPLE functional descriptions:
 ⚠️ **LIMITATION:** Your model tier may struggle with complex tool orchestration. If detection fails ${maxCvAttempts} times, don't persist - fallback to Method 3.
 
 **Loop Prevention:** If you keep getting "No match found", STOP trying CV detection. Use keyboard shortcuts or grid clicking instead.
+
+**📍 SOM Numbers (If Available):**
+
+Sometimes detection returns numbered boxes [0], [1], [2] on the screenshot.
+
+**USE THE NUMBERS (Simpler):**
+- computer_click_element({ element_id: "0" }) clicks element [0]
+- Easier than remembering long IDs
+- Just count the boxes on the screenshot
+
+**Example:** If screenshot shows [0] Install, use "0" to click it.
 
 #### Method 3: Grid-Based (FALLBACK) ⚠️
 Use when both Method 1 and Method 2 have failed, or when CV detection is stuck in loops.`;

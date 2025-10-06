@@ -194,6 +194,38 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 - ✅ Built-in retry and error recovery
 - ✅ Works with dynamically positioned elements
 
+**📍 SOM Visual Grounding (Set-of-Mark) - SIMPLIFIED WORKFLOW:**
+
+When `computer_detect_elements` runs, it may return a **SOM-annotated screenshot** showing detected elements with numbered boxes: [0], [1], [2], etc.
+
+**SIMPLIFIED CLICKING WITH SOM:**
+Instead of using full element IDs like "holo_abc123", you can reference the **visible numbers** directly:
+- ✅ computer_click_element({ element_id: "5" }) - Click element [5] from the numbered screenshot
+- ✅ computer_click_element({ element_id: "element 3" }) - Click element [3]
+- ✅ computer_click_element({ element_id: "box 12" }) - Click element [12]
+
+**How It Works:**
+1. computer_detect_elements returns detection results + SOM-annotated screenshot
+2. Screenshot shows numbered boxes overlaid on detected elements
+3. You can simply reference the visible number instead of memorizing IDs
+4. The system automatically maps the number to the correct element
+
+**When to Use:**
+- When the detection response includes a SOM-annotated screenshot with numbered boxes
+- Makes it easier to reference specific elements visually
+- Reduces cognitive load - just use the number you see
+- Particularly helpful with multiple similar elements (e.g., "button 3" vs "button 7")
+
+**Example Workflow:**
+```
+1. computer_detect_elements({ description: "Install button" })
+   → Response includes SOM screenshot showing [0] Install, [1] Cancel, [2] Settings
+2. computer_click_element({ element_id: "0" })
+   → Clicks the Install button (element [0])
+```
+
+**Note:** Element numbers are tied to the specific detection run. Always use numbers from the most recent detect_elements call.
+
 #### Method 2: Grid-Based (FALLBACK ONLY) ⚠️
 Use ONLY when Method 1 has failed or for these specific cases:
 - Custom rendering (canvas apps, games, visualizations)

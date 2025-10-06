@@ -34,6 +34,11 @@ import {
   detectClickableElement,
   detectVisualChange,
 } from './visual-feedback.helper';
+import {
+  getScreenshot,
+  getScreenshotRegion,
+  getScreenshotCustomRegion,
+} from './screenshot-wrapper';
 
 interface ScreenshotOptions {
   gridOverlay?: boolean;
@@ -1302,33 +1307,15 @@ async function screenshot(
   console.log('Taking screenshot');
 
   try {
-    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'screenshot',
-        gridOverlay: options?.gridOverlay ?? undefined,
-        gridSize: options?.gridSize ?? undefined,
-        highlightRegions: options?.highlightRegions ?? undefined,
-        showCursor: options?.showCursor ?? true,
-        progressStep: options?.progressStep ?? undefined,
-        progressMessage: options?.progressMessage ?? undefined,
-        progressTaskId: options?.progressTaskId ?? undefined,
-        markTarget: options?.markTarget ?? undefined,
-      }),
-    });
+    // Use wrapper that handles SOM enhancement
+    const result = await getScreenshot(options);
 
-    if (!response.ok) {
-      throw new Error(`Failed to take screenshot: ${response.statusText}`);
+    // Log if SOM was applied
+    if (result.somApplied) {
+      console.log(`Screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
     }
 
-    const data = await response.json();
-
-    if (!data.image) {
-      throw new Error('Failed to take screenshot: No image data received');
-    }
-
-    return { image: data.image, offset: data.offset };
+    return { image: result.image, offset: result.offset };
   } catch (error) {
     console.error('Error in screenshot action:', error);
     throw error;
@@ -1376,40 +1363,19 @@ async function screenshotRegion(input: {
   console.log(`Taking focused screenshot for region: ${input.region}`);
 
   try {
-    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'screenshot_region',
-        region: input.region,
-        gridSize: input.gridSize ?? undefined,
-        enhance: input.enhance ?? undefined,
-        includeOffset: input.includeOffset ?? undefined,
-        addHighlight: input.addHighlight ?? undefined,
-        showCursor: input.showCursor ?? true,
-        progressStep: input.progressStep ?? undefined,
-        progressMessage: input.progressMessage ?? undefined,
-        progressTaskId: input.progressTaskId ?? undefined,
-        zoomLevel: input.zoomLevel ?? undefined,
-      }),
-    });
+    // Use wrapper that handles SOM enhancement
+    const result = await getScreenshotRegion(input as any);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to take focused screenshot: ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-    if (!data.image) {
-      throw new Error('No image returned for focused screenshot');
+    // Log if SOM was applied
+    if (result.somApplied) {
+      console.log(`Region screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
     }
 
     return {
-      image: data.image,
-      offset: data.offset,
-      region: data.region,
-      zoomLevel: data.zoomLevel,
+      image: result.image,
+      offset: result.offset,
+      region: result.region,
+      zoomLevel: result.zoomLevel,
     };
   } catch (error) {
     console.error('Error in screenshot_region action:', error);
@@ -1440,41 +1406,19 @@ async function screenshotCustomRegion(input: {
   );
 
   try {
-    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'screenshot_custom_region',
-        x: input.x,
-        y: input.y,
-        width: input.width,
-        height: input.height,
-        gridSize: input.gridSize ?? undefined,
-        zoomLevel: input.zoomLevel ?? undefined,
-        markTarget: input.markTarget ?? undefined,
-        showCursor: input.showCursor ?? true,
-        progressStep: input.progressStep ?? undefined,
-        progressMessage: input.progressMessage ?? undefined,
-        progressTaskId: input.progressTaskId ?? undefined,
-      }),
-    });
+    // Use wrapper that handles SOM enhancement
+    const result = await getScreenshotCustomRegion(input as any);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to take custom region screenshot: ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-    if (!data.image) {
-      throw new Error('No image returned for custom region screenshot');
+    // Log if SOM was applied
+    if (result.somApplied) {
+      console.log(`Custom region screenshot enhanced with SOM: ${result.elementsDetected} elements detected`);
     }
 
     return {
-      image: data.image,
-      offset: data.offset,
-      region: data.region,
-      zoomLevel: data.zoomLevel,
+      image: result.image,
+      offset: result.offset,
+      region: result.region,
+      zoomLevel: result.zoomLevel,
     };
   } catch (error) {
     console.error('Error in screenshot_custom_region action:', error);

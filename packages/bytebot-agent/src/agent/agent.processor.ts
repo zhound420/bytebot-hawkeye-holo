@@ -73,6 +73,7 @@ import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
+import { isSOMEnabled } from './som-enhancement.util';
 
 type CachedDetectedElement = {
   element: DetectedElement;
@@ -1967,6 +1968,27 @@ ${loopResult.suggestion}
       type: MessageContentType.Text,
       text: `\n<details>\n<summary>📊 Raw Detection Data (JSON)</summary>\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n</details>`,
     });
+
+    // Add SOM-annotated screenshot if available
+    const screenshotBuffer = await this.captureScreenshotBuffer();
+    const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
+    const somData = this.somCache.get(screenshotHash);
+
+    if (somData && Date.now() - somData.timestamp < this.SOM_CACHE_TTL_MS && isSOMEnabled()) {
+      this.logger.log(`📍 Including SOM-annotated screenshot with ${somData.elementMapping.size} numbered elements`);
+      content.push({
+        type: MessageContentType.Image,
+        source: {
+          data: somData.somImage,
+          media_type: 'image/png',
+          type: 'base64',
+        },
+      });
+      content.push({
+        type: MessageContentType.Text,
+        text: `\n**📍 Visual Guide:** The screenshot above shows detected elements with numbered boxes [0], [1], [2], etc. You can reference elements by their visible number for easier identification.`,
+      });
+    }
 
     return {
       type: MessageContentType.ToolResult,

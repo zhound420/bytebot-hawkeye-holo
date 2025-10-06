@@ -65,7 +65,6 @@ import {
   BytebotAgentResponse,
 } from './agent.types';
 import {
-  buildAgentSystemPrompt,
   SCREENSHOT_OBSERVATION_GUARD_MESSAGE,
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';

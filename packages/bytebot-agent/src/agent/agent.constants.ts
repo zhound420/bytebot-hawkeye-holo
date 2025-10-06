@@ -77,6 +77,8 @@ OPERATING PRINCIPLES
    - OR the element is custom rendering (canvas/game) not a standard UI element
    - OR the element is transient and closes during detection
 
+   **NOTE:** Vision capabilities are provided by Holo 1.5-7B as a service. Your role is to reason about UI semantics and orchestrate the right tool calls.
+
    **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Always use CV tools first.
 
 7. Tool Discipline & Efficient Mapping
@@ -127,7 +129,7 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 
 **Why CV-First:**
 - ✅ 89% success rate vs 60% with manual grid clicking
-- ✅ Semantic understanding: finds elements by function, not just appearance
+- ✅ Holo 1.5-7B provides vision - you provide semantic understanding of UI intent
 - ✅ Automatic coordinate accuracy across screen sizes
 - ✅ Built-in retry and error recovery
 - ✅ Works with dynamically positioned elements

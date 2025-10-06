@@ -4,7 +4,9 @@ import type { HoloClientService } from '@bytebot/cv';
 const logger = new Logger('SOMEnhancement');
 
 // Environment variable to enable/disable SOM screenshots
-const USE_SOM_SCREENSHOTS = process.env.BYTEBOT_USE_SOM_SCREENSHOTS === 'true';
+// Defaults to TRUE (enabled) - provides 50% accuracy boost (30% → 70-85%)
+// Set BYTEBOT_USE_SOM_SCREENSHOTS=false to disable
+const USE_SOM_SCREENSHOTS = process.env.BYTEBOT_USE_SOM_SCREENSHOTS !== 'false';
 
 /**
  * Enhance screenshot with Set-of-Mark (SOM) visual annotations

@@ -231,6 +231,7 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Real-time CV activity monitoring** | Live tracking of active CV methods with animated indicators, Holo 1.5-7B model display, GPU detection (NVIDIA GPU/Apple Silicon/CPU), performance metrics, success rates, and dedicated UI panels on Desktop and Task pages with 500ms polling. | No visibility into which detection methods are active or their performance characteristics. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
 | **Active Model desktop telemetry** | The desktop dashboard's Active Model card (under `/desktop`) continuously surfaces the agent's current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
+| **Hybrid vision/non-vision support** | 41 models (28 vision + 13 text-only) with automatic message transformation, vision-aware prompts/guards, optimized enrichment, and enhanced UI picker with visual grouping. Enables reasoning models (o1, o3, DeepSeek R1) for complex tasks. | Limited model support with assumed vision capability; no differentiation between vision and text-only models. |
 
 Flip individual systems off by setting the corresponding environment variables—`BYTEBOT_UNIVERSAL_TEACHING`, `BYTEBOT_ADAPTIVE_CALIBRATION`, `BYTEBOT_ZOOM_REFINEMENT`, or `BYTEBOT_COORDINATE_METRICS`—to `false` (default `true`). Enable deep-dive logs with `BYTEBOT_COORDINATE_DEBUG=true` when troubleshooting. Visit the `/desktop` route (see the screenshot above) to monitor the Active Model card while long-running tasks execute.
 
@@ -364,6 +365,82 @@ Based on production session analysis comparing GPT-4o vs Qwen3-VL:
 **Location**: `packages/bytebot-agent/src/models/`
 **Configuration**: See `model-capabilities.config.ts` for full model database
 
+### Hybrid Vision/Non-Vision Model Support
+
+Hawkeye now supports **both vision-capable and text-only models** with intelligent content adaptation. The system automatically transforms visual content based on each model's capabilities, enabling you to use reasoning models (o1, o3, DeepSeek R1) and other non-vision models alongside vision models.
+
+#### **Intelligent Content Transformation**
+
+When you select a non-vision model, Hawkeye automatically:
+
+- **Transforms Images → Text Descriptions**: Screenshots and uploaded images are converted to detailed text descriptions including metadata (resolution, capture time, file size)
+- **Adapts System Prompts**: Non-vision models receive instructions focused on text-based analysis and tool results, while vision models get visual observation prompts
+- **Skips Visual Observation Guards**: Screenshot observation requirements only apply to vision models; non-vision models can proceed immediately after screenshots
+- **Optimizes Background Processing**: Holo 1.5-7B enrichment only runs for vision models, eliminating unnecessary 30-80s detections for text-only models
+
+#### **Supported Non-Vision Models (13 Added)**
+
+**OpenAI Reasoning Models:**
+- `o3-pro`, `o3`, `o3-mini` - Advanced reasoning with extended thinking time
+- `o1`, `o1-mini`, `o1-preview` - Original reasoning model series
+
+**OpenRouter Models:**
+- `openrouter-deepseek-r1` - DeepSeek's flagship reasoning model
+- `openrouter-deepseek-r1-distill-qwen-32b` - Qwen-distilled variant (32B)
+- `openrouter-deepseek-r1-distill-llama-70b` - Llama-distilled variant (70B)
+- `openrouter-qwen-plus`, `openrouter-qwen-turbo`, `openrouter-qwen-max` - Qwen series
+- `openrouter-claude-3-haiku` - Fast, cost-effective Claude variant
+- `openrouter-mistral-large` - Mistral's flagship model
+
+**Total:** 41 models supported (28 vision + 13 text-only)
+
+#### **Enhanced Model Picker UI**
+
+The model selection dropdown now features visual differentiation:
+
+- **👁️ Vision Models Section** - Eye icon with blue theme for image-capable models
+- **📝 Text-Only Models Section** - FileText icon with amber theme for text-only models
+- **Color-Coded Badges** - "Vision" (blue) or "Text-Only" (amber) labels
+- **Descriptive Headers** - "Can process images" vs "Text descriptions only"
+- **Scrolling Support** - Smooth scrolling for all 41 models with max-height constraint
+
+The UI makes it immediately clear which models support image input, preventing confusion when uploading files or expecting visual analysis.
+
+#### **Technical Implementation**
+
+**Message Transformation Pipeline** (`message-transformer.util.ts`):
+```typescript
+// Automatically transforms images for non-vision models
+if (!model.supportsVision) {
+  messages = transformImagesForNonVision(messages);
+  // Converts Image blocks → Text descriptions
+  // Handles nested images in ToolResult blocks
+}
+```
+
+**Vision-Aware Prompts** (`tier-specific-prompts.ts`):
+```typescript
+buildTierSpecificAgentSystemPrompt(tier, maxCvAttempts, currentDate, currentTime, timeZone, supportsVision)
+// Different instructions per capability:
+// - Vision models: "deliver exhaustive visual observation"
+// - Non-vision: "review text descriptions and tool results"
+```
+
+**Optimized Enrichment** (`agent.processor.ts`):
+```typescript
+// Only run Holo for vision models
+if (isScreenshot && supportsVision(model)) {
+  enrichScreenshotWithOmniParser(); // 30-80s Holo detection
+}
+```
+
+**Benefits:**
+- ✅ Reasoning models (o1, o3, DeepSeek R1) now accessible for complex tasks
+- ✅ No manual configuration - automatic adaptation based on model capabilities
+- ✅ Performance optimization - skip expensive CV for text-only models
+- ✅ Better UX - clear visual indicators of model capabilities
+- ✅ Consistent experience - both model types use same tool APIs
+
 **CV Activity Panel Features:**
 - Active method indicators with color-coded badges (Holo 1.5-7B: Pink, OCR: Yellow)
 - Live execution timers showing how long each method has been processing
@@ -451,11 +528,19 @@ EOF
 docker compose -f docker/docker-compose.proxy.yml up -d --build
 ```
 
-**Available Models via Proxy:**
-- Anthropic: `claude-opus-4`, `claude-sonnet-4`
-- OpenAI: `gpt-4o`, `o3`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5` variants
-- OpenRouter: `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, etc.
-- Local LMStudio: Configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
+**Available Models via Proxy (41 Total: 28 Vision + 13 Text-Only):**
+
+**Vision Models (👁️ Can process images):**
+- **Anthropic**: `claude-opus-4`, `claude-sonnet-4`
+- **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5-thinking`, `gpt-5-main`, `gpt-5-mini`, `gpt-5-nano`
+- **OpenRouter**: `openrouter-claude-3.5-sonnet`, `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, `openrouter-gemini-2.5-flash`, `openrouter-gemini-1.5-pro`, `openrouter-internvl3-78b`, `openrouter-qwen3-vl-235b-a22b-instruct`
+- **Gemini**: `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-vertex-pro`, `gemini-vertex-flash`
+- **Local LMStudio**: `local-lmstudio-qwen2.5-vl-32b-instruct` (vision), configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
+
+**Text-Only Models (📝 Receive text descriptions):**
+- **OpenAI Reasoning**: `o3-pro`, `o3`, `o3-mini`, `o1`, `o1-mini`, `o1-preview`
+- **OpenRouter**: `openrouter-deepseek-r1`, `openrouter-deepseek-r1-distill-qwen-32b`, `openrouter-deepseek-r1-distill-llama-70b`, `openrouter-qwen-plus`, `openrouter-qwen-turbo`, `openrouter-qwen-max`, `openrouter-claude-3-haiku`, `openrouter-mistral-large`, `openrouter-glm-4.6`, `openrouter-grok-4-fast-free`
+- **Local LMStudio**: `local-lmstudio-ui-tars-72b-dpo`, `local-lmstudio-ui-tars-7b-dpo`, `local-lmstudio-gemma-3-27b`, `local-lmstudio-magistral-small-2509` (text-only)
 
 To use custom model endpoints, edit `litellm-config.yaml` and restart: `docker compose restart bytebot-llm-proxy`
 

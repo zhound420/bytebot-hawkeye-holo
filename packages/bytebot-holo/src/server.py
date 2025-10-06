@@ -20,6 +20,7 @@ from .holo_wrapper import get_model
 def get_gpu_info() -> dict:
     """Get GPU information including name and memory stats."""
     import torch
+    import subprocess
 
     gpu_info = {
         "gpu_name": None,
@@ -33,18 +34,36 @@ def get_gpu_info() -> dict:
             # Get GPU name
             gpu_info["gpu_name"] = torch.cuda.get_device_name(0)
 
-            # Get memory info in MB
-            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
-            memory_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
-            memory_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
+            # Use nvidia-smi for accurate memory tracking (includes llama.cpp GGUF allocations)
+            # PyTorch's memory tracking only sees PyTorch tensors, not llama.cpp CUDA allocations
+            try:
+                result = subprocess.run(
+                    ['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    memory_used_str, total_memory_str = result.stdout.strip().split(',')
+                    memory_used = int(memory_used_str.strip())
+                    total_memory = int(total_memory_str.strip())
 
-            # Use MAX of allocated and reserved to show actual usage
-            # (reserved might be 0 before first inference, but allocated shows real usage)
-            memory_used = max(memory_allocated, memory_reserved)
+                    gpu_info["gpu_memory_total_mb"] = total_memory
+                    gpu_info["gpu_memory_used_mb"] = memory_used
+                    gpu_info["gpu_memory_free_mb"] = total_memory - memory_used
+                else:
+                    raise Exception("nvidia-smi returned no data")
+            except Exception as smi_error:
+                # Fallback to PyTorch (less accurate for llama.cpp but better than nothing)
+                print(f"Warning: nvidia-smi failed ({smi_error}), falling back to PyTorch memory tracking")
+                total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
+                memory_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
+                memory_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
+                memory_used = max(memory_allocated, memory_reserved)
 
-            gpu_info["gpu_memory_total_mb"] = int(total_memory)
-            gpu_info["gpu_memory_used_mb"] = int(memory_used)
-            gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_used)
+                gpu_info["gpu_memory_total_mb"] = int(total_memory)
+                gpu_info["gpu_memory_used_mb"] = int(memory_used)
+                gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_used)
 
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and settings.device == "mps":
             # Apple Silicon - MPS doesn't provide detailed memory info

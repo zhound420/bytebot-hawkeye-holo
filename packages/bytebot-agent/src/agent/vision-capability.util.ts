@@ -22,9 +22,10 @@ import { BytebotAgentModel } from './agent.types';
  * supportsVision(textModel); // false
  */
 export function supportsVision(model: BytebotAgentModel): boolean {
-  // Default to true for backward compatibility with models that don't specify
-  // This ensures existing vision models continue to work without changes
-  return model.supportsVision ?? true;
+  // Default to false for safety - unknown models should be treated as non-vision
+  // Vision models must explicitly set supportsVision: true
+  // This prevents accidentally sending images to text-only models
+  return model.supportsVision ?? false;
 }
 
 /**

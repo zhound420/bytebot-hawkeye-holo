@@ -65,7 +65,7 @@ export function ModelSelect({
           </SelectValue>
         </div>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="max-h-[400px] overflow-auto">
         {visionModels.length > 0 && (
           <SelectGroup>
             <SelectLabel className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">

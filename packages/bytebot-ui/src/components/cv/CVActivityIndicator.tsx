@@ -21,6 +21,11 @@ interface CVActivitySnapshot {
   };
   holoDevice?: string;  // cuda, mps, cpu
   holoModel?: string;   // "Holo 1.5-7B (Qwen2.5-VL base)"
+  gpuName?: string; // GPU device name (e.g., "NVIDIA GeForce RTX 4090")
+  gpuMemoryTotalMB?: number; // Total GPU memory in MB
+  gpuMemoryUsedMB?: number; // Used GPU memory in MB
+  gpuMemoryFreeMB?: number; // Free GPU memory in MB
+  gpuMemoryUtilizationPercent?: number; // Memory utilization percentage
 }
 
 interface CVDetectionData {
@@ -72,6 +77,15 @@ const methodColors: Record<string, string> = {
   "contour-detection": "bg-green-500",
   "ocr-detection": "bg-yellow-500",
   "holo-1.5-7b": "bg-pink-500",
+};
+
+// Helper function to format memory
+const formatMemory = (mb: number | null | undefined): string => {
+  if (mb === null || mb === undefined) return "N/A";
+  if (mb >= 1024) {
+    return `${(mb / 1024).toFixed(1)}GB`;
+  }
+  return `${Math.round(mb)}MB`;
 };
 
 // Helper function to get device badge and styling
@@ -204,19 +218,26 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               <span className="text-xs font-medium text-foreground">
                 {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
               </span>
-              {activity?.holoModel && (
+              {activity?.gpuName && (
                 <span className="text-[9px] text-muted-foreground">
-                  {activity.holoModel}
+                  {activity.gpuName}
                 </span>
               )}
             </div>
           </div>
-          {hasHolo && activity?.holoDevice && (
-            <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
-              <span>{deviceBadge.icon}</span>
-              <span>{deviceBadge.label}</span>
-            </span>
-          )}
+          <div className="flex flex-col items-end gap-0.5">
+            {hasHolo && activity?.holoDevice && (
+              <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
+                <span>{deviceBadge.icon}</span>
+                <span>{deviceBadge.label}</span>
+              </span>
+            )}
+            {activity?.gpuMemoryTotalMB && (
+              <span className="text-[9px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Active Methods */}
@@ -349,9 +370,14 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               </span>
             )}
           </div>
-          {activity?.holoModel && (
+          {activity?.gpuName && (
             <span className="text-[10px] text-muted-foreground">
-              {activity.holoModel}
+              {activity.gpuName}
+            </span>
+          )}
+          {activity?.gpuMemoryTotalMB && (
+            <span className="text-[9px] text-muted-foreground">
+              {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
             </span>
           )}
         </div>
@@ -378,9 +404,14 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               </span>
             )}
           </div>
-          {activity?.holoModel && (
+          {activity?.gpuName && (
+            <div className="text-[8px] font-medium text-foreground">
+              {activity.gpuName}
+            </div>
+          )}
+          {activity?.gpuMemoryTotalMB && (
             <div className="text-[8px] text-muted-foreground">
-              {activity.holoModel}
+              {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
             </div>
           )}
         </div>

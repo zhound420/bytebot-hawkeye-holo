@@ -87,11 +87,20 @@ Install `nvidia-container-toolkit` to enable GPU in Docker:
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
+# Install the Nvidia Container Toolkit packages
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.17.8-1
+  sudo apt-get install -y \
+      nvidia-container-toolkit=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      nvidia-container-toolkit-base=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container-tools=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container1=${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+
+# Configure the container so it can use the Nvidia runtime
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
-# Verify GPU access works
-docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+# Verify GPU access works by running a sample workload
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
 
 **Without GPU:** Falls back to CPU (~8-15s/inference) - works but significantly slower.

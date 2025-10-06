@@ -70,6 +70,7 @@ import {
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';
 import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
+import { supportsVision } from './vision-capability.util';
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
@@ -1086,6 +1087,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         currentDate,
         currentTime,
         timeZone,
+        supportsVision(model),  // Pass vision capability for appropriate prompts
       );
 
       agentResponse = await service.generateMessage(

@@ -417,6 +417,7 @@ Use when both Method 1 and Method 2 have failed, or when CV detection is stuck i
 /**
  * Build tier-specific agent system prompt
  * Replaces hard-coded CV enforcement with model-aware instructions
+ * Supports both vision and non-vision models with appropriate instructions
  */
 export function buildTierSpecificAgentSystemPrompt(
   tier: ModelTier,
@@ -424,6 +425,7 @@ export function buildTierSpecificAgentSystemPrompt(
   currentDate: string,
   currentTime: string,
   timeZone: string,
+  supportsVision: boolean,
 ): string {
   const cvInstructions = getTierSpecificCVInstructions(tier, maxCvAttempts);
   const uiMethodsSection = getTierSpecificUIMethodsSection(tier, maxCvAttempts);
@@ -444,8 +446,8 @@ OPERATING PRINCIPLES
 ════════════════════════════════
 1. Observe → Plan → Act → Verify
    - Begin every task with computer_screenshot and capture a fresh view after any UI change.
-   - Before planning any action, deliver an exhaustive observation: enumerate the key UI regions and their contents, call out prominent visible text, list interactive elements (buttons, fields, toggles, menus), note any alerts/modals/system notifications, and highlight differences from the previous screenshot.
-   - Describe what you see, outline the next step, execute, then confirm the result with another screenshot when needed.
+   - ${supportsVision ? 'Before planning any action, deliver an exhaustive observation: enumerate the key UI regions and their contents, call out prominent visible text, list interactive elements (buttons, fields, toggles, menus), note any alerts/modals/system notifications, and highlight differences from the previous screenshot.' : 'Screenshots are provided as text descriptions (e.g., "[Screenshot captured at HH:MM:SS - Resolution: WxH]"). Review these descriptions along with tool results and system feedback to understand the current state. Focus on actionable information from tool outputs rather than attempting visual analysis.'}
+   - ${supportsVision ? 'Describe what you see, outline the next step, execute, then confirm the result with another screenshot when needed.' : 'Outline your next step based on tool results and context, execute, then confirm with another screenshot when needed.'}
    - Before executing, articulate a compact action plan that minimizes tool invocations. Skip redundant calls when existing context already contains the needed details.
    - When screen size matters, call computer_screen_info to know exact dimensions.
 2. Exploit the Coordinate Grids

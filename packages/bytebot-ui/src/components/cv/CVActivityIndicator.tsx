@@ -376,9 +376,32 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             </span>
           )}
           {activity?.gpuMemoryTotalMB && (
-            <span className="text-[9px] text-muted-foreground">
-              {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
-            </span>
+            <div className="flex flex-col gap-0.5 w-full">
+              <span className="text-[9px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </span>
+              {/* GPU Memory Progress Bar */}
+              <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full transition-all duration-300 ease-in-out",
+                    (() => {
+                      const usagePercent = activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                        ? ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100
+                        : 0;
+                      if (usagePercent < 50) return "bg-green-500";
+                      if (usagePercent < 80) return "bg-yellow-500";
+                      return "bg-red-500";
+                    })()
+                  )}
+                  style={{
+                    width: activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                      ? `${Math.min(100, ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100)}%`
+                      : "0%"
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -410,8 +433,31 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             </div>
           )}
           {activity?.gpuMemoryTotalMB && (
-            <div className="text-[8px] text-muted-foreground">
-              {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+            <div className="flex flex-col gap-0.5">
+              <div className="text-[8px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </div>
+              {/* GPU Memory Progress Bar */}
+              <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full transition-all duration-300 ease-in-out",
+                    (() => {
+                      const usagePercent = activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                        ? ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100
+                        : 0;
+                      if (usagePercent < 50) return "bg-green-500";
+                      if (usagePercent < 80) return "bg-yellow-500";
+                      return "bg-red-500";
+                    })()
+                  )}
+                  style={{
+                    width: activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                      ? `${Math.min(100, ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100)}%`
+                      : "0%"
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import { MessagesService } from '../messages/messages.service';
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { expandFunctionalQuery, scoreSemanticMatch } from './semantic-mapping';
+import { expandFunctionalQuery, scoreSemanticMatch, levenshteinSimilarity } from './semantic-mapping';
 import { CaptionTrainingDataCollector } from './caption-training-data';
 import {
   Message,
@@ -184,7 +184,7 @@ export class AgentProcessor {
     timestamp: number;
     screenshotHash: string;
   }>();
-  private readonly SCREENSHOT_CACHE_TTL_MS = 2000; // 2 seconds - screens change fast
+  private readonly SCREENSHOT_CACHE_TTL_MS = 30000; // 30 seconds - aligned with SOM cache (Phase 1.3)
 
   // Store last enhanced detection result for telemetry
   private lastEnhancedResult: any = null;
@@ -193,10 +193,15 @@ export class AgentProcessor {
   private readonly somCache = new Map<string, {
     somImage: string; // Base64 encoded SOM-annotated image
     elementMapping: Map<number, string>; // element_number -> element_id
-    elementDescriptions: Map<number, string>; // element_number -> description (for semantic matching)
+    elementDescriptions: Map<number, string[]>; // element_number -> description variants (Phase 3.1)
     timestamp: number;
   }>();
   private readonly SOM_CACHE_TTL_MS = 30000; // 30 seconds - persist across multiple interactions
+
+  // Background enrichment state: prevent race conditions and queue buildup
+  private enrichmentPromise: Promise<void> | null = null;
+  private lastEnrichmentTime = 0;
+  private readonly ENRICHMENT_COOLDOWN_MS = 1000; // 1 second - prevent rapid enrichment pile-up
 
   // CV-First Workflow Enforcement: Track detection attempts to ensure CV is tried before fallback
   private readonly cvDetectionAttempts = new Map<string, {
@@ -345,19 +350,37 @@ export class AgentProcessor {
 
   /**
    * Check screenshot cache and return cached elements if available
+   * Implements hierarchical cache invalidation (Phase 1.3):
+   * - If SOM cache expired, screenshot cache also invalidated
+   * - Prevents stale element references
    */
   private getScreenshotCacheEntry(screenshotBuffer: Buffer): DetectedElement[] | null {
     const hash = this.computeScreenshotHash(screenshotBuffer);
     const cached = this.screenshotCache.get(hash);
 
-    if (cached && Date.now() - cached.timestamp < this.SCREENSHOT_CACHE_TTL_MS) {
+    if (!cached) {
+      return null;
+    }
+
+    // Check if SOM cache expired - if so, invalidate screenshot cache too
+    const somData = this.somCache.get(hash);
+    if (somData && Date.now() - somData.timestamp >= this.SOM_CACHE_TTL_MS) {
+      this.logger.debug('SOM cache expired - invalidating screenshot cache for consistency');
+      this.screenshotCache.delete(hash);
+      this.somCache.delete(hash);
+      return null;
+    }
+
+    // Check screenshot cache TTL
+    if (Date.now() - cached.timestamp < this.SCREENSHOT_CACHE_TTL_MS) {
       this.logger.debug(`Screenshot cache hit (${cached.elements.length} elements, age: ${Date.now() - cached.timestamp}ms)`);
       return cached.elements;
     }
 
     // Clean up expired entries
-    if (cached && Date.now() - cached.timestamp >= this.SCREENSHOT_CACHE_TTL_MS) {
-      this.screenshotCache.delete(hash);
+    this.screenshotCache.delete(hash);
+    if (somData) {
+      this.somCache.delete(hash);
     }
 
     return null;
@@ -2057,9 +2080,19 @@ ${loopResult.suggestion}
     params: ComputerDetectElementsInput,
   ): Promise<DetectElementsResponse> {
     try {
+      // Wait for background enrichment if in progress (Phase 1.2)
+      // This prevents duplicate Holo detections and leverages cached results
+      if (this.enrichmentPromise) {
+        this.logger.debug('Waiting for background enrichment to complete (max 3s)...');
+        await Promise.race([
+          this.enrichmentPromise,
+          new Promise(resolve => setTimeout(resolve, 3000)) // 3 second timeout
+        ]);
+      }
+
       const screenshotBuffer = await this.captureScreenshotBuffer();
 
-      // Check screenshot cache first (2s TTL)
+      // Check screenshot cache first (30s TTL - Phase 1.3)
       const cachedElements = this.getScreenshotCacheEntry(screenshotBuffer);
       let elements: DetectedElement[];
 
@@ -2075,27 +2108,37 @@ ${loopResult.suggestion}
           const somData = this.somCache.get(screenshotHash);
 
           if (somData && Date.now() - somData.timestamp < this.SOM_CACHE_TTL_MS) {
-            // We have cached SOM data - try semantic matching
-            let bestMatch: { elementId: string; score: number; description: string } | null = null;
+            // We have cached SOM data - try semantic matching with fuzzy fallback (Phase 2.2 + 3.1)
+            let bestMatch: { elementId: string; score: number; description: string; matchType: string } | null = null;
 
             for (const [elementNumber, elementId] of somData.elementMapping) {
-              const description = somData.elementDescriptions.get(elementNumber);
-              if (description) {
-                const score = scoreSemanticMatch(params.description, description);
-                if (!bestMatch || score > bestMatch.score) {
-                  bestMatch = { elementId, score, description };
+              const descriptionVariants = somData.elementDescriptions.get(elementNumber);
+              if (descriptionVariants && descriptionVariants.length > 0) {
+                // Try matching against all variants and keep the best score (Phase 3.1)
+                for (const variant of descriptionVariants) {
+                  // Try semantic matching first
+                  const semanticScore = scoreSemanticMatch(params.description, variant);
+                  // Try fuzzy matching as fallback
+                  const fuzzyScore = levenshteinSimilarity(params.description, variant);
+                  // Use the better score
+                  const combinedScore = Math.max(semanticScore, fuzzyScore);
+                  const matchType = semanticScore > fuzzyScore ? 'semantic' : 'fuzzy';
+
+                  if (!bestMatch || combinedScore > bestMatch.score) {
+                    bestMatch = { elementId, score: combinedScore, description: variant, matchType };
+                  }
                 }
               }
             }
 
-            // If we found a good match (>60%), use cached elements
-            if (bestMatch && bestMatch.score > 0.6) {
+            // If we found a good match (>50%, lowered from 60% - Phase 2.2), use cached elements
+            if (bestMatch && bestMatch.score > 0.50) {
               // Get from screenshot cache (should exist since SOM is cached)
               const maybeElements = this.getScreenshotCacheEntry(screenshotBuffer);
               if (maybeElements) {
                 elements = maybeElements;
                 this.logger.log(
-                  `🎯 Semantic cache hit: "${params.description}" matched "${bestMatch.description}" (${Math.round(bestMatch.score * 100)}% similarity)`
+                  `🎯 ${bestMatch.matchType === 'semantic' ? 'Semantic' : 'Fuzzy'} cache hit: "${params.description}" matched "${bestMatch.description}" (${Math.round(bestMatch.score * 100)}% similarity)`
                 );
                 // Continue to response formatting
               }
@@ -2148,15 +2191,22 @@ ${loopResult.suggestion}
         if (enhancedResult.somImage && enhancedResult.elementMapping) {
           const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
 
-          // Build element descriptions map for semantic matching
-          const elementDescriptions = new Map<number, string>();
+          // Build element descriptions map with variants for better semantic matching (Phase 3.1)
+          const elementDescriptions = new Map<number, string[]>();
           for (const [elementNumber, elementId] of enhancedResult.elementMapping) {
             // Find the element by ID
             const element = elements.find(el => el.id === elementId);
             if (element) {
-              // Use text, description, or type as description
-              const description = element.text || element.description || `${element.type} element`;
-              elementDescriptions.set(elementNumber, description);
+              // Store multiple description variants for better matching
+              const variants = [
+                element.text || '',
+                element.description || '',
+                element.metadata?.task_caption || element.metadata?.semantic_caption || '',
+                this.extractKeywords(element),
+                `${element.type} element`
+              ].filter(v => v && v.trim().length > 0); // Remove empty variants
+
+              elementDescriptions.set(elementNumber, variants);
             }
           }
 
@@ -2166,7 +2216,7 @@ ${loopResult.suggestion}
             elementDescriptions,
             timestamp: Date.now(),
           });
-          this.logger.debug(`📍 Stored SOM data for screenshot (${enhancedResult.elementMapping.size} elements with descriptions)`);
+          this.logger.debug(`📍 Stored SOM data for screenshot (${enhancedResult.elementMapping.size} elements with ${Array.from(elementDescriptions.values()).reduce((sum, variants) => sum + variants.length, 0)} description variants)`);
         }
 
         // Cache the results for future requests
@@ -2730,8 +2780,41 @@ ${loopResult.suggestion}
    * Automatically enriches the current screenshot with OmniParser detection
    * Runs in the background and populates caches for future detect_elements calls
    * This creates "internal activity" that will be surfaced to the user
+   *
+   * Optimizations:
+   * - Prevents concurrent enrichments (only one at a time)
+   * - Enforces cooldown period to prevent queue buildup
+   * - Reduces maxResults from 100 to 30 for faster processing
    */
   private async enrichScreenshotWithOmniParser(): Promise<void> {
+    // Check if enrichment already in progress
+    if (this.enrichmentPromise) {
+      this.logger.debug('Background enrichment already in progress, skipping duplicate');
+      return this.enrichmentPromise;
+    }
+
+    // Check cooldown to prevent rapid enrichment pile-up
+    const now = Date.now();
+    if (now - this.lastEnrichmentTime < this.ENRICHMENT_COOLDOWN_MS) {
+      this.logger.debug(`Background enrichment cooldown active (${this.ENRICHMENT_COOLDOWN_MS}ms), skipping`);
+      return;
+    }
+
+    // Track enrichment promise to prevent race conditions
+    this.enrichmentPromise = this._doEnrichment();
+
+    try {
+      await this.enrichmentPromise;
+    } finally {
+      this.enrichmentPromise = null;
+      this.lastEnrichmentTime = Date.now();
+    }
+  }
+
+  /**
+   * Internal method that performs the actual enrichment work
+   */
+  private async _doEnrichment(): Promise<void> {
     try {
       const screenshotBuffer = await this.captureScreenshotBuffer();
 
@@ -2749,7 +2832,7 @@ ${loopResult.suggestion}
         null,
         {
           confidenceThreshold: 0.5,
-          maxResults: 100,  // Higher limit for background enrichment to improve cache coverage
+          maxResults: 30,  // Reduced from 100 - matches typical on-demand usage (Phase 2.1)
         }
       );
 
@@ -2762,6 +2845,21 @@ ${loopResult.suggestion}
       // Don't throw - this is background enrichment, shouldn't break the main flow
       this.logger.warn(`Failed to auto-enrich screenshot: ${error.message}`);
     }
+  }
+
+  /**
+   * Extract keywords from element text/description for better semantic matching (Phase 3.1)
+   * Filters out common stop words and keeps meaningful terms
+   */
+  private extractKeywords(element: DetectedElement): string {
+    const text = (element.text || element.description || '').toLowerCase();
+    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'for', 'with', 'to', 'of', 'in', 'on', 'at']);
+
+    const words = text.split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.has(word))
+      .join(' ');
+
+    return words || element.type;
   }
 
   private normalizeRegion(region: {

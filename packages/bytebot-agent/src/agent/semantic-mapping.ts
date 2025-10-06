@@ -224,3 +224,66 @@ export function scoreSemanticMatch(
 
   return totalWeight > 0 ? matchCount / totalWeight : 0;
 }
+
+/**
+ * Calculate Levenshtein distance between two strings
+ * Used for fuzzy matching when semantic matching fails
+ * @param a - First string
+ * @param b - Second string
+ * @returns Number of single-character edits (insertions, deletions, substitutions)
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = [];
+
+  // Increment along the first column
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+
+  // Increment along the first row
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  // Fill in the rest of the matrix
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Calculate similarity score based on Levenshtein distance (0-1 scale)
+ * Normalized by the length of the longer string
+ * @param a - First string
+ * @param b - Second string
+ * @returns Similarity score from 0 (completely different) to 1 (identical)
+ */
+export function levenshteinSimilarity(a: string, b: string): number {
+  const aLower = a.toLowerCase().trim();
+  const bLower = b.toLowerCase().trim();
+
+  if (aLower === bLower) {
+    return 1.0;
+  }
+
+  const distance = levenshteinDistance(aLower, bLower);
+  const maxLength = Math.max(aLower.length, bLower.length);
+
+  if (maxLength === 0) {
+    return 1.0;
+  }
+
+  return 1 - (distance / maxLength);
+}

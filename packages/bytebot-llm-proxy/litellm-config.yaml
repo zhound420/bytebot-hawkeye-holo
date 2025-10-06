@@ -117,6 +117,8 @@ model_list:
     litellm_params:
       model: openrouter/z-ai/glm-4.6
       api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
   - model_name: openrouter-/internvl3-78b
     litellm_params:
       model: openrouter/opengvlab/internvl3-78b

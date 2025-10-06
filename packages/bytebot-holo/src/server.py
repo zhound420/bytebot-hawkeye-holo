@@ -16,6 +16,48 @@ from .config import settings
 from .holo_wrapper import get_model
 
 
+# GPU Info Helper
+def get_gpu_info() -> dict:
+    """Get GPU information including name and memory stats."""
+    import torch
+
+    gpu_info = {
+        "gpu_name": None,
+        "gpu_memory_total_mb": None,
+        "gpu_memory_used_mb": None,
+        "gpu_memory_free_mb": None,
+    }
+
+    try:
+        if torch.cuda.is_available() and settings.device == "cuda":
+            # Get GPU name
+            gpu_info["gpu_name"] = torch.cuda.get_device_name(0)
+
+            # Get memory info in MB
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
+            memory_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
+            memory_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
+
+            gpu_info["gpu_memory_total_mb"] = int(total_memory)
+            gpu_info["gpu_memory_used_mb"] = int(memory_reserved)  # Use reserved as "used"
+            gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_reserved)
+
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and settings.device == "mps":
+            # Apple Silicon - MPS doesn't provide detailed memory info
+            import platform
+            gpu_info["gpu_name"] = f"Apple {platform.machine()}"
+            # MPS memory management is automatic, no direct API for stats
+
+        elif settings.device == "cpu":
+            import platform
+            gpu_info["gpu_name"] = f"CPU ({platform.processor() or platform.machine()})"
+
+    except Exception as e:
+        print(f"Warning: Could not get GPU info: {e}")
+
+    return gpu_info
+
+
 # Pydantic models for request/response
 class ParseRequest(BaseModel):
     """Request model for screenshot parsing with Holo 1.5-7B."""
@@ -85,6 +127,10 @@ class HealthResponse(BaseModel):
     version: str
     device: str
     models_loaded: bool
+    gpu_name: Optional[str] = Field(None, description="GPU device name (e.g., 'NVIDIA GeForce RTX 4090')")
+    gpu_memory_total_mb: Optional[int] = Field(None, description="Total GPU memory in MB")
+    gpu_memory_used_mb: Optional[int] = Field(None, description="Used GPU memory in MB")
+    gpu_memory_free_mb: Optional[int] = Field(None, description="Free GPU memory in MB")
 
 
 class ModelStatusResponse(BaseModel):
@@ -92,6 +138,16 @@ class ModelStatusResponse(BaseModel):
     icon_detector: dict
     caption_model: dict
     weights_path: str
+
+
+class GPUInfoResponse(BaseModel):
+    """GPU information response."""
+    device_type: str = Field(..., description="Device type: cuda, mps, or cpu")
+    gpu_name: Optional[str] = Field(None, description="GPU device name")
+    memory_total_mb: Optional[int] = Field(None, description="Total GPU memory in MB")
+    memory_used_mb: Optional[int] = Field(None, description="Used GPU memory in MB")
+    memory_free_mb: Optional[int] = Field(None, description="Free GPU memory in MB")
+    memory_utilization_percent: Optional[float] = Field(None, description="Memory utilization percentage")
 
 
 # Lifespan event handler (replaces deprecated on_event)
@@ -222,11 +278,15 @@ async def health_check():
         models_loaded = False
         print(f"Health check error: {e}")
 
+    # Get GPU information
+    gpu_info = get_gpu_info()
+
     return HealthResponse(
         status="healthy" if models_loaded else "unhealthy",
         version="1.0.0",
         device=settings.device,
-        models_loaded=models_loaded
+        models_loaded=models_loaded,
+        **gpu_info  # Include GPU info fields
     )
 
 
@@ -254,6 +314,26 @@ async def model_status():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
+
+
+@app.get("/gpu-info", response_model=GPUInfoResponse)
+async def gpu_info():
+    """Get GPU information including device name and memory stats."""
+    gpu_info = get_gpu_info()
+
+    # Calculate memory utilization percentage
+    memory_util = None
+    if gpu_info["gpu_memory_total_mb"] and gpu_info["gpu_memory_used_mb"]:
+        memory_util = (gpu_info["gpu_memory_used_mb"] / gpu_info["gpu_memory_total_mb"]) * 100
+
+    return GPUInfoResponse(
+        device_type=settings.device,
+        gpu_name=gpu_info["gpu_name"],
+        memory_total_mb=gpu_info["gpu_memory_total_mb"],
+        memory_used_mb=gpu_info["gpu_memory_used_mb"],
+        memory_free_mb=gpu_info["gpu_memory_free_mb"],
+        memory_utilization_percent=memory_util
+    )
 
 
 @app.post("/parse", response_model=ParseResponse)

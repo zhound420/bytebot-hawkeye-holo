@@ -73,6 +73,15 @@ export interface HoloModelStatus {
   weights_path: string;
 }
 
+export interface HoloGPUInfo {
+  device_type: string; // "cuda", "mps", or "cpu"
+  gpu_name: string | null;
+  memory_total_mb: number | null;
+  memory_used_mb: number | null;
+  memory_free_mb: number | null;
+  memory_utilization_percent: number | null;
+}
+
 /**
  * Client service for Holo 1.5-7B REST API
  *
@@ -87,6 +96,7 @@ export class HoloClientService {
   private readonly enabled: boolean;
   private isHealthy: boolean = false;
   private modelStatus: HoloModelStatus | null = null;
+  private gpuInfo: HoloGPUInfo | null = null;
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
@@ -138,11 +148,18 @@ export class HoloClientService {
         const data = await response.json();
         this.isHealthy = data.status === 'healthy' && data.models_loaded;
 
-        // Fetch model status if healthy
-        if (this.isHealthy && !this.modelStatus) {
-          this.fetchModelStatus().catch((err) => {
-            this.logger.warn(`Failed to fetch model status: ${err.message}`);
-          });
+        // Fetch model status and GPU info if healthy
+        if (this.isHealthy) {
+          if (!this.modelStatus) {
+            this.fetchModelStatus().catch((err) => {
+              this.logger.warn(`Failed to fetch model status: ${err.message}`);
+            });
+          }
+          if (!this.gpuInfo) {
+            this.fetchGPUInfo().catch((err) => {
+              this.logger.warn(`Failed to fetch GPU info: ${err.message}`);
+            });
+          }
         }
 
         return this.isHealthy;
@@ -188,6 +205,39 @@ export class HoloClientService {
    */
   getModelStatus(): HoloModelStatus | null {
     return this.modelStatus;
+  }
+
+  /**
+   * Fetch GPU information from Holo 1.5-7B service
+   */
+  async fetchGPUInfo(): Promise<HoloGPUInfo | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      const response = await fetch(`${this.baseUrl}/gpu-info`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        this.gpuInfo = await response.json();
+        return this.gpuInfo;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.debug(`GPU info fetch failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get cached GPU information
+   */
+  getGPUInfo(): HoloGPUInfo | null {
+    return this.gpuInfo;
   }
 
   /**

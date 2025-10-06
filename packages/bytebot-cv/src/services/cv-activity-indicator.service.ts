@@ -67,6 +67,11 @@ export interface CVActivitySnapshot {
   };
   holoDevice?: string; // Device type for Holo 1.5-7B (cuda, mps, cpu)
   holoModel?: string; // Model name (e.g., "Holo 1.5-7B (Qwen2.5-VL base)")
+  gpuName?: string; // GPU device name (e.g., "NVIDIA GeForce RTX 4090")
+  gpuMemoryTotalMB?: number; // Total GPU memory in MB
+  gpuMemoryUsedMB?: number; // Used GPU memory in MB
+  gpuMemoryFreeMB?: number; // Free GPU memory in MB
+  gpuMemoryUtilizationPercent?: number; // Memory utilization percentage
 }
 
 @Injectable()
@@ -216,6 +221,9 @@ export class CVActivityIndicatorService extends EventEmitter {
     const modelStatus = this.holoClient?.getModelStatus();
     const holoModel = modelStatus ? "Holo 1.5-7B (Qwen2.5-VL base)" : undefined;
 
+    // Get GPU info if available (Holo 1.5-7B client)
+    const gpuInfo = this.holoClient?.getGPUInfo();
+
     return {
       activeMethods,
       totalActiveCount: activeMethods.length,
@@ -227,6 +235,11 @@ export class CVActivityIndicatorService extends EventEmitter {
       },
       holoDevice,
       holoModel,
+      gpuName: gpuInfo?.gpu_name ?? undefined,
+      gpuMemoryTotalMB: gpuInfo?.memory_total_mb ?? undefined,
+      gpuMemoryUsedMB: gpuInfo?.memory_used_mb ?? undefined,
+      gpuMemoryFreeMB: gpuInfo?.memory_free_mb ?? undefined,
+      gpuMemoryUtilizationPercent: gpuInfo?.memory_utilization_percent ?? undefined,
     };
   }
 

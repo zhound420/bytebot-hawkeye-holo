@@ -91,143 +91,31 @@ where git
 where code
 echo.
 
-REM Copy source code from shared folder
-echo [6/6] Setting up Bytebot source code...
-set BYTEBOT_DIR=C:\Bytebot
+REM Verify pre-built bytebotd is mounted
+echo [6/6] Verifying pre-built bytebotd artifacts...
+set BYTEBOTD_PATH=C:\app\bytebotd
 
-if exist "%BYTEBOT_DIR%" (
-    echo Bytebot directory already exists, removing...
-    rmdir /s /q "%BYTEBOT_DIR%"
-)
-
-echo Creating directory: %BYTEBOT_DIR%
-mkdir "%BYTEBOT_DIR%"
-
-REM Copy from shared mount (entire repo)
-echo Copying source code from shared folder...
-echo (This may take 1-2 minutes, please wait...)
-echo.
-
-set SOURCE_FOUND=0
-
-if exist "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" (
-    echo Found source at: %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
-    echo Copying files excluding .git node_modules .next dist...
-    robocopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
-    if %ERRORLEVEL% LEQ 3 (
-        set SOURCE_FOUND=1
-        echo Files copied successfully
-    ) else (
-        echo WARNING: robocopy exited with code %ERRORLEVEL%
-    )
-) else if exist "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" (
-    echo Found source at: C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
-    echo Copying files excluding .git node_modules .next dist...
-    robocopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
-    if %ERRORLEVEL% LEQ 3 (
-        set SOURCE_FOUND=1
-        echo Files copied successfully
-    ) else (
-        echo WARNING: robocopy exited with code %ERRORLEVEL%
-    )
-) else if exist "%USERPROFILE%\Desktop\Shared" (
-    echo Found source at: %USERPROFILE%\Desktop\Shared (copying entire folder)
-    echo Copying files excluding .git node_modules .next dist...
-    robocopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
-    if %ERRORLEVEL% LEQ 3 (
-        set SOURCE_FOUND=1
-        echo Files copied successfully
-    ) else (
-        echo WARNING: robocopy exited with code %ERRORLEVEL%
-    )
-) else if exist "C:\OEM\bytebot-hawkeye-holo" (
-    echo Found source at: C:\OEM\bytebot-hawkeye-holo
-    echo Copying files excluding .git node_modules .next dist...
-    robocopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
-    if %ERRORLEVEL% LEQ 3 (
-        set SOURCE_FOUND=1
-        echo Files copied successfully
-    ) else (
-        echo WARNING: robocopy exited with code %ERRORLEVEL%
-    )
-)
-
-if %SOURCE_FOUND% EQU 1 (
+if not exist "%BYTEBOTD_PATH%\dist\main.js" (
+    echo ERROR: Pre-built bytebotd not found at %BYTEBOTD_PATH%\dist\main.js
     echo.
-    echo Source copied successfully!
-) else (
-    echo.
-    echo ERROR: Source code not found in any expected locations!
-    echo.
-    echo Checked paths:
-    echo  - %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
-    echo  - C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
-    echo  - %USERPROFILE%\Desktop\Shared
-    echo  - C:\OEM\bytebot-hawkeye-holo
-    echo.
-    echo Please manually copy bytebot-hawkeye-holo to %BYTEBOT_DIR%
+    echo Expected mount: /app/bytebotd/dist from host
+    echo Please ensure packages are built on host before starting Windows container:
+    echo   cd packages/shared ^&^& npm install ^&^& npm run build
+    echo   cd ../bytebot-cv ^&^& npm install ^&^& npm run build
+    echo   cd ../bytebotd ^&^& npm install ^&^& npm run build
     pause
     exit /b 1
 )
 
-REM Build packages
-echo.
-echo Building Bytebot packages (this may take a few minutes)...
-
-echo Building shared package...
-cd "%BYTEBOT_DIR%\packages\shared"
-call npm install
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm install failed in shared package
-    pause
-    exit /b 1
-)
-call npm run build
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm build failed in shared package
-    pause
-    exit /b 1
-)
-echo Shared package built successfully
-
-echo Building bytebot-cv package...
-cd "%BYTEBOT_DIR%\packages\bytebot-cv"
-call npm install
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm install failed in bytebot-cv package
-    pause
-    exit /b 1
-)
-call npm run build
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm build failed in bytebot-cv package
-    pause
-    exit /b 1
-)
-echo Bytebot-cv package built successfully
-
-echo Building bytebotd package...
-cd "%BYTEBOT_DIR%\packages\bytebotd"
-call npm install
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm install failed in bytebotd package
-    pause
-    exit /b 1
-)
-call npm run build
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: npm build failed in bytebotd package
-    pause
-    exit /b 1
-)
-echo Bytebotd package built successfully
+echo Pre-built bytebotd found at %BYTEBOTD_PATH%
+echo Skipping build steps (using host artifacts)
 
 REM Create auto-start mechanisms (both scheduled task AND startup folder for redundancy)
 echo.
 echo Creating auto-start mechanisms...
 
-REM Create scheduled task for bytebotd
-schtasks /create /tn "Bytebot Desktop Daemon" /tr "node %BYTEBOT_DIR%\packages\bytebotd\dist\main.js" /sc onlogon /ru SYSTEM /rl HIGHEST /f
+REM Create scheduled task for bytebotd (using pre-built artifacts)
+schtasks /create /tn "Bytebot Desktop Daemon" /tr "node %BYTEBOTD_PATH%\dist\main.js" /sc onlogon /ru SYSTEM /rl HIGHEST /f
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully
     REM Start the task immediately (don't wait for next login)
@@ -241,7 +129,7 @@ if %ERRORLEVEL% EQU 0 (
 REM Also add to Startup folder as fallback
 echo Creating startup folder shortcut as fallback...
 set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_DIR%\Bytebot.lnk'); $Shortcut.TargetPath = 'node.exe'; $Shortcut.Arguments = '%BYTEBOT_DIR%\packages\bytebotd\dist\main.js'; $Shortcut.WorkingDirectory = '%BYTEBOT_DIR%\packages\bytebotd'; $Shortcut.WindowStyle = 7; $Shortcut.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_DIR%\Bytebot.lnk'); $Shortcut.TargetPath = 'node.exe'; $Shortcut.Arguments = '%BYTEBOTD_PATH%\dist\main.js'; $Shortcut.WorkingDirectory = '%BYTEBOTD_PATH%'; $Shortcut.WindowStyle = 7; $Shortcut.Save()"
 
 echo Auto-start mechanisms configured
 
@@ -251,7 +139,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -
 
 REM Create scheduled task for bytebotd system tray monitor
 echo Creating bytebotd tray icon scheduled task...
-set TRAY_SCRIPT=%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo\docker\oem\bytebotd-tray.ps1
+set TRAY_SCRIPT=C:\shared\scripts\bytebotd-tray.ps1
 if exist "%TRAY_SCRIPT%" (
     schtasks /create /tn "Bytebot Tray Monitor" /tr "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%TRAY_SCRIPT%\"" /sc onlogon /rl HIGHEST /f
     if %ERRORLEVEL% EQU 0 (
@@ -295,7 +183,7 @@ echo ========================================
 echo   Installation Complete!
 echo ========================================
 echo.
-echo Bytebot Desktop Daemon installed at: %BYTEBOT_DIR%
+echo Bytebot Desktop Daemon: %BYTEBOTD_PATH%
 echo Service status: Running (verified)
 echo.
 echo Installed applications:
@@ -304,11 +192,15 @@ echo  - Git
 echo  - Visual Studio Code
 echo  - 1Password
 echo.
+echo Using pre-built artifacts from host (no build required!)
+echo Installation time: ~2-3 minutes vs ~10-20 minutes with builds
+echo.
 echo API will be available at: http://localhost:9990
 echo Progress WebSocket: ws://localhost:8081
 echo.
 echo System tray icon will show bytebotd status (green = running)
 echo Right-click the tray icon for logs and service controls
+echo Diagnostic scripts: C:\shared\scripts\diagnose.ps1
 echo.
 echo The system will continue Windows setup...
 

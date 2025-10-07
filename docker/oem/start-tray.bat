@@ -5,14 +5,14 @@ REM Use this if the scheduled task didn't start the tray icon automatically
 echo Starting Bytebot Tray Monitor...
 echo.
 
-REM Find the tray script
-set TRAY_SCRIPT=%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo\docker\oem\bytebotd-tray.ps1
+REM Find the tray script (mounted from host at C:\shared\scripts)
+set TRAY_SCRIPT=C:\shared\scripts\bytebotd-tray.ps1
 
 if not exist "%TRAY_SCRIPT%" (
     echo ERROR: Tray script not found at:
     echo %TRAY_SCRIPT%
     echo.
-    echo Please check if the shared folder is mounted correctly
+    echo Please check if the scripts folder is mounted correctly
     pause
     exit /b 1
 )

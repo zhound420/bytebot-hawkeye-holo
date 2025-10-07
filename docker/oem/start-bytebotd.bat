@@ -14,12 +14,12 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Check if bytebotd is built
-if not exist "C:\Bytebot\packages\bytebotd\dist\main.js" (
-    echo ERROR: bytebotd not built
-    echo main.js not found at C:\Bytebot\packages\bytebotd\dist\main.js
+REM Check if bytebotd is mounted
+if not exist "C:\app\bytebotd\dist\main.js" (
+    echo ERROR: bytebotd not found
+    echo main.js not found at C:\app\bytebotd\dist\main.js
     echo.
-    echo Please run install.bat to build packages
+    echo Please ensure packages are built on host and container is running
     pause
     exit /b 1
 )
@@ -29,7 +29,7 @@ taskkill /F /IM node.exe >nul 2>&1
 
 REM Start bytebotd
 echo Starting bytebotd service...
-cd C:\Bytebot\packages\bytebotd
+cd C:\app\bytebotd
 start "Bytebot Desktop Daemon" node dist\main.js
 
 echo.

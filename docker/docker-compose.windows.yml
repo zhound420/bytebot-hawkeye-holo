@@ -58,8 +58,19 @@ services:
       - windows_storage:/storage
       # Auto-install script (runs on first boot)
       - ./oem:/oem
-      # Full source code access (read-only)
-      - ..:/shared/bytebot-hawkeye-holo:ro
+      # Mount pre-built bytebotd artifacts (no need to build inside Windows!)
+      - ../packages/bytebotd/dist:/app/bytebotd/dist:ro
+      - ../packages/bytebotd/node_modules:/app/bytebotd/node_modules:ro
+      - ../packages/bytebotd/package.json:/app/bytebotd/package.json:ro
+      # Dependencies required by bytebotd
+      - ../packages/shared/dist:/app/shared/dist:ro
+      - ../packages/shared/node_modules:/app/shared/node_modules:ro
+      - ../packages/shared/package.json:/app/shared/package.json:ro
+      - ../packages/bytebot-cv/dist:/app/bytebot-cv/dist:ro
+      - ../packages/bytebot-cv/node_modules:/app/bytebot-cv/node_modules:ro
+      - ../packages/bytebot-cv/package.json:/app/bytebot-cv/package.json:ro
+      # Diagnostic/manual scripts (keep for troubleshooting)
+      - ./oem:/shared/scripts:ro
     depends_on:
       bytebot-holo:
         condition: service_healthy

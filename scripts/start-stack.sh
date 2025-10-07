@@ -168,6 +168,16 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         exit 1
     fi
 
+    # Check if Windows container already exists (need to remove for fresh /oem copy)
+    if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-windows" 2>/dev/null; then
+        echo -e "${YELLOW}Existing Windows container found - removing to ensure fresh /oem mount...${NC}"
+        cd "$PROJECT_ROOT/docker"
+        docker compose -f docker-compose.windows.yml down bytebot-windows 2>/dev/null || true
+        docker rm -f bytebot-windows 2>/dev/null || true
+        cd "$PROJECT_ROOT"
+        echo -e "${GREEN}✓ Old container removed${NC}"
+    fi
+
     # Create artifacts directory in /oem mount
     mkdir -p "$PROJECT_ROOT/docker/oem/artifacts"/{bytebotd,shared,bytebot-cv}
 
@@ -188,7 +198,7 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     cp -r "$PROJECT_ROOT/packages/bytebot-cv/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
     cp "$PROJECT_ROOT/packages/bytebot-cv/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
 
-    echo -e "${GREEN}✓ Artifacts prepared (ready for Windows VM access via /oem mount)${NC}"
+    echo -e "${GREEN}✓ Artifacts prepared (will be copied to C:\OEM during Windows installation)${NC}"
     echo ""
 fi
 

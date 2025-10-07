@@ -226,6 +226,23 @@ REM Create desktop shortcut for VSCode
 echo Creating VSCode desktop shortcut...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('C:\Users\Public\Desktop\Visual Studio Code.lnk'); $Shortcut.TargetPath = 'C:\Program Files\Microsoft VS Code\Code.exe'; $Shortcut.Save()"
 
+REM Create scheduled task for bytebotd system tray monitor
+echo Creating bytebotd tray icon scheduled task...
+set TRAY_SCRIPT=%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo\docker\oem\bytebotd-tray.ps1
+if exist "%TRAY_SCRIPT%" (
+    schtasks /create /tn "Bytebot Tray Monitor" /tr "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%TRAY_SCRIPT%\"" /sc onlogon /rl HIGHEST /f
+    if %ERRORLEVEL% EQU 0 (
+        echo Tray monitor scheduled task created successfully
+        REM Start the tray monitor immediately
+        start /B powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "%TRAY_SCRIPT%"
+    ) else (
+        echo WARNING: Failed to create tray monitor scheduled task
+    )
+) else (
+    echo WARNING: Tray script not found at %TRAY_SCRIPT%
+)
+echo.
+
 echo.
 echo ========================================
 echo   Installation Complete!
@@ -242,5 +259,8 @@ echo  - 1Password
 echo.
 echo API will be available at: http://localhost:9990
 echo Progress WebSocket: ws://localhost:8081
+echo.
+echo System tray icon will show bytebotd status (green = running)
+echo Right-click the tray icon for logs and service controls
 echo.
 echo The system will continue Windows setup...

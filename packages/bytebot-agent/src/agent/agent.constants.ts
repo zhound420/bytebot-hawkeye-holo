@@ -448,12 +448,11 @@ UI ELEMENT INTERACTION - VISION-FIRST
 4. **Click** - computer_click_mouse with calculated coordinates
 
 ### Example Workflow:
-```
+
 1. Screenshot shows a "Submit" button in the bottom-right area
 2. Grid analysis: Top-left corner labeled "0,0", bottom-right "1280,960"
 3. Button appears at approximately X=1100 (11 squares from left at 100px each), Y=850
 4. Click: computer_click_mouse({ coordinates: { x: 1100, y: 850 }, button: 'left', clickCount: 1 })
-```
 
 ### Smart Focus for Precision:
 - If initial click misses or element is small, use computer_screenshot_region to zoom in

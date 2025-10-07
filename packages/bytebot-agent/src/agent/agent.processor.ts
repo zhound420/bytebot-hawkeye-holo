@@ -67,6 +67,7 @@ import {
 import {
   SCREENSHOT_OBSERVATION_GUARD_MESSAGE,
   SUMMARIZATION_SYSTEM_PROMPT,
+  buildAgentSystemPrompt,
 } from './agent.constants';
 import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
 import { supportsVision } from './vision-capability.util';

@@ -18,7 +18,7 @@ import {
   ThinkingContentBlock,
 } from '@bytebot/shared';
 import { Message, Role } from '@prisma/client';
-import { proxyTools } from './proxy.tools';
+import { proxyTools, getProxyTools } from './proxy.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
@@ -92,6 +92,7 @@ export class ProxyService implements BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     // Transform images to text for non-vision models
     const processedMessages = supportsVision(modelMetadata)
@@ -113,7 +114,7 @@ export class ProxyService implements BytebotAgentService {
         model: modelName,
         messages: chatMessages,
         max_tokens: 8192,
-        ...(useTools && { tools: proxyTools }),
+        ...(useTools && { tools: getProxyTools(directVisionMode) }),
         ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
       };
 

@@ -142,6 +142,9 @@ type CacheUsageTracking = {
   usedCachedKeywords: boolean;
 };
 
+// Global Direct Vision Mode override
+const FORCE_DIRECT_VISION_MODE = process.env.BYTEBOT_FORCE_DIRECT_VISION_MODE === 'true';
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -1104,14 +1107,21 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // Get model-specific enforcement rules for tier-based prompts
       const rules = this.getModelEnforcementRules();
-      const systemPrompt = buildTierSpecificAgentSystemPrompt(
-        rules.tier,
-        rules.maxCvAttempts,
-        currentDate,
-        currentTime,
-        timeZone,
-        supportsVision(model),  // Pass vision capability for appropriate prompts
-      );
+
+      // Calculate effective mode considering global override
+      const effectiveDirectVisionMode = FORCE_DIRECT_VISION_MODE || task.directVisionMode || false;
+
+      // Use direct vision prompt if enabled, otherwise use tier-specific CV-first prompt
+      const systemPrompt = effectiveDirectVisionMode
+        ? buildAgentSystemPrompt(currentDate, currentTime, timeZone, true)
+        : buildTierSpecificAgentSystemPrompt(
+            rules.tier,
+            rules.maxCvAttempts,
+            currentDate,
+            currentTime,
+            timeZone,
+            supportsVision(model),  // Pass vision capability for appropriate prompts
+          );
 
       agentResponse = await service.generateMessage(
         systemPrompt,
@@ -1120,6 +1130,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         model, // Pass model metadata for vision capability detection
         true,
         this.abortController.signal,
+        effectiveDirectVisionMode, // Pass directVisionMode to exclude CV tools
       );
 
       const messageContentBlocks = agentResponse.contentBlocks;

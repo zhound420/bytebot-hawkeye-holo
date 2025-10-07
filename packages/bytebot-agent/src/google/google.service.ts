@@ -19,7 +19,7 @@ import {
 import { supportsVision } from '../agent/vision-capability.util';
 import { transformImagesForNonVision } from '../agent/message-transformer.util';
 import { Message, Role } from '@prisma/client';
-import { googleTools } from './google.tools';
+import { googleTools, getGoogleTools } from './google.tools';
 import {
   Content,
   GenerateContentResponse,
@@ -47,6 +47,7 @@ export class GoogleService implements BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     try {
       const googleClient = this.getGoogleClient();
@@ -73,7 +74,7 @@ export class GoogleService implements BytebotAgentService {
             tools: useTools
               ? [
                   {
-                    functionDeclarations: googleTools,
+                    functionDeclarations: getGoogleTools(directVisionMode),
                   },
                 ]
               : [],

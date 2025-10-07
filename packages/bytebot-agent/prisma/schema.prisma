@@ -41,27 +41,30 @@ enum TaskType {
 }
 
 model Task {
-  id           String       @id @default(uuid())
-  description  String
-  type         TaskType     @default(IMMEDIATE)
-  status       TaskStatus   @default(PENDING)
-  priority     TaskPriority @default(MEDIUM)
-  control      Role         @default(ASSISTANT)
-  createdAt    DateTime     @default(now())
-  createdBy    Role         @default(USER)
-  scheduledFor DateTime?
-  updatedAt    DateTime     @updatedAt
-  executedAt   DateTime?
-  completedAt  DateTime?
-  queuedAt     DateTime?
-  error        String?
-  result       Json?
-  // Example: 
+  id               String       @id @default(uuid())
+  description      String
+  type             TaskType     @default(IMMEDIATE)
+  status           TaskStatus   @default(PENDING)
+  priority         TaskPriority @default(MEDIUM)
+  control          Role         @default(ASSISTANT)
+  createdAt        DateTime     @default(now())
+  createdBy        Role         @default(USER)
+  scheduledFor     DateTime?
+  updatedAt        DateTime     @updatedAt
+  executedAt       DateTime?
+  completedAt      DateTime?
+  queuedAt         DateTime?
+  error            String?
+  result           Json?
+  // Example:
   // { "provider": "anthropic", "name": "claude-opus-4-20250514", "title": "Claude Opus 4" }
-  model        Json
-  messages     Message[]
-  summaries    Summary[]
-  files        File[]
+  model            Json
+  // Direct Vision Mode: Bypass Holo/CV tools, use only native computer use tools
+  // Gives vision models (Claude Opus 4, GPT-4o) direct control via screenshot + grid clicking
+  directVisionMode Boolean      @default(false)
+  messages         Message[]
+  summaries        Summary[]
+  files            File[]
 }
 
 model Summary {

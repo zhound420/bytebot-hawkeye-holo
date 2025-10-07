@@ -18,6 +18,7 @@ export interface BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     useTools: boolean,
     signal?: AbortSignal,
+    directVisionMode?: boolean,
   ): Promise<BytebotAgentResponse>;
 }
 

@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsDate,
   IsNotEmpty,
   IsNumber,
@@ -57,4 +58,8 @@ export class CreateTaskDto {
   @ValidateNested({ each: true })
   @Type(() => TaskFileDto)
   files?: TaskFileDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  directVisionMode?: boolean; // Bypass Holo/CV tools, use native vision
 }

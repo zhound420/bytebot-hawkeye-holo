@@ -13,7 +13,7 @@ import {
 } from '@bytebot/shared';
 import { DEFAULT_MODEL } from './anthropic.constants';
 import { Message, Role } from '@prisma/client';
-import { anthropicTools } from './anthropic.tools';
+import { anthropicTools, getAnthropicTools } from './anthropic.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
@@ -41,6 +41,7 @@ export class AnthropicService implements BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     try {
       const anthropicClient = this.getAnthropicClient();
@@ -54,10 +55,15 @@ export class AnthropicService implements BytebotAgentService {
       // Convert our message content blocks to Anthropic's expected format
       const anthropicMessages = this.formatMessagesForAnthropic(processedMessages);
 
+      // Get tools based on directVisionMode
+      const tools = useTools ? getAnthropicTools(directVisionMode) : [];
+
       // add cache_control to last tool
-      anthropicTools[anthropicTools.length - 1].cache_control = {
-        type: 'ephemeral',
-      };
+      if (tools.length > 0) {
+        tools[tools.length - 1].cache_control = {
+          type: 'ephemeral',
+        };
+      }
 
       // Make the API call
       const response = await anthropicClient.messages.create(
@@ -73,7 +79,7 @@ export class AnthropicService implements BytebotAgentService {
             },
           ],
           messages: anthropicMessages,
-          tools: useTools ? anthropicTools : [],
+          tools,
         },
         { signal },
       );

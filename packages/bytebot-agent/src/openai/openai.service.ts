@@ -14,7 +14,7 @@ import {
 } from '@bytebot/shared';
 import { DEFAULT_MODEL } from './openai.constants';
 import { Message, Role } from '@prisma/client';
-import { openaiTools } from './openai.tools';
+import { openaiTools, getOpenAITools } from './openai.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
@@ -42,6 +42,7 @@ export class OpenAIService implements BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     const isReasoning = modelName.startsWith('o');
     try {
@@ -61,7 +62,7 @@ export class OpenAIService implements BytebotAgentService {
           max_output_tokens: maxTokens,
           input: openaiMessages,
           instructions: systemPrompt,
-          tools: useTools ? openaiTools : [],
+          tools: useTools ? getOpenAITools(directVisionMode) : [],
           reasoning: isReasoning ? { effort: 'medium' } : null,
           store: false,
           include: isReasoning ? ['reasoning.encrypted_content'] : [],

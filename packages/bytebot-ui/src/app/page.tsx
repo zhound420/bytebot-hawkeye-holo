@@ -42,6 +42,7 @@ export default function Home() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<FileWithBase64[]>([]);
+  const [directVisionMode, setDirectVisionMode] = useState(false);
   const router = useRouter();
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
     null,
@@ -123,9 +124,11 @@ export default function Home() {
         description: string;
         model: Model;
         files?: FileWithBase64[];
+        directVisionMode?: boolean;
       } = {
         description: input,
         model: selectedModel,
+        directVisionMode,
       };
 
       // Include files if any are uploaded
@@ -179,13 +182,22 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
-                <div className="mt-2">
+                <div className="mt-2 flex items-center justify-between">
                   <ModelSelect
                     models={models}
                     selectedModel={selectedModel}
                     onModelChange={updateSelectedModel}
                     className="w-auto"
                   />
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={directVisionMode}
+                      onChange={(e) => setDirectVisionMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    Direct Vision Mode
+                  </label>
                 </div>
               </div>
 
@@ -224,13 +236,22 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
-                <div className="mt-2">
+                <div className="mt-2 flex items-center justify-between">
                   <ModelSelect
                     models={models}
                     selectedModel={selectedModel}
                     onModelChange={updateSelectedModel}
                     className="w-auto"
                   />
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={directVisionMode}
+                      onChange={(e) => setDirectVisionMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    Direct Vision Mode
+                  </label>
                 </div>
               </div>
 

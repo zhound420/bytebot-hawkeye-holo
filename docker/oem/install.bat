@@ -101,24 +101,44 @@ set SOURCE_FOUND=0
 
 if exist "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" (
     echo Found source at: %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
-    echo Copying files (excluding .git and node_modules)...
-    robocopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
-    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
+    echo Copying files excluding .git node_modules .next dist...
+    robocopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
+    if %ERRORLEVEL% LEQ 3 (
+        set SOURCE_FOUND=1
+        echo Files copied successfully
+    ) else (
+        echo WARNING: robocopy exited with code %ERRORLEVEL%
+    )
 ) else if exist "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" (
     echo Found source at: C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
-    echo Copying files (excluding .git and node_modules)...
-    robocopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
-    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
+    echo Copying files excluding .git node_modules .next dist...
+    robocopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
+    if %ERRORLEVEL% LEQ 3 (
+        set SOURCE_FOUND=1
+        echo Files copied successfully
+    ) else (
+        echo WARNING: robocopy exited with code %ERRORLEVEL%
+    )
 ) else if exist "%USERPROFILE%\Desktop\Shared" (
     echo Found source at: %USERPROFILE%\Desktop\Shared (copying entire folder)
-    echo Copying files (excluding .git and node_modules)...
-    robocopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
-    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
+    echo Copying files excluding .git node_modules .next dist...
+    robocopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
+    if %ERRORLEVEL% LEQ 3 (
+        set SOURCE_FOUND=1
+        echo Files copied successfully
+    ) else (
+        echo WARNING: robocopy exited with code %ERRORLEVEL%
+    )
 ) else if exist "C:\OEM\bytebot-hawkeye-holo" (
     echo Found source at: C:\OEM\bytebot-hawkeye-holo
-    echo Copying files (excluding .git and node_modules)...
-    robocopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
-    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
+    echo Copying files excluding .git node_modules .next dist...
+    robocopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /R:2 /W:5 /XD .git node_modules .next dist
+    if %ERRORLEVEL% LEQ 3 (
+        set SOURCE_FOUND=1
+        echo Files copied successfully
+    ) else (
+        echo WARNING: robocopy exited with code %ERRORLEVEL%
+    )
 )
 
 if %SOURCE_FOUND% EQU 1 (

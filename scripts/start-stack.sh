@@ -481,10 +481,11 @@ fi
 echo "  • Holo 1.5-7B: http://localhost:9989"
 echo ""
 if [[ "$TARGET_OS" == "windows" ]]; then
-    echo -e "${YELLOW}Windows Setup Required:${NC}"
-    echo "1. Access Windows at http://localhost:8006"
-    echo "2. Download setup script from /shared folder"
-    echo "3. Run: PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1"
+    echo -e "${BLUE}Windows Auto-Install Running:${NC}"
+    echo "  • Wait 7-13 minutes for first boot + automated setup"
+    echo "  • Monitor progress at http://localhost:8006"
+    echo "  • Bytebotd will be available at http://localhost:9990 when complete"
+    echo "  • ONLY if auto-install fails: Run C:\shared\scripts\setup-windows-bytebotd.ps1"
     echo ""
 elif [[ "$TARGET_OS" == "macos" ]]; then
     echo -e "${YELLOW}macOS Setup Required:${NC}"

@@ -70,13 +70,10 @@ rdp://localhost:3389
 ### 3. Run Setup Script
 
 1. Open PowerShell as Administrator in Windows
-2. Navigate to shared folder:
+2. Navigate to shared folder and run setup script:
    ```powershell
    cd C:\shared
-   ```
-3. Run setup script:
-   ```powershell
-   PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1
+   PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
    ```
 
 **What the script does:**

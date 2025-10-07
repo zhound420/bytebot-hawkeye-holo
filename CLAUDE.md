@@ -120,10 +120,11 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 **Setup Process:**
 1. Stack starts Windows 11 container (may take 5-10 minutes for first boot)
 2. Access Windows web viewer at `http://localhost:8006`
-3. Download setup script from `/shared` folder inside Windows
-4. Run PowerShell as Administrator and execute:
+3. Open PowerShell as Administrator inside Windows
+4. Navigate to shared folder and run setup script:
    ```powershell
-   PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1
+   cd C:\shared
+   PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
    ```
 5. Bytebotd will auto-start on subsequent boots
 
@@ -158,9 +159,10 @@ Run Bytebot with a macOS Sonoma/Sequoia desktop environment:
 **Setup Process:**
 1. Stack starts macOS container (may take 5-10 minutes for first boot)
 2. Access macOS web viewer at `http://localhost:8006` or VNC at `vnc://localhost:5900`
-3. Inside macOS Terminal, run as root:
+3. Open Terminal inside macOS and run setup script as root:
    ```bash
-   sudo bash /shared/setup-macos-bytebotd.sh
+   cd /shared
+   sudo bash ./setup-macos-bytebotd.sh
    ```
 4. Bytebotd will auto-start via LaunchAgent on subsequent boots
 

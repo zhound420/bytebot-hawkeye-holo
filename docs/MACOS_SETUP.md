@@ -76,13 +76,10 @@ vnc://localhost:5900
 ### 3. Run Setup Script
 
 1. Open Terminal in macOS
-2. Switch to root:
+2. Navigate to shared folder and run setup script as root:
    ```bash
-   sudo su
-   ```
-3. Run setup script:
-   ```bash
-   bash /shared/setup-macos-bytebotd.sh
+   cd /shared
+   sudo bash ./setup-macos-bytebotd.sh
    ```
 
 **What the script does:**

@@ -144,7 +144,8 @@ Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Li
 open http://localhost:8006
 
 # Inside Windows, run setup script (PowerShell as Administrator)
-PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
+cd C:\shared
+PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
 ```
 
 **macOS Sonoma/Sequoia:**
@@ -156,7 +157,8 @@ PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
 open http://localhost:8006
 
 # Inside macOS Terminal, run setup script as root
-sudo bash /shared/setup-macos-bytebotd.sh
+cd /shared
+sudo bash ./setup-macos-bytebotd.sh
 ```
 
 **Requirements:**

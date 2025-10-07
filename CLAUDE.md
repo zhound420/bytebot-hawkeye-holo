@@ -108,24 +108,36 @@ cd ../bytebot-cv && npm install && npm run build
 Run Bytebot with a Windows 11 desktop environment instead of Linux:
 
 ```bash
-# Start Windows 11 stack
+# IMPORTANT: Build packages on HOST first (required for auto-install)
+cd packages/shared && npm run build
+cd ../bytebot-cv && npm install && npm run build
+cd ../bytebotd && npm install && npm run build
+
+# Start Windows 11 stack (auto-install runs automatically)
 ./scripts/start-stack.sh --os windows
 ```
 
 **Requirements:**
 - KVM support (`/dev/kvm` must be available)
 - 8GB+ RAM recommended
-- 64GB+ disk space
+- 128GB+ disk space
+- **Pre-built packages on host** (see build commands above)
 
 **Setup Process:**
-1. Stack starts Windows 11 container (10-15 minutes for first boot + auto-install)
-2. **Automated installation runs:**
+1. Build packages on host (one-time: ~2-3 minutes)
+2. Stack starts Windows 11 container (5-10 minutes for Windows installation)
+3. **Automated installation runs (`install.bat` via `/oem` mount):**
    - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
-   - Copies source code from `/oem` mount
-   - Builds packages (shared → bytebot-cv → bytebotd)
+   - Uses **pre-built artifacts** from host (mounted at `C:\app\bytebotd`)
    - Creates scheduled task for auto-start
-3. Access Windows web viewer at `http://localhost:8006` to monitor progress
-4. No manual setup required - bytebotd starts automatically on login
+   - Starts bytebotd service immediately
+4. Access Windows web viewer at `http://localhost:8006` to monitor progress
+5. **Total time: 7-13 minutes** (vs 15-25 minutes if building inside Windows)
+
+**Why build on host?**
+- Pre-built artifacts mounted as read-only volumes = 2-3 min setup
+- Building inside Windows = 10-20 min npm install + compile
+- Same artifacts work on Linux and Windows containers
 
 **Ports:**
 - `8006` - Web-based VNC viewer

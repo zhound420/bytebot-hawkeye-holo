@@ -5,15 +5,21 @@ This guide covers setting up and troubleshooting Bytebot Hawkeye with a Windows 
 ## Quick Start
 
 ```bash
-# Start Windows 11 stack
+# IMPORTANT: Build packages on HOST first (required for auto-install)
+cd packages/shared && npm run build
+cd ../bytebot-cv && npm install && npm run build
+cd ../bytebotd && npm install && npm run build
+
+# Start Windows 11 stack (auto-install runs automatically)
 ./scripts/start-stack.sh --os windows
 
-# Access Windows
+# Access Windows (wait 10-20 minutes for auto-install to complete)
 # Web viewer: http://localhost:8006
 # RDP: rdp://localhost:3389
 
-# Inside Windows, run PowerShell as Administrator:
-PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
+# ONLY if auto-install fails, run manual troubleshooting script:
+# Inside Windows PowerShell (as Administrator):
+PowerShell -ExecutionPolicy Bypass -File C:\shared\scripts\setup-windows-bytebotd.ps1
 ```
 
 ## Requirements
@@ -36,30 +42,47 @@ PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
 
 **Windows 11 container now includes FULLY AUTOMATED setup!** No manual intervention required.
 
+### Prerequisites (REQUIRED)
+
+**Build packages on HOST before starting Windows container:**
+
+```bash
+cd packages/shared && npm run build
+cd ../bytebot-cv && npm install && npm run build
+cd ../bytebotd && npm install && npm run build
+```
+
+The Windows container uses **pre-built artifacts** from the host (mounted as read-only volumes). Building inside Windows would take 10-20 minutes; using pre-built artifacts takes 2-3 minutes.
+
 ### What Happens Automatically
 
-On first boot, the container runs `install.bat` which:
+On first boot, the container runs `install.bat` (`/oem` mount) which:
 1. ✅ Installs Chocolatey package manager
 2. ✅ Installs Node.js 20
 3. ✅ Installs Git
 4. ✅ Installs Visual Studio Code (with desktop shortcut)
 5. ✅ Installs 1Password (password manager)
-6. ✅ Copies full bytebot source code to `C:\Bytebot`
-7. ✅ Builds all packages (shared → bytebot-cv → bytebotd)
-8. ✅ Creates scheduled task for auto-start on login
+6. ✅ Uses pre-built bytebotd artifacts from host (mounted at `C:\app\bytebotd`)
+7. ✅ Creates scheduled task for auto-start on login
+8. ✅ Starts bytebotd service immediately
 
 **Timeline:**
 - Windows installation: 5-10 minutes
-- Automated setup: 5-10 minutes
-- **Total first boot: 10-20 minutes**
+- Automated setup: 2-3 minutes (using pre-built artifacts!)
+- **Total first boot: 7-13 minutes**
 
 ### Quick Start
 
 ```bash
-# Start Windows stack
+# 1. Build packages on host (REQUIRED - only once)
+cd packages/shared && npm run build
+cd ../bytebot-cv && npm install && npm run build
+cd ../bytebotd && npm install && npm run build
+
+# 2. Start Windows stack (auto-install runs automatically)
 ./scripts/start-stack.sh --os windows
 
-# Access via web viewer (wait 10-20 minutes for auto-install)
+# 3. Access via web viewer (wait 7-13 minutes for auto-install)
 open http://localhost:8006
 
 # Or via RDP (faster)
@@ -107,25 +130,31 @@ rdp://localhost:3389
 - Requires RDP client (Microsoft Remote Desktop, Remmina, etc.)
 - Default credentials (if required): Administrator / (no password by default)
 
-### 3. Run Setup Script
+### 3. Run Manual Setup Script (Troubleshooting Only)
+
+**IMPORTANT:** This script is ONLY for troubleshooting if auto-install fails. The automatic `install.bat` should handle everything.
 
 1. Open PowerShell as Administrator in Windows
-2. Navigate to shared folder (on Desktop) and run setup script:
+2. Run the manual setup script:
    ```powershell
-   cd ~\Desktop\Shared
-   PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
+   PowerShell -ExecutionPolicy Bypass -File C:\shared\scripts\setup-windows-bytebotd.ps1
    ```
 
-   **Note:** The `docker/shared` folder from the host appears as "Shared" on the Windows Desktop.
+   **Note:** The `docker/shared` and `docker/oem` folders from the host are mounted at `C:\shared\scripts` in Windows.
 
 **What the script does:**
 - Installs Chocolatey package manager
 - Installs Node.js 20
 - Installs Git
-- Copies source code from shared folder
-- Builds bytebot packages (shared, bytebot-cv, bytebotd)
+- Copies source code from `/oem` mount
+- Builds bytebot packages (shared, bytebot-cv, bytebotd) - SLOW (~10-20 min)
 - Creates auto-start scheduled task
 - Configures bytebotd to run on boot
+
+**Why prefer auto-install:**
+- `install.bat` uses pre-built host artifacts (2-3 min)
+- Manual script builds inside Windows (10-20 min)
+- Auto-install runs on first boot without intervention
 
 ### 4. Verify Installation
 

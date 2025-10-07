@@ -164,11 +164,15 @@ REM Create auto-start mechanisms (both scheduled task AND startup folder for red
 echo.
 echo Creating auto-start mechanisms...
 
-REM Create wrapper script using PowerShell for reliable quote handling
+REM Create wrapper script using batch echo (simple and reliable)
 echo Creating bytebotd startup wrapper script...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$content = '@echo off'; $content += \"`r`ncd /d %BYTEBOTD_PATH%\`r`n\`\"C:\Program Files\nodejs\node.exe\`\" dist\main.js'; Set-Content -Path '%BYTEBOTD_PATH%\start.bat' -Value $content"
+(
+  echo @echo off
+  echo cd /d %BYTEBOTD_PATH%
+  echo "C:\Program Files\nodejs\node.exe" dist\main.js
+) > "%BYTEBOTD_PATH%\start.bat"
 
-REM Create scheduled task for bytebotd (using simple wrapper path, no complex quoting)
+REM Create scheduled task for bytebotd (using simple wrapper path, no quotes needed)
 schtasks /create /tn "Bytebot Desktop Daemon" /tr "%BYTEBOTD_PATH%\start.bat" /sc onlogon /ru SYSTEM /rl HIGHEST /f
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully

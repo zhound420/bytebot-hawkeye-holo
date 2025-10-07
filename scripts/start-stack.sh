@@ -149,6 +149,49 @@ echo -e "${BLUE}   Starting Bytebot Hawkeye Stack ($TARGET_OS)${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
+# Windows-specific: Copy pre-built artifacts to /oem mount
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${BLUE}Preparing Windows container artifacts...${NC}"
+
+    # Get script directory and project root
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+    # Check if packages are built
+    if [[ ! -f "$PROJECT_ROOT/packages/bytebotd/dist/main.js" ]]; then
+        echo -e "${RED}✗ Pre-built bytebotd not found${NC}"
+        echo ""
+        echo "Please build packages on host before starting Windows container:"
+        echo -e "  ${BLUE}cd packages/shared && npm install && npm run build${NC}"
+        echo -e "  ${BLUE}cd ../bytebot-cv && npm install && npm run build${NC}"
+        echo -e "  ${BLUE}cd ../bytebotd && npm install && npm run build${NC}"
+        exit 1
+    fi
+
+    # Create artifacts directory in /oem mount
+    mkdir -p "$PROJECT_ROOT/docker/oem/artifacts"/{bytebotd,shared,bytebot-cv}
+
+    echo -e "${BLUE}Copying built artifacts to /oem mount...${NC}"
+
+    # Copy bytebotd
+    cp -r "$PROJECT_ROOT/packages/bytebotd/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
+    cp -r "$PROJECT_ROOT/packages/bytebotd/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
+    cp "$PROJECT_ROOT/packages/bytebotd/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
+
+    # Copy shared
+    cp -r "$PROJECT_ROOT/packages/shared/dist" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
+    cp -r "$PROJECT_ROOT/packages/shared/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
+    cp "$PROJECT_ROOT/packages/shared/package.json" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
+
+    # Copy bytebot-cv
+    cp -r "$PROJECT_ROOT/packages/bytebot-cv/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
+    cp -r "$PROJECT_ROOT/packages/bytebot-cv/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
+    cp "$PROJECT_ROOT/packages/bytebot-cv/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
+
+    echo -e "${GREEN}✓ Artifacts prepared (ready for Windows VM access via /oem mount)${NC}"
+    echo ""
+fi
+
 # Change to docker directory
 cd docker
 

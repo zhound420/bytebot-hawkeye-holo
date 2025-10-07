@@ -10,10 +10,10 @@ cd packages/shared && npm run build
 cd ../bytebot-cv && npm install && npm run build
 cd ../bytebotd && npm install && npm run build
 
-# Start Windows 11 stack (auto-install runs automatically)
+# Start Windows 11 stack (artifacts copied automatically, auto-install runs in Windows)
 ./scripts/start-stack.sh --os windows
 
-# Access Windows (wait 10-20 minutes for auto-install to complete)
+# Access Windows (wait 7-13 minutes for auto-install to complete)
 # Web viewer: http://localhost:8006
 # RDP: rdp://localhost:3389
 
@@ -52,17 +52,21 @@ cd ../bytebot-cv && npm install && npm run build
 cd ../bytebotd && npm install && npm run build
 ```
 
-The Windows container uses **pre-built artifacts** from the host (mounted as read-only volumes). Building inside Windows would take 10-20 minutes; using pre-built artifacts takes 2-3 minutes.
+The start script **automatically copies pre-built artifacts** to `docker/oem/artifacts/` which Windows VM can access. Building inside Windows would take 10-20 minutes; using pre-built artifacts takes 2-3 minutes.
 
 ### What Happens Automatically
 
-On first boot, the container runs `install.bat` (`/oem` mount) which:
+**On host (during `start-stack.sh --os windows`):**
+1. ✅ Checks for pre-built packages (fails if not built)
+2. ✅ Copies artifacts to `docker/oem/artifacts/` (accessible from Windows VM)
+
+**In Windows (during first boot via `install.bat`):**
 1. ✅ Installs Chocolatey package manager
 2. ✅ Installs Node.js 20
 3. ✅ Installs Git
 4. ✅ Installs Visual Studio Code (with desktop shortcut)
 5. ✅ Installs 1Password (password manager)
-6. ✅ Uses pre-built bytebotd artifacts from host (mounted at `C:\app\bytebotd`)
+6. ✅ Copies pre-built bytebotd artifacts from `/oem/artifacts` to `C:\bytebot\packages`
 7. ✅ Creates scheduled task for auto-start on login
 8. ✅ Starts bytebotd service immediately
 

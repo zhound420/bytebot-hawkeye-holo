@@ -91,14 +91,20 @@ where git
 where code
 echo.
 
-REM Verify pre-built bytebotd is mounted
-echo [6/6] Verifying pre-built bytebotd artifacts...
-set BYTEBOTD_PATH=C:\app\bytebotd
+REM Copy pre-built bytebotd artifacts from /oem mount
+echo [6/6] Copying pre-built bytebotd artifacts...
+set BYTEBOTD_PATH=C:\bytebot\packages\bytebotd
+set OEM_PATH=C:\OEM\artifacts
 
-if not exist "%BYTEBOTD_PATH%\dist\main.js" (
-    echo ERROR: Pre-built bytebotd not found at %BYTEBOTD_PATH%\dist\main.js
+REM Create directory structure
+if not exist "C:\bytebot\packages" mkdir "C:\bytebot\packages"
+if not exist "%BYTEBOTD_PATH%" mkdir "%BYTEBOTD_PATH%"
+
+REM Verify pre-built artifacts exist in /oem mount
+if not exist "%OEM_PATH%\bytebotd\dist\main.js" (
+    echo ERROR: Pre-built bytebotd not found at %OEM_PATH%\bytebotd\dist\main.js
     echo.
-    echo Expected mount: /app/bytebotd/dist from host
+    echo Expected /oem mount with pre-built artifacts from host
     echo Please ensure packages are built on host before starting Windows container:
     echo   cd packages/shared ^&^& npm install ^&^& npm run build
     echo   cd ../bytebot-cv ^&^& npm install ^&^& npm run build
@@ -107,8 +113,29 @@ if not exist "%BYTEBOTD_PATH%\dist\main.js" (
     exit /b 1
 )
 
-echo Pre-built bytebotd found at %BYTEBOTD_PATH%
-echo Skipping build steps (using host artifacts)
+echo Pre-built artifacts found in /oem mount
+echo Copying artifacts to %BYTEBOTD_PATH%...
+
+REM Copy bytebotd dist, node_modules, and package files
+robocopy "%OEM_PATH%\bytebotd\dist" "%BYTEBOTD_PATH%\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+robocopy "%OEM_PATH%\bytebotd\node_modules" "%BYTEBOTD_PATH%\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+copy /Y "%OEM_PATH%\bytebotd\package.json" "%BYTEBOTD_PATH%\" >nul
+if exist "%OEM_PATH%\bytebotd\tsconfig.json" copy /Y "%OEM_PATH%\bytebotd\tsconfig.json" "%BYTEBOTD_PATH%\" >nul
+
+REM Copy shared package dependency
+if not exist "C:\bytebot\packages\shared" mkdir "C:\bytebot\packages\shared"
+robocopy "%OEM_PATH%\shared\dist" "C:\bytebot\packages\shared\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+robocopy "%OEM_PATH%\shared\node_modules" "C:\bytebot\packages\shared\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+copy /Y "%OEM_PATH%\shared\package.json" "C:\bytebot\packages\shared\" >nul
+
+REM Copy bytebot-cv package dependency
+if not exist "C:\bytebot\packages\bytebot-cv" mkdir "C:\bytebot\packages\bytebot-cv"
+robocopy "%OEM_PATH%\bytebot-cv\dist" "C:\bytebot\packages\bytebot-cv\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+robocopy "%OEM_PATH%\bytebot-cv\node_modules" "C:\bytebot\packages\bytebot-cv\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+copy /Y "%OEM_PATH%\bytebot-cv\package.json" "C:\bytebot\packages\bytebot-cv\" >nul
+
+echo Artifacts copied successfully
+echo Skipping build steps (using host-built artifacts)
 
 REM Create auto-start mechanisms (both scheduled task AND startup folder for redundancy)
 echo.

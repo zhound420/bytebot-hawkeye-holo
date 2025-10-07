@@ -56,21 +56,11 @@ services:
       # - BYTEBOT_TELEMETRY_DIR=C:\Windows\Temp\bytebot-telemetry
     volumes:
       - windows_storage:/storage
-      # Auto-install script (runs on first boot)
+      # Auto-install script + pre-built artifacts (runs on first boot)
+      # The /oem mount is accessible from Windows VM (unlike Docker volumes)
       - ./oem:/oem
-      # Mount pre-built bytebotd artifacts (no need to build inside Windows!)
-      - ../packages/bytebotd/dist:/app/bytebotd/dist:ro
-      - ../packages/bytebotd/node_modules:/app/bytebotd/node_modules:ro
-      - ../packages/bytebotd/package.json:/app/bytebotd/package.json:ro
-      # Dependencies required by bytebotd
-      - ../packages/shared/dist:/app/shared/dist:ro
-      - ../packages/shared/node_modules:/app/shared/node_modules:ro
-      - ../packages/shared/package.json:/app/shared/package.json:ro
-      - ../packages/bytebot-cv/dist:/app/bytebot-cv/dist:ro
-      - ../packages/bytebot-cv/node_modules:/app/bytebot-cv/node_modules:ro
-      - ../packages/bytebot-cv/package.json:/app/bytebot-cv/package.json:ro
-      # Diagnostic/manual scripts (keep for troubleshooting)
-      - ./oem:/shared/scripts:ro
+      # Keep shared/scripts mount for diagnostic scripts (troubleshooting)
+      - ./shared:/shared/scripts:ro
     depends_on:
       bytebot-holo:
         condition: service_healthy

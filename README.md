@@ -143,10 +143,11 @@ Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Li
 # Access Windows via web viewer
 open http://localhost:8006
 
-# Inside Windows, run setup script (PowerShell as Administrator)
-# The shared folder appears as "Shared" on the Desktop
-cd ~\Desktop\Shared
-PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
+# Setup runs AUTOMATICALLY on first boot!
+# - Installs Node.js 20, Git, VSCode
+# - Builds and configures bytebotd
+# - Creates auto-start scheduled task
+# Wait 10-15 minutes for automated installation to complete
 ```
 
 **macOS Sonoma/Sequoia:**

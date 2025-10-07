@@ -118,15 +118,14 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 - 64GB+ disk space
 
 **Setup Process:**
-1. Stack starts Windows 11 container (may take 5-10 minutes for first boot)
-2. Access Windows web viewer at `http://localhost:8006`
-3. Open PowerShell as Administrator inside Windows
-4. Navigate to shared folder (on Desktop) and run setup script:
-   ```powershell
-   cd ~\Desktop\Shared
-   PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
-   ```
-5. Bytebotd will auto-start on subsequent boots
+1. Stack starts Windows 11 container (10-15 minutes for first boot + auto-install)
+2. **Automated installation runs:**
+   - Installs Chocolatey, Node.js 20, Git, VSCode
+   - Copies source code from `/oem` mount
+   - Builds packages (shared → bytebot-cv → bytebotd)
+   - Creates scheduled task for auto-start
+3. Access Windows web viewer at `http://localhost:8006` to monitor progress
+4. No manual setup required - bytebotd starts automatically on login
 
 **Ports:**
 - `8006` - Web-based VNC viewer

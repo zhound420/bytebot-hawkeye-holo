@@ -56,8 +56,10 @@ services:
       # - BYTEBOT_TELEMETRY_DIR=C:\Windows\Temp\bytebot-telemetry
     volumes:
       - windows_storage:/storage
-      # Optional: Share files between host and Windows
-      - ${WINDOWS_SHARED_DIR:-./shared}:/shared
+      # Auto-install script (runs on first boot)
+      - ./oem:/oem
+      # Full source code access (read-only)
+      - ..:/shared/bytebot-hawkeye-holo:ro
     depends_on:
       bytebot-holo:
         condition: service_healthy

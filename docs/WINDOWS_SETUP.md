@@ -32,7 +32,46 @@ PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
 - Node.js 20+ (installed automatically by setup script)
 - Git (installed automatically by setup script)
 
-## Setup Process
+## Automated Setup (Recommended)
+
+**Windows 11 container now includes FULLY AUTOMATED setup!** No manual intervention required.
+
+### What Happens Automatically
+
+On first boot, the container runs `install.bat` which:
+1. ✅ Installs Chocolatey package manager
+2. ✅ Installs Node.js 20
+3. ✅ Installs Git
+4. ✅ Installs Visual Studio Code (with desktop shortcut)
+5. ✅ Copies full bytebot source code to `C:\Bytebot`
+6. ✅ Builds all packages (shared → bytebot-cv → bytebotd)
+7. ✅ Creates scheduled task for auto-start on login
+
+**Timeline:**
+- Windows installation: 5-10 minutes
+- Automated setup: 5-10 minutes
+- **Total first boot: 10-20 minutes**
+
+### Quick Start
+
+```bash
+# Start Windows stack
+./scripts/start-stack.sh --os windows
+
+# Access via web viewer (wait 10-20 minutes for auto-install)
+open http://localhost:8006
+
+# Or via RDP (faster)
+# Windows: mstsc /v:localhost:3389
+# Mac: Microsoft Remote Desktop → localhost:3389
+# Linux: remmina -c rdp://localhost:3389
+```
+
+Once installation completes, bytebotd will be running at `http://localhost:9990`.
+
+## Manual Setup (Optional)
+
+If auto-install fails or you need to re-run setup:
 
 ### 1. Start Windows Container
 

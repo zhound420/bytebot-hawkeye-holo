@@ -56,9 +56,11 @@ services:
       # - BYTEBOT_TELEMETRY_DIR=C:\Windows\Temp\bytebot-telemetry
     volumes:
       - windows_storage:/storage
-      # Auto-install script + pre-built artifacts (runs on first boot)
-      # The /oem mount is accessible from Windows VM (unlike Docker volumes)
+      # Auto-install script (runs on first boot, copied to C:\OEM)
       - ./oem:/oem
+      # Pre-built artifacts (live mount, accessible as \\host.lan\Data in Windows)
+      # Use /data instead of /oem to avoid path length limitations with node_modules
+      - ./oem/artifacts:/data
       # Keep shared/scripts mount for diagnostic scripts (troubleshooting)
       - ./shared:/shared/scripts:ro
     depends_on:

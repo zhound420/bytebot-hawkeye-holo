@@ -100,6 +100,29 @@ REM Create directory structure
 if not exist "C:\bytebot\packages" mkdir "C:\bytebot\packages"
 if not exist "%BYTEBOTD_PATH%" mkdir "%BYTEBOTD_PATH%"
 
+REM Wait for network share to become available (up to 2 minutes)
+echo Waiting for network share %ARTIFACTS_PATH% to become available...
+set WAIT_ATTEMPTS=0
+set MAX_WAIT=24
+:WaitForShare
+if exist "%ARTIFACTS_PATH%\bytebotd" goto ShareReady
+set /a WAIT_ATTEMPTS+=1
+if %WAIT_ATTEMPTS% GEQ %MAX_WAIT% (
+    echo ERROR: Network share %ARTIFACTS_PATH% not available after 2 minutes
+    echo.
+    echo Troubleshooting:
+    echo   1. Check docker-compose.windows.yml has: ./oem/artifacts:/data
+    echo   2. Ensure artifacts exist on host: docker/oem/artifacts/bytebotd/
+    echo   3. Try accessing manually: File Explorer ^> Network ^> host.lan ^> Data
+    pause
+    exit /b 1
+)
+echo   Attempt %WAIT_ATTEMPTS%/%MAX_WAIT%: Waiting for network share...
+timeout /t 5 /nobreak >nul
+goto WaitForShare
+:ShareReady
+echo Network share %ARTIFACTS_PATH% is accessible!
+
 REM Verify pre-built artifacts exist in /data mount (\\host.lan\Data)
 if not exist "%ARTIFACTS_PATH%\bytebotd\dist\main.js" (
     echo ERROR: Pre-built bytebotd not found at %ARTIFACTS_PATH%\bytebotd\dist\main.js
@@ -109,10 +132,6 @@ if not exist "%ARTIFACTS_PATH%\bytebotd\dist\main.js" (
     echo   cd packages/shared ^&^& npm install ^&^& npm run build
     echo   cd ../bytebot-cv ^&^& npm install ^&^& npm run build
     echo   cd ../bytebotd ^&^& npm install ^&^& npm run build
-    echo.
-    echo Troubleshooting:
-    echo   1. Check network share: Open File Explorer ^> Network ^> host.lan ^> Data
-    echo   2. Ensure /data volume is mounted in docker-compose.windows.yml
     pause
     exit /b 1
 )

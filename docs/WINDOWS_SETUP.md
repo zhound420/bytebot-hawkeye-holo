@@ -70,11 +70,13 @@ rdp://localhost:3389
 ### 3. Run Setup Script
 
 1. Open PowerShell as Administrator in Windows
-2. Navigate to shared folder and run setup script:
+2. Navigate to shared folder (on Desktop) and run setup script:
    ```powershell
-   cd C:\shared
+   cd ~\Desktop\Shared
    PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
    ```
+
+   **Note:** The `docker/shared` folder from the host appears as "Shared" on the Windows Desktop.
 
 **What the script does:**
 - Installs Chocolatey package manager

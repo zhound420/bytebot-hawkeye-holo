@@ -144,7 +144,8 @@ Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Li
 open http://localhost:8006
 
 # Inside Windows, run setup script (PowerShell as Administrator)
-cd C:\shared
+# The shared folder appears as "Shared" on the Desktop
+cd ~\Desktop\Shared
 PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
 ```
 

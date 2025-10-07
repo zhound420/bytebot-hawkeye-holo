@@ -121,9 +121,9 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 1. Stack starts Windows 11 container (may take 5-10 minutes for first boot)
 2. Access Windows web viewer at `http://localhost:8006`
 3. Open PowerShell as Administrator inside Windows
-4. Navigate to shared folder and run setup script:
+4. Navigate to shared folder (on Desktop) and run setup script:
    ```powershell
-   cd C:\shared
+   cd ~\Desktop\Shared
    PowerShell -ExecutionPolicy Bypass -File .\setup-windows-bytebotd.ps1
    ```
 5. Bytebotd will auto-start on subsequent boots

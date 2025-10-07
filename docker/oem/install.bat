@@ -18,8 +18,10 @@ if %ERRORLEVEL% NEQ 0 (
 echo Chocolatey installed successfully
 echo.
 
-REM Refresh environment variables
-call refreshenv
+REM Update PATH to include Chocolatey (batch-compatible, no PowerShell refreshenv)
+set "PATH=C:\ProgramData\chocolatey\bin;%PATH%"
+echo PATH updated to include Chocolatey
+echo.
 
 REM Install Node.js 20
 echo [2/5] Installing Node.js 20...
@@ -54,8 +56,17 @@ if %ERRORLEVEL% NEQ 0 (
 echo VSCode installed successfully
 echo.
 
-REM Refresh environment again to get Node.js and Git in PATH
-call refreshenv
+REM Update PATH to include Node.js, Git, and VSCode (batch-compatible)
+set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Program Files\Microsoft VS Code\bin;%PATH%"
+echo PATH updated to include Node.js, Git, and VSCode
+echo.
+
+REM Verify installations
+echo Verifying installations...
+where node
+where npm
+where git
+echo.
 
 REM Copy source code from shared folder
 echo [5/5] Setting up Bytebot source code...

@@ -140,6 +140,44 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 - Holo 1.5-7B trained on Windows UI (same model, cross-platform)
 - Resolution matched to Linux container (1280x960)
 
+### macOS Container (Optional)
+
+Run Bytebot with a macOS Sonoma/Sequoia desktop environment:
+
+```bash
+# Start macOS stack
+./scripts/start-stack.sh --os macos
+```
+
+**Requirements:**
+- **Apple Hardware Only** (iMac, Mac mini, MacBook, Mac Studio, Mac Pro)
+- KVM support (`/dev/kvm` must be available)
+- 8GB+ RAM recommended
+- 64GB+ disk space
+
+**Setup Process:**
+1. Stack starts macOS container (may take 5-10 minutes for first boot)
+2. Access macOS web viewer at `http://localhost:8006` or VNC at `vnc://localhost:5900`
+3. Inside macOS Terminal, run as root:
+   ```bash
+   sudo bash /shared/setup-macos-bytebotd.sh
+   ```
+4. Bytebotd will auto-start via LaunchAgent on subsequent boots
+
+**Ports:**
+- `8006` - Web-based viewer
+- `5900` - VNC access
+- `9990` - Bytebotd API (after setup)
+- `9991` - Bytebot Agent
+- `9992` - Bytebot UI
+- `9989` - Holo 1.5-7B
+
+**Why macOS?**
+- Test UI automation on macOS applications
+- Holo 1.5-7B trained on macOS UI (same model, cross-platform)
+- Resolution matched to Linux/Windows containers (1280x960)
+- **Licensing:** macOS EULA requires Apple hardware
+
 ## Development Commands
 
 ### Build Dependencies

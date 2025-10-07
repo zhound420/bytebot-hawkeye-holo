@@ -138,9 +138,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate TARGET_OS
-if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" ]]; then
+if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" && "$TARGET_OS" != "macos" ]]; then
     echo -e "${RED}Invalid OS: $TARGET_OS${NC}"
-    echo "Valid options: linux, windows"
+    echo "Valid options: linux, windows, macos"
     exit 1
 fi
 
@@ -159,6 +159,10 @@ if [[ -f ".env" ]]; then
         COMPOSE_FILE="docker-compose.windows.yml"
         echo -e "${BLUE}Using: Windows Stack${NC}"
         DESKTOP_SERVICE="bytebot-windows"
+    elif [[ "$TARGET_OS" == "macos" ]]; then
+        COMPOSE_FILE="docker-compose.macos.yml"
+        echo -e "${BLUE}Using: macOS Stack${NC}"
+        DESKTOP_SERVICE="bytebot-macos"
     else
         # Check if using proxy or standard stack for Linux
         if [[ -f "docker-compose.proxy.yml" ]]; then
@@ -183,11 +187,17 @@ if [[ "$COMPOSE_FILE" == "docker-compose.proxy.yml" ]]; then
     STACK_SERVICES+=(bytebot-llm-proxy)
 fi
 
-# Windows-specific checks
+# OS-specific checks
 if [[ "$TARGET_OS" == "windows" ]]; then
     echo -e "${YELLOW}Note: Windows container requires KVM support${NC}"
     echo -e "${YELLOW}  - Ensure /dev/kvm is available on host${NC}"
     echo -e "${YELLOW}  - After Windows boots, run setup script inside container${NC}"
+    echo ""
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    echo -e "${YELLOW}Note: macOS container requires KVM support${NC}"
+    echo -e "${YELLOW}  - Ensure /dev/kvm is available on host${NC}"
+    echo -e "${YELLOW}  - Should only run on Apple hardware (licensing)${NC}"
+    echo -e "${YELLOW}  - After macOS boots, run setup script inside container${NC}"
     echo ""
 fi
 
@@ -418,6 +428,10 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     echo "  • Windows:  http://localhost:8006 (web viewer)"
     echo "              rdp://localhost:3389 (RDP)"
     echo "              http://localhost:9990 (bytebotd - after setup)"
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    echo "  • macOS:    http://localhost:8006 (web viewer)"
+    echo "              vnc://localhost:5900 (VNC)"
+    echo "              http://localhost:9990 (bytebotd - after setup)"
 else
     echo "  • Desktop:  http://localhost:9990"
 fi
@@ -428,6 +442,12 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     echo "1. Access Windows at http://localhost:8006"
     echo "2. Download setup script from /shared folder"
     echo "3. Run: PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1"
+    echo ""
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    echo -e "${YELLOW}macOS Setup Required:${NC}"
+    echo "1. Access macOS at http://localhost:8006"
+    echo "2. Download setup script from /shared folder"
+    echo "3. Run: sudo bash setup-macos-bytebotd.sh"
     echo ""
 fi
 echo "View logs:"

@@ -131,10 +131,11 @@ git clone https://github.com/zhound420/bytebot-hawkeye-uitars.git
 cd bytebot-hawkeye-uitars
 ```
 
-### Optional: Windows 11 Desktop Container
+### Optional: Windows 11 or macOS Desktop Container
 
-Run Bytebot with a **Windows 11 desktop environment** instead of Linux:
+Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Linux:
 
+**Windows 11:**
 ```bash
 # Start Windows 11 stack (requires KVM support)
 ./scripts/start-stack.sh --os windows
@@ -146,22 +147,38 @@ open http://localhost:8006
 PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
 ```
 
+**macOS Sonoma/Sequoia:**
+```bash
+# Start macOS stack (requires KVM + Apple hardware)
+./scripts/start-stack.sh --os macos
+
+# Access macOS via web viewer or VNC
+open http://localhost:8006
+
+# Inside macOS Terminal, run setup script as root
+sudo bash /shared/setup-macos-bytebotd.sh
+```
+
 **Requirements:**
 - KVM support (`/dev/kvm` must be available on Linux host)
 - 8GB+ RAM, 4+ CPU cores, 64GB+ disk space
-- First boot takes 5-10 minutes for Windows installation
+- First boot takes 5-10 minutes for OS installation
+- **macOS only:** Must run on Apple hardware (licensing requirement)
 
-**Why Windows?**
-- Test automation on native Windows applications
+**Why Use Alternate OS Containers?**
+- Test automation on native Windows or macOS applications
 - Holo 1.5-7B trained on Windows/Linux/macOS UI (same model, cross-platform)
-- Same resolution as Linux container (1280x960)
+- Same resolution across all platforms (1280x960)
 
 **Ports:**
-- `8006` - Web-based VNC viewer
-- `3389` - RDP access
+- `8006` - Web-based viewer (all platforms)
+- `3389` - RDP access (Windows only)
+- `5900` - VNC access (macOS only)
 - `9990` - Bytebotd API (after setup)
 
-**📚 Full Guide:** See [`docs/WINDOWS_SETUP.md`](docs/WINDOWS_SETUP.md) for detailed setup, troubleshooting, and configuration options.
+**📚 Full Guides:**
+- Windows: [`docs/WINDOWS_SETUP.md`](docs/WINDOWS_SETUP.md)
+- macOS: [`docs/MACOS_SETUP.md`](docs/MACOS_SETUP.md)
 
 ### Step 2: Configure API Keys
 

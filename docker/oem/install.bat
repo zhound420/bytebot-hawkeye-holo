@@ -164,8 +164,14 @@ REM Create auto-start mechanisms (both scheduled task AND startup folder for red
 echo.
 echo Creating auto-start mechanisms...
 
-REM Create scheduled task for bytebotd (using pre-built artifacts)
-schtasks /create /tn "Bytebot Desktop Daemon" /tr "node %BYTEBOTD_PATH%\dist\main.js" /sc onlogon /ru SYSTEM /rl HIGHEST /f
+REM Create wrapper script to ensure correct working directory and PATH
+set WRAPPER_SCRIPT=%BYTEBOTD_PATH%\start-bytebotd.bat
+echo @echo off > "%WRAPPER_SCRIPT%"
+echo cd /d "%BYTEBOTD_PATH%" >> "%WRAPPER_SCRIPT%"
+echo "C:\Program Files\nodejs\node.exe" dist\main.js >> "%WRAPPER_SCRIPT%"
+
+REM Create scheduled task for bytebotd (using wrapper script with proper working directory)
+schtasks /create /tn "Bytebot Desktop Daemon" /tr "\"%WRAPPER_SCRIPT%\"" /sc onlogon /ru SYSTEM /rl HIGHEST /f
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully
     REM Start the task immediately (don't wait for next login)
@@ -189,7 +195,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -
 
 REM Create scheduled task for bytebotd system tray monitor
 echo Creating bytebotd tray icon scheduled task...
-set TRAY_SCRIPT=C:\shared\scripts\bytebotd-tray.ps1
+set TRAY_SCRIPT=C:\OEM\bytebotd-tray.ps1
 if exist "%TRAY_SCRIPT%" (
     schtasks /create /tn "Bytebot Tray Monitor" /tr "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%TRAY_SCRIPT%\"" /sc onlogon /rl HIGHEST /f
     if %ERRORLEVEL% EQU 0 (
@@ -200,7 +206,7 @@ if exist "%TRAY_SCRIPT%" (
         echo WARNING: Failed to create tray monitor scheduled task
     )
 ) else (
-    echo WARNING: Tray script not found at %TRAY_SCRIPT%
+    echo Tray script not found at %TRAY_SCRIPT% (optional feature, skipping)
 )
 echo.
 

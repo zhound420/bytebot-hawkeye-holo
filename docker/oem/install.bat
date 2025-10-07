@@ -71,14 +71,32 @@ mkdir "%BYTEBOT_DIR%"
 
 REM Copy from shared mount (entire repo)
 echo Copying source code from shared folder...
-if exist "C:\OEM\bytebot-hawkeye-holo" (
+if exist "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" (
+    echo Found source at: %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
+    xcopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
+    echo Source copied successfully from Desktop\Shared
+) else if exist "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" (
+    echo Found source at: C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
+    xcopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
+    echo Source copied successfully from Docker user Desktop
+) else if exist "%USERPROFILE%\Desktop\Shared" (
+    echo Found source at: %USERPROFILE%\Desktop\Shared (copying entire folder)
+    xcopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /I /Y /Q
+    echo Source copied successfully from Desktop\Shared
+) else if exist "C:\OEM\bytebot-hawkeye-holo" (
+    echo Found source at: C:\OEM\bytebot-hawkeye-holo
     xcopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied from C:\OEM\bytebot-hawkeye-holo
-) else if exist "\\host.docker.internal\shared\bytebot-hawkeye-holo" (
-    xcopy "\\host.docker.internal\shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied from network share
+    echo Source copied successfully from OEM folder
 ) else (
-    echo WARNING: Source code not found in expected locations
+    echo.
+    echo ERROR: Source code not found in any expected locations!
+    echo.
+    echo Checked paths:
+    echo  - %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
+    echo  - C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
+    echo  - %USERPROFILE%\Desktop\Shared
+    echo  - C:\OEM\bytebot-hawkeye-holo
+    echo.
     echo Please manually copy bytebot-hawkeye-holo to %BYTEBOT_DIR%
     pause
     exit /b 1

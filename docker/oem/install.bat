@@ -164,9 +164,12 @@ REM Create auto-start mechanisms (both scheduled task AND startup folder for red
 echo.
 echo Creating auto-start mechanisms...
 
-REM Create scheduled task for bytebotd with proper working directory
-REM Use /SD flag to set "Start In" directory where bytebotd can find package.json
-schtasks /create /tn "Bytebot Desktop Daemon" /tr "\"C:\Program Files\nodejs\node.exe\" \"%BYTEBOTD_PATH%\dist\main.js\"" /sc onlogon /ru SYSTEM /rl HIGHEST /f /SD "%BYTEBOTD_PATH%"
+REM Create wrapper script using PowerShell for reliable quote handling
+echo Creating bytebotd startup wrapper script...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$content = '@echo off'; $content += \"`r`ncd /d %BYTEBOTD_PATH%\`r`n\`\"C:\Program Files\nodejs\node.exe\`\" dist\main.js'; Set-Content -Path '%BYTEBOTD_PATH%\start.bat' -Value $content"
+
+REM Create scheduled task for bytebotd (using simple wrapper path, no complex quoting)
+schtasks /create /tn "Bytebot Desktop Daemon" /tr "%BYTEBOTD_PATH%\start.bat" /sc onlogon /ru SYSTEM /rl HIGHEST /f
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully
     REM Start the task immediately (don't wait for next login)

@@ -1100,7 +1100,7 @@ export class ComputerUseService {
     }
 
     const directory =
-      process.env.BYTEBOT_SCREENSHOT_PATH ?? '/tmp/bytebot-screenshots';
+      process.env.BYTEBOT_SCREENSHOT_PATH ?? path.join(os.tmpdir(), 'bytebot-screenshots');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${actionType}-${timestamp}.png`;
     const filePath = path.join(directory, filename);
@@ -1449,7 +1449,7 @@ export class ComputerUseService {
       }
 
       // Write to a temporary file first
-      const tempFile = `/tmp/bytebot_temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const tempFile = path.join(os.tmpdir(), `bytebot_temp_${Date.now()}_${Math.random().toString(36).substring(7)}`);
       await fs.writeFile(tempFile, buffer);
 
       // Move the file to the target location using sudo
@@ -1497,7 +1497,7 @@ export class ComputerUseService {
       }
 
       // Copy file to temp location using sudo to read it
-      const tempFile = `/tmp/bytebot_read_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const tempFile = path.join(os.tmpdir(), `bytebot_read_${Date.now()}_${Math.random().toString(36).substring(7)}`);
 
       try {
         // Copy the file to a temporary location we can read

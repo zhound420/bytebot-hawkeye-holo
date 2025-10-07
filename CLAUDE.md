@@ -2,22 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 🎯 Recent Changes: OpenCV Removed
+## 🎯 Recent Changes: Holo 1.5-7B Integration
 
-**OpenCV has been completely removed from the codebase** to reduce complexity and improve maintainability. The system now relies on:
-- **OmniParser** (PRIMARY) - YOLOv8 + Florence-2 for semantic UI detection (89% click accuracy)
+**OpenCV and OmniParser have been removed** to reduce complexity and improve maintainability. The system now relies on:
+- **Holo 1.5-7B** (PRIMARY) - Qwen2.5-VL-based UI element localization (cross-platform: Windows/Linux/macOS)
 - **Tesseract.js** (FALLBACK) - Pure JavaScript OCR for text extraction
 
 **What was removed:**
 - All OpenCV native bindings and build complexity
 - Template matching, feature detection, contour detection services
 - OpenCV preprocessing pipelines (CLAHE, morphology, filters)
+- OmniParser v2.0 (replaced with Holo 1.5-7B)
 
 **Benefits:**
 - ✅ Simpler installation (no native bindings to compile)
-- ✅ Smaller package size (~850MB OmniParser models vs multiple GB OpenCV + models)
+- ✅ Smaller package size (~5.5GB Holo 1.5 GGUF vs multiple GB OmniParser + OpenCV)
 - ✅ Better cross-platform compatibility (no C++ compilation issues)
-- ✅ Superior detection accuracy (OmniParser semantic understanding)
+- ✅ Superior detection accuracy (Holo 1.5 cross-platform UI understanding)
 
 ## Important Instruction Reminders
 
@@ -34,8 +35,8 @@ Bytebot Hawkeye is a precision-enhanced fork of the open-source AI Desktop Agent
 2. **bytebot-agent-cc** - Claude Code integration variant with `@anthropic-ai/claude-code` SDK
 3. **bytebot-ui** - Next.js frontend with desktop dashboard and task management
 4. **bytebotd** - Desktop daemon providing computer control with enhanced coordinate accuracy
-5. **bytebot-cv** - Computer vision package with OmniParser + Tesseract.js for element detection
-6. **bytebot-holo** - Python FastAPI service for semantic UI detection via OmniParser v2.0
+5. **bytebot-cv** - Computer vision package with Holo 1.5 client + Tesseract.js for element detection
+6. **bytebot-holo** - Python FastAPI service running Holo 1.5-7B (Qwen2.5-VL) for UI element localization
 7. **bytebot-llm-proxy** - LiteLLM proxy service for multi-provider model routing
 8. **shared** - Common TypeScript types, utilities, and universal coordinate mappings
 
@@ -52,7 +53,7 @@ All packages depend on `shared` and must build it first. The build order is:
 This fork adds precision tooling on top of upstream Bytebot:
 - **Smart Focus System**: 3-stage coarse→focus→click workflow with tunable grids
 - **Progressive zoom capture**: Deterministic zoom ladder with coordinate reconciliation
-- **Universal element detection**: OmniParser v2.0 (YOLOv8 + Florence-2) + Tesseract.js OCR
+- **Universal element detection**: Holo 1.5-7B (Qwen2.5-VL) + Tesseract.js OCR
 - **Coordinate telemetry**: Accuracy metrics and adaptive calibration
 - **Grid overlay guidance**: Always-on coordinate grids with debug overlays
 
@@ -101,6 +102,43 @@ cd ../bytebot-cv && npm install && npm run build
 # Stop entire stack
 ./scripts/stop-stack.sh
 ```
+
+### Windows 11 Container (Optional)
+
+Run Bytebot with a Windows 11 desktop environment instead of Linux:
+
+```bash
+# Start Windows 11 stack
+./scripts/start-stack.sh --os windows
+```
+
+**Requirements:**
+- KVM support (`/dev/kvm` must be available)
+- 8GB+ RAM recommended
+- 64GB+ disk space
+
+**Setup Process:**
+1. Stack starts Windows 11 container (may take 5-10 minutes for first boot)
+2. Access Windows web viewer at `http://localhost:8006`
+3. Download setup script from `/shared` folder inside Windows
+4. Run PowerShell as Administrator and execute:
+   ```powershell
+   PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1
+   ```
+5. Bytebotd will auto-start on subsequent boots
+
+**Ports:**
+- `8006` - Web-based VNC viewer
+- `3389` - RDP access
+- `9990` - Bytebotd API (after setup)
+- `9991` - Bytebot Agent
+- `9992` - Bytebot UI
+- `9989` - Holo 1.5-7B
+
+**Why Windows?**
+- Test UI automation on Windows applications
+- Holo 1.5-7B trained on Windows UI (same model, cross-platform)
+- Resolution matched to Linux container (1280x960)
 
 ## Development Commands
 
@@ -233,9 +271,9 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.omniparser.
 - bytebot-holo: 9989 (OmniParser service)
 - PostgreSQL: 5432
 
-## OmniParser Platform Support
+## Holo 1.5-7B Platform Support
 
-OmniParser v2.0 provides semantic UI detection using YOLOv8 + Florence-2 models. Performance varies by platform:
+Holo 1.5-7B is a Qwen2.5-VL-based model trained on Windows, macOS, and Linux UI screenshots. Performance varies by platform:
 
 ### Docker (Multi-Architecture)
 
@@ -266,16 +304,16 @@ HOLO_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
 # HOLO_DEVICE=cuda  # Force NVIDIA GPU (x86_64 only)
 ```
 
-### Disabling OmniParser
+### Disabling Holo 1.5-7B
 
-To disable OmniParser (will fall back to Tesseract.js OCR only):
+To disable Holo 1.5-7B (will fall back to Tesseract.js OCR only):
 
 ```bash
 # docker/.env
 BYTEBOT_CV_USE_HOLO=false
 ```
 
-**Note:** Classical OpenCV-based CV methods (template matching, feature detection, contour detection) have been removed. OmniParser + Tesseract.js provide superior detection accuracy.
+**Note:** Classical OpenCV-based CV methods (template matching, feature detection, contour detection) have been removed. Holo 1.5-7B + Tesseract.js provide superior detection accuracy.
 
 ## Database
 
@@ -396,73 +434,75 @@ BYTEBOT_ADAPTIVE_CALIBRATION=true
 ## Computer Vision Pipeline
 
 The bytebot-cv package provides two detection methods:
-- **OmniParser** (PRIMARY) - Semantic UI detection via YOLOv8 + Florence-2
+- **Holo 1.5-7B** (PRIMARY) - Qwen2.5-VL-based UI element localization (cross-platform)
 - **OCR** (FALLBACK) - Tesseract.js text extraction
 
-**Note:** OpenCV-based methods (template matching, feature detection, contour detection) have been removed to reduce complexity. OmniParser provides superior semantic understanding with 89% click accuracy.
+**Note:** OpenCV and OmniParser have been removed to reduce complexity. Holo 1.5-7B provides superior cross-platform semantic understanding trained on Windows, macOS, and Linux UI screenshots.
 
 ### CV Services Architecture
 Core detection services in `packages/bytebot-cv/src/`:
-- `services/enhanced-visual-detector.service.ts` - OmniParser + OCR orchestrator
-- `services/omniparser-client.service.ts` - OmniParser REST client
+- `services/enhanced-visual-detector.service.ts` - Holo 1.5 + OCR orchestrator
+- `services/holo-client.service.ts` - Holo 1.5-7B REST client
 - `services/cv-activity-indicator.service.ts` - Real-time CV activity tracking
-- `services/element-detector.service.ts` - Stub (use OmniParser instead)
-- `services/visual-pattern-detector.service.ts` - Stub (use OmniParser instead)
+- `services/element-detector.service.ts` - Stub (use Holo 1.5 instead)
+- `services/visual-pattern-detector.service.ts` - Stub (use Holo 1.5 instead)
 - `services/text-semantic-analyzer.service.ts` - OCR text analysis
 - `services/universal-detector.service.ts` - Universal element detection
 - `detectors/ocr/ocr-detector.ts` - Tesseract.js OCR implementation
 
-### OmniParser Integration
+### Holo 1.5-7B Integration
 
-**Status: FULL INTEGRATION COMPLETE ✅** (Using 100% of OmniParser capabilities)
-**Documentation:** See `docs/OMNIPARSER_FULL_INTEGRATION_COMPLETE.md` for details
+**Status: FULL INTEGRATION COMPLETE ✅** (Holo 1.5-7B replaces OmniParser)
+**Documentation:** See `packages/bytebot-holo/README.md` for details
 
-OmniParser v2.0 provides semantic UI element detection with **full pipeline integration**:
+Holo 1.5-7B provides cross-platform semantic UI element localization with **full pipeline integration**:
 
 **Core Features (All Implemented):**
-- **YOLOv8 Icon Detection** - ~50MB model, fine-tuned for UI elements
-- **Florence-2 Captioning** - ~800MB model, generates functional descriptions
-- **OCR Integration** (NEW) - PaddleOCR/EasyOCR for text detection (+35% coverage)
-- **Interactivity Detection** (NEW) - Clickable vs decorative (-15% false positives)
-- **Overlap Filtering** (NEW) - IoU-based duplicate removal
-- **Batch Caption Processing** (NEW) - 5x faster with GPU batching
-- **Structured Output** (NEW) - type, interactability, content, source, element_id
-- **Set-of-Mark Annotations** - Numbered visual grounding for VLM
+- **Qwen2.5-VL Base** - 7B parameter vision-language model
+- **GGUF Quantization** - Q4_K_M (4-bit) or Q8_0 (8-bit) for efficiency
+- **Multi-prompt Detection** - Multiple detection passes for comprehensive coverage
+- **Set-of-Mark Annotations** - Numbered visual grounding for VLM click accuracy
+- **Cross-platform Training** - Windows, macOS, Linux UI screenshots
+- **Performance Profiles** - SPEED, BALANCED, QUALITY modes
 
 **Performance:**
-- Icon Detection: ~0.6s/frame on NVIDIA GPU, ~1-2s on Apple Silicon
-- Full Pipeline: ~1.6s/frame (OCR + detection + batch captioning)
-- Element Coverage: 95% (icons + text) vs 60% before
-- Click Accuracy: 89% vs 72% before
+- NVIDIA GPU: ~2-4s/frame (Q4_K_M quantization)
+- Apple Silicon MPS: ~4-6s/frame (Q4_K_M quantization)
+- CPU: ~15-30s/frame
+- Element Coverage: High accuracy across platforms
+- Cross-platform: Works identically on Windows/Linux/macOS
 
-**Benchmark:** 39.6% on ScreenSpot Pro benchmark
+**Benchmarks:**
+- ScreenSpot-Pro: 57.94 (Holo 1.5-7B) vs 29.00 (Qwen2.5-VL-7B base)
+- Trained on ScreenSpot, ScreenSpot-V2, GroundUI-Web, WebClick datasets
 
 Configuration:
 ```bash
-# Core OmniParser
+# Holo 1.5-7B Settings
 BYTEBOT_CV_USE_HOLO=true
 HOLO_URL=http://localhost:9989
-HOLO_DEVICE=cuda  # cuda, mps (Apple Silicon), or cpu
-HOLO_MIN_CONFIDENCE=0.3
+HOLO_DEVICE=auto  # auto, cuda, mps (Apple Silicon), or cpu
+HOLO_MIN_CONFIDENCE=0.05
+HOLO_PERFORMANCE_PROFILE=BALANCED  # SPEED, BALANCED, or QUALITY
 
-# Full Pipeline Features
-BYTEBOT_CV_USE_HOLO_OCR=true  # Enable OCR integration
-OMNIPARSER_IOU_THRESHOLD=0.7  # Overlap filtering
-OMNIPARSER_BATCH_SIZE=128  # Caption batch size (GPU: 128, CPU: 16)
+# Set-of-Mark Visual Grounding
+BYTEBOT_USE_SOM_SCREENSHOTS=true  # Enable numbered element annotations
 ```
 
 **API Usage:**
 ```typescript
-// Full pipeline (recommended)
-const result = await omniparserClient.parseScreenshot(buffer, {
-  useFullPipeline: true,  // Use OCR + icons + interactivity
-  includeOcr: true,       // Enable text detection
-  iouThreshold: 0.7,      // Overlap filtering
+// Parse screenshot with Holo 1.5-7B
+const result = await holoClient.parseScreenshot(buffer, {
+  task: 'click on submit button',  // Optional: specific task
+  detect_multiple: true,            // Detect multiple elements
+  include_som: true,                // Include SOM annotations
+  performance_profile: 'BALANCED',  // Performance mode
 });
 
 // Result includes rich metadata
-console.log(`Icons: ${result.icon_detected}, Text: ${result.text_detected}`);
-console.log(`Interactable: ${result.interactable_count}`);
+console.log(`Elements: ${result.count}`);
+console.log(`Processing time: ${result.processing_time_ms}ms`);
+console.log(`Model: ${result.model}`); // "holo-1.5-7b"
 ```
 
 ## Testing

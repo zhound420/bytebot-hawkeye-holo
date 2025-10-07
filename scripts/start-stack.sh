@@ -120,9 +120,32 @@ HOLO_PREWAIT=false
 HOLO_PREWAIT_SUCCESS=false
 ARCH=$(uname -m)
 OS=$(uname -s)
+TARGET_OS="linux"  # Default to Linux
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --os)
+            TARGET_OS="$2"
+            shift 2
+            ;;
+        *)
+            echo -e "${RED}Unknown argument: $1${NC}"
+            echo "Usage: $0 [--os linux|windows]"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate TARGET_OS
+if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" ]]; then
+    echo -e "${RED}Invalid OS: $TARGET_OS${NC}"
+    echo "Valid options: linux, windows"
+    exit 1
+fi
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   Starting Bytebot Hawkeye Stack${NC}"
+echo -e "${BLUE}   Starting Bytebot Hawkeye Stack ($TARGET_OS)${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
@@ -131,13 +154,21 @@ cd docker
 
 # Determine which compose file to use
 if [[ -f ".env" ]]; then
-    # Check if using proxy or standard stack
-    if [[ -f "docker-compose.proxy.yml" ]]; then
-        COMPOSE_FILE="docker-compose.proxy.yml"
-        echo -e "${BLUE}Using: Proxy Stack (with LiteLLM)${NC}"
+    # Select compose file based on target OS
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        COMPOSE_FILE="docker-compose.windows.yml"
+        echo -e "${BLUE}Using: Windows Stack${NC}"
+        DESKTOP_SERVICE="bytebot-windows"
     else
-        COMPOSE_FILE="docker-compose.yml"
-        echo -e "${BLUE}Using: Standard Stack${NC}"
+        # Check if using proxy or standard stack for Linux
+        if [[ -f "docker-compose.proxy.yml" ]]; then
+            COMPOSE_FILE="docker-compose.proxy.yml"
+            echo -e "${BLUE}Using: Proxy Stack (with LiteLLM)${NC}"
+        else
+            COMPOSE_FILE="docker-compose.yml"
+            echo -e "${BLUE}Using: Standard Stack${NC}"
+        fi
+        DESKTOP_SERVICE="bytebot-desktop"
     fi
 else
     echo -e "${RED}✗ docker/.env not found${NC}"
@@ -147,9 +178,17 @@ else
     exit 1
 fi
 
-STACK_SERVICES=(bytebot-desktop bytebot-agent bytebot-ui postgres)
+STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres)
 if [[ "$COMPOSE_FILE" == "docker-compose.proxy.yml" ]]; then
     STACK_SERVICES+=(bytebot-llm-proxy)
+fi
+
+# Windows-specific checks
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${YELLOW}Note: Windows container requires KVM support${NC}"
+    echo -e "${YELLOW}  - Ensure /dev/kvm is available on host${NC}"
+    echo -e "${YELLOW}  - After Windows boots, run setup script inside container${NC}"
+    echo ""
 fi
 
 # Platform-specific configuration
@@ -375,9 +414,22 @@ echo ""
 echo "Services:"
 echo "  • UI:       http://localhost:9992"
 echo "  • Agent:    http://localhost:9991"
-echo "  • Desktop:  http://localhost:9990"
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo "  • Windows:  http://localhost:8006 (web viewer)"
+    echo "              rdp://localhost:3389 (RDP)"
+    echo "              http://localhost:9990 (bytebotd - after setup)"
+else
+    echo "  • Desktop:  http://localhost:9990"
+fi
 echo "  • Holo 1.5-7B: http://localhost:9989"
 echo ""
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${YELLOW}Windows Setup Required:${NC}"
+    echo "1. Access Windows at http://localhost:8006"
+    echo "2. Download setup script from /shared folder"
+    echo "3. Run: PowerShell -ExecutionPolicy Bypass -File setup-windows-bytebotd.ps1"
+    echo ""
+fi
 echo "View logs:"
 echo -e "  ${BLUE}docker compose -f docker/$COMPOSE_FILE logs -f${NC}"
 echo ""

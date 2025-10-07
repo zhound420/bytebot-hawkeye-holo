@@ -131,6 +131,38 @@ git clone https://github.com/zhound420/bytebot-hawkeye-uitars.git
 cd bytebot-hawkeye-uitars
 ```
 
+### Optional: Windows 11 Desktop Container
+
+Run Bytebot with a **Windows 11 desktop environment** instead of Linux:
+
+```bash
+# Start Windows 11 stack (requires KVM support)
+./scripts/start-stack.sh --os windows
+
+# Access Windows via web viewer
+open http://localhost:8006
+
+# Inside Windows, run setup script (PowerShell as Administrator)
+PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
+```
+
+**Requirements:**
+- KVM support (`/dev/kvm` must be available on Linux host)
+- 8GB+ RAM, 4+ CPU cores, 64GB+ disk space
+- First boot takes 5-10 minutes for Windows installation
+
+**Why Windows?**
+- Test automation on native Windows applications
+- Holo 1.5-7B trained on Windows/Linux/macOS UI (same model, cross-platform)
+- Same resolution as Linux container (1280x960)
+
+**Ports:**
+- `8006` - Web-based VNC viewer
+- `3389` - RDP access
+- `9990` - Bytebotd API (after setup)
+
+**📚 Full Guide:** See [`docs/WINDOWS_SETUP.md`](docs/WINDOWS_SETUP.md) for detailed setup, troubleshooting, and configuration options.
+
 ### Step 2: Configure API Keys
 
 Create `docker/.env` with your API keys (**at least one required**):

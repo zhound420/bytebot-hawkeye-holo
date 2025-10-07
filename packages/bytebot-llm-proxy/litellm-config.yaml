@@ -214,6 +214,8 @@ model_list:
       api_base: http://192.168.4.250:1234/v1
       api_key: lm-studio
       supports_function_calling: true
+    model_info:
+      supports_vision: true
   - model_name: local-lmstudio-qwen2.5-vl-32b-instruct
     litellm_params:
       model: openai/qwen2.5-vl-32b-instruct
@@ -235,6 +237,8 @@ model_list:
       api_base: http://192.168.4.250:1234/v1
       api_key: lm-studio
       supports_function_calling: true
+    model_info:
+      supports_vision: true
 
 litellm_settings:
   drop_params: true

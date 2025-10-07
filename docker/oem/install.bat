@@ -46,7 +46,7 @@ echo Git installed successfully
 echo.
 
 REM Install VSCode
-echo [4/5] Installing Visual Studio Code...
+echo [4/6] Installing Visual Studio Code...
 choco install vscode -y --force
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: VSCode installation failed
@@ -56,9 +56,20 @@ if %ERRORLEVEL% NEQ 0 (
 echo VSCode installed successfully
 echo.
 
-REM Update PATH to include Node.js, Git, and VSCode (batch-compatible)
-set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Program Files\Microsoft VS Code\bin;%PATH%"
-echo PATH updated to include Node.js, Git, and VSCode
+REM Install 1Password
+echo [5/6] Installing 1Password...
+choco install 1password -y --force
+if %ERRORLEVEL% NEQ 0 (
+    echo WARNING: 1Password installation failed (continuing anyway)
+    echo You can install it manually later if needed
+) else (
+    echo 1Password installed successfully
+)
+echo.
+
+REM Update PATH to include Node.js, Git, VSCode, and 1Password (batch-compatible)
+set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Program Files\Microsoft VS Code\bin;C:\Program Files\1Password\app\8;%PATH%"
+echo PATH updated to include Node.js, Git, VSCode, and 1Password
 echo.
 
 REM Verify installations
@@ -66,10 +77,11 @@ echo Verifying installations...
 where node
 where npm
 where git
+where code
 echo.
 
 REM Copy source code from shared folder
-echo [5/5] Setting up Bytebot source code...
+echo [6/6] Setting up Bytebot source code...
 set BYTEBOT_DIR=C:\Bytebot
 
 if exist "%BYTEBOT_DIR%" (
@@ -206,6 +218,7 @@ echo Installed applications:
 echo  - Node.js 20
 echo  - Git
 echo  - Visual Studio Code
+echo  - 1Password
 echo.
 echo API will be available at: http://localhost:9990
 echo Progress WebSocket: ws://localhost:8081

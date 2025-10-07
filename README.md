@@ -144,7 +144,7 @@ Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Li
 open http://localhost:8006
 
 # Setup runs AUTOMATICALLY on first boot!
-# - Installs Node.js 20, Git, VSCode
+# - Installs Node.js 20, Git, VSCode, 1Password
 # - Builds and configures bytebotd
 # - Creates auto-start scheduled task
 # Wait 10-15 minutes for automated installation to complete

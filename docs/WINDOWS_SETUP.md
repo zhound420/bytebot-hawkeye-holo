@@ -43,9 +43,10 @@ On first boot, the container runs `install.bat` which:
 2. ✅ Installs Node.js 20
 3. ✅ Installs Git
 4. ✅ Installs Visual Studio Code (with desktop shortcut)
-5. ✅ Copies full bytebot source code to `C:\Bytebot`
-6. ✅ Builds all packages (shared → bytebot-cv → bytebotd)
-7. ✅ Creates scheduled task for auto-start on login
+5. ✅ Installs 1Password (password manager)
+6. ✅ Copies full bytebot source code to `C:\Bytebot`
+7. ✅ Builds all packages (shared → bytebot-cv → bytebotd)
+8. ✅ Creates scheduled task for auto-start on login
 
 **Timeline:**
 - Windows installation: 5-10 minutes

@@ -120,7 +120,7 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 **Setup Process:**
 1. Stack starts Windows 11 container (10-15 minutes for first boot + auto-install)
 2. **Automated installation runs:**
-   - Installs Chocolatey, Node.js 20, Git, VSCode
+   - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
    - Copies source code from `/oem` mount
    - Builds packages (shared → bytebot-cv → bytebotd)
    - Creates scheduled task for auto-start

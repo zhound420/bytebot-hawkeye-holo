@@ -58,9 +58,9 @@ services:
       - windows_storage:/storage
       # Auto-install script (runs on first boot, copied to C:\OEM)
       - ./oem:/oem
-      # Pre-built artifacts (live mount, accessible as \\host.lan\Data in Windows)
-      # Use /data instead of /oem to avoid path length limitations with node_modules
-      - ./oem/artifacts:/data
+      # Pre-built artifacts (Samba share, accessible as \\host.lan\Data in Windows)
+      # dockur/windows exposes /storage/shared as \\host.lan\Data network share
+      - ./oem/artifacts:/storage/shared
       # Keep shared/scripts mount for diagnostic scripts (troubleshooting)
       - ./shared:/shared/scripts:ro
     depends_on:

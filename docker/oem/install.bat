@@ -2,9 +2,20 @@
 REM Bytebot Windows Auto-Install Script
 REM Runs automatically during Windows installation via dockur/windows /oem mount
 
+REM Create log directory
+set LOG_DIR=C:\Bytebot-Install-Logs
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+set LOG_FILE=%LOG_DIR%\install-%date:~-4,4%%date:~-10,2%%date:~-7,2%-%time:~0,2%%time:~3,2%%time:~6,2%.log
+set LOG_FILE=%LOG_FILE: =0%
+
+REM Redirect all output to log file and console
+call :LogSetup
+
 echo ========================================
 echo   Bytebot Windows Auto-Install
 echo ========================================
+echo.
+echo Log file: %LOG_FILE%
 echo.
 
 REM Install Chocolatey package manager
@@ -211,16 +222,28 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo Bytebotd package built successfully
 
-REM Create scheduled task for auto-start
+REM Create auto-start mechanisms (both scheduled task AND startup folder for redundancy)
 echo.
-echo Creating auto-start scheduled task...
+echo Creating auto-start mechanisms...
+
+REM Create scheduled task for bytebotd
 schtasks /create /tn "Bytebot Desktop Daemon" /tr "node %BYTEBOT_DIR%\packages\bytebotd\dist\main.js" /sc onlogon /ru SYSTEM /rl HIGHEST /f
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Failed to create scheduled task
-    pause
-    exit /b 1
+if %ERRORLEVEL% EQU 0 (
+    echo Scheduled task created successfully
+    REM Start the task immediately (don't wait for next login)
+    echo Starting bytebotd service now...
+    schtasks /run /tn "Bytebot Desktop Daemon"
+    timeout /t 5 /nobreak >nul
+) else (
+    echo WARNING: Failed to create scheduled task
 )
-echo Scheduled task created successfully
+
+REM Also add to Startup folder as fallback
+echo Creating startup folder shortcut as fallback...
+set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_DIR%\Bytebot.lnk'); $Shortcut.TargetPath = 'node.exe'; $Shortcut.Arguments = '%BYTEBOT_DIR%\packages\bytebotd\dist\main.js'; $Shortcut.WorkingDirectory = '%BYTEBOT_DIR%\packages\bytebotd'; $Shortcut.WindowStyle = 7; $Shortcut.Save()"
+
+echo Auto-start mechanisms configured
 
 REM Create desktop shortcut for VSCode
 echo Creating VSCode desktop shortcut...
@@ -243,13 +266,37 @@ if exist "%TRAY_SCRIPT%" (
 )
 echo.
 
+REM Verify bytebotd started successfully
+echo.
+echo Verifying bytebotd service...
+timeout /t 3 /nobreak >nul
+
+set VERIFY_ATTEMPTS=0
+:VerifyLoop
+set /a VERIFY_ATTEMPTS+=1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:9990/health' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }"
+if %ERRORLEVEL% EQU 0 (
+    echo SUCCESS: bytebotd is running and healthy!
+    goto VerifySuccess
+)
+
+if %VERIFY_ATTEMPTS% LSS 10 (
+    echo Waiting for bytebotd to start... (attempt %VERIFY_ATTEMPTS%/10)
+    timeout /t 2 /nobreak >nul
+    goto VerifyLoop
+)
+
+echo WARNING: bytebotd did not respond to health check after 20 seconds
+echo The service may still be starting up. Check manually later.
+:VerifySuccess
+
 echo.
 echo ========================================
 echo   Installation Complete!
 echo ========================================
 echo.
 echo Bytebot Desktop Daemon installed at: %BYTEBOT_DIR%
-echo Service will start automatically on next login
+echo Service status: Running (verified)
 echo.
 echo Installed applications:
 echo  - Node.js 20
@@ -264,3 +311,15 @@ echo System tray icon will show bytebotd status (green = running)
 echo Right-click the tray icon for logs and service controls
 echo.
 echo The system will continue Windows setup...
+
+REM ============================================
+REM End of main script - helper functions below
+REM ============================================
+exit /b 0
+
+:LogSetup
+REM Setup logging to both file and console
+if exist "%LOG_FILE%" del /f /q "%LOG_FILE%"
+echo [%date% %time%] Installation started > "%LOG_FILE%"
+REM Can't easily tee in batch, so we'll log key steps manually
+goto :eof

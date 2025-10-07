@@ -59,10 +59,8 @@ services:
       # Auto-install script (runs on first boot, copied to C:\OEM)
       - ./oem:/oem
       # Pre-built artifacts (Samba share, accessible as \\host.lan\Data in Windows)
-      # dockur/windows exposes /storage/shared as \\host.lan\Data network share
-      - ./oem/artifacts:/storage/shared
-      # Keep shared/scripts mount for diagnostic scripts (troubleshooting)
-      - ./shared:/shared/scripts:ro
+      # dockur/windows Samba config: [Data] path=/shared → \\host.lan\Data
+      - ./oem/artifacts:/shared
     depends_on:
       bytebot-holo:
         condition: service_healthy

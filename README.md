@@ -127,8 +127,8 @@ Since Holo uses GGUF models, you can also load the model in LM Studio:
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/zhound420/bytebot-hawkeye-uitars.git
-cd bytebot-hawkeye-uitars
+git clone https://github.com/zhound420/bytebot-hawkeye-holo.git
+cd bytebot-hawkeye-holo
 ```
 
 ### Optional: Windows 11 or macOS Desktop Container

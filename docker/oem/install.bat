@@ -71,22 +71,36 @@ mkdir "%BYTEBOT_DIR%"
 
 REM Copy from shared mount (entire repo)
 echo Copying source code from shared folder...
+echo (This may take 1-2 minutes, please wait...)
+echo.
+
+set SOURCE_FOUND=0
+
 if exist "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" (
     echo Found source at: %USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo
-    xcopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied successfully from Desktop\Shared
+    echo Copying files (excluding .git and node_modules)...
+    robocopy "%USERPROFILE%\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
+    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
 ) else if exist "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" (
     echo Found source at: C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo
-    xcopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied successfully from Docker user Desktop
+    echo Copying files (excluding .git and node_modules)...
+    robocopy "C:\Users\Docker\Desktop\Shared\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
+    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
 ) else if exist "%USERPROFILE%\Desktop\Shared" (
     echo Found source at: %USERPROFILE%\Desktop\Shared (copying entire folder)
-    xcopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied successfully from Desktop\Shared
+    echo Copying files (excluding .git and node_modules)...
+    robocopy "%USERPROFILE%\Desktop\Shared" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
+    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
 ) else if exist "C:\OEM\bytebot-hawkeye-holo" (
     echo Found source at: C:\OEM\bytebot-hawkeye-holo
-    xcopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /I /Y /Q
-    echo Source copied successfully from OEM folder
+    echo Copying files (excluding .git and node_modules)...
+    robocopy "C:\OEM\bytebot-hawkeye-holo" "%BYTEBOT_DIR%" /E /NP /R:2 /W:5 /XD .git node_modules .next dist /NFL /NDL
+    if %ERRORLEVEL% LEQ 3 set SOURCE_FOUND=1
+)
+
+if %SOURCE_FOUND% EQU 1 (
+    echo.
+    echo Source copied successfully!
 ) else (
     echo.
     echo ERROR: Source code not found in any expected locations!

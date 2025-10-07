@@ -25,7 +25,7 @@ PowerShell -ExecutionPolicy Bypass -File C:\shared\setup-windows-bytebotd.ps1
 - **Resources**:
   - 8GB+ RAM (configurable via `WINDOWS_RAM_SIZE`)
   - 4+ CPU cores (configurable via `WINDOWS_CPU_CORES`)
-  - 64GB+ disk space (configurable via `WINDOWS_DISK_SIZE`)
+  - 128GB+ disk space (configurable via `WINDOWS_DISK_SIZE`)
 - **Docker**: Docker Engine 20.10+ with docker-compose
 
 ### Software

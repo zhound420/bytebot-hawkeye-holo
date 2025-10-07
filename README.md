@@ -165,7 +165,7 @@ sudo bash ./setup-macos-bytebotd.sh
 
 **Requirements:**
 - KVM support (`/dev/kvm` must be available on Linux host)
-- 8GB+ RAM, 4+ CPU cores, 64GB+ disk space
+- 8GB+ RAM, 4+ CPU cores, 128GB+ disk space
 - First boot takes 5-10 minutes for OS installation
 - **macOS only:** Must run on Apple hardware (licensing requirement)
 

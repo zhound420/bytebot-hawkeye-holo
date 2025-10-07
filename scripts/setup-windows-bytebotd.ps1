@@ -1,4 +1,4 @@
-# Bytebot Windows Setup Script
+﻿# Bytebot Windows Setup Script
 # Run this script inside the Windows 11 container to set up bytebotd
 
 $ErrorActionPreference = "Stop"

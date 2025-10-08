@@ -126,16 +126,21 @@ cd ../bytebotd && npm install && npm run build
 
 **Setup Process:**
 1. Build packages on host (one-time: ~2-3 minutes)
-2. **Artifact preparation** (automatic: resolves symlinks, copies ~1.8GB to `docker/oem/artifacts/`)
+2. **Artifact preparation** (automatic: resolves symlinks, copies ~1.8GB to `docker/artifacts/`)
 3. Stack starts Windows 11 container (5-10 minutes for Windows installation)
 4. **Automated installation runs (`install.bat` via `/oem` mount):**
    - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
-   - Copies **pre-built artifacts** from network share (~1.8GB, 5-15 minutes)
+   - Copies **pre-built artifacts** from network share (`\\host.lan\Data`, ~1.8GB, 5-15 minutes)
    - **Rebuilds platform-specific native modules** (sharp for Windows binaries)
    - Creates scheduled task for auto-start with retry logic
    - Starts bytebotd service immediately (health check: 30s timeout)
 5. Access Windows web viewer at `http://localhost:8006` to monitor progress
 6. **Total time: 12-28 minutes** (vs 20-35 minutes if building inside Windows)
+
+**Architecture Note:**
+- Small scripts (~44KB) in `/oem` mount → copied to `C:\OEM` by dockur/windows
+- Large artifacts (1.8GB) in `/shared` mount → accessible via `\\host.lan\Data` Samba share
+- This separation prevents "Adding OEM folder to image" hangs during Windows installation
 
 **Troubleshooting:**
 - **Slow startup**: Normal on slower systems, wait up to 30s for health check
@@ -143,7 +148,7 @@ cd ../bytebotd && npm install && npm run build
 - **Run diagnostic**: Right-click Windows VM → Run `C:\OEM\diagnose.ps1`
 - **Tray icon**: Green = running, Yellow = starting, Red = stopped
 - **Resource issues**: Increase RAM/CPUs in `docker/.env` if experiencing slowness
-- **Artifact symlink errors**: Run `rm -rf docker/oem/artifacts && ./scripts/prepare-windows-artifacts.sh`
+- **Artifact symlink errors**: Run `rm -rf docker/artifacts && ./scripts/prepare-windows-artifacts.sh`
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
 

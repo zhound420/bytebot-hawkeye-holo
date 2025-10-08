@@ -120,8 +120,8 @@ if %WAIT_ATTEMPTS% GEQ %MAX_WAIT% (
     echo ERROR: Network share %ARTIFACTS_PATH% not available after 2 minutes
     echo.
     echo Troubleshooting:
-    echo   1. Check docker-compose.windows.yml has: ./oem/artifacts:/shared
-    echo   2. Ensure artifacts exist on host: docker/oem/artifacts/bytebotd/
+    echo   1. Check docker-compose.windows.yml has: ./artifacts:/shared
+    echo   2. Ensure artifacts exist on host: docker/artifacts/bytebotd/
     echo   3. Try accessing manually: File Explorer ^> Network ^> host.lan ^> Data
     echo   4. Check container /shared mount: docker exec bytebot-windows ls /shared
     echo.

@@ -1,0 +1,23 @@
+{
+  "name": "@bytebot/cv",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "description": "ByteBot vision services with OmniParser-based detection",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "canvas": "^2.11.2",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.27",
+    "typescript": "^5.7.3"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  }
+}

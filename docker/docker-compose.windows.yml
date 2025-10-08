@@ -60,10 +60,12 @@ services:
       # WINDOWS_STORAGE_PATH set by start-stack.sh if BTRFS detected
       - ${WINDOWS_STORAGE_PATH:-windows_storage}:/storage
       # Auto-install script (runs on first boot, copied to C:\OEM)
+      # IMPORTANT: Keep /oem small (~30KB scripts) to avoid install hangs
       - ./oem:/oem
       # Pre-built artifacts (Samba share, accessible as \\host.lan\Data in Windows)
       # dockur/windows Samba config: [Data] path=/shared → \\host.lan\Data
-      - ./oem/artifacts:/shared
+      # Mounted separately to avoid copying 1.8GB into Windows image
+      - ./artifacts:/shared
     depends_on:
       bytebot-holo:
         condition: service_healthy

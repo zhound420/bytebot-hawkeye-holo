@@ -19,7 +19,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$REPO_ROOT"
 
-ARTIFACTS_DIR="docker/oem/artifacts"
+ARTIFACTS_DIR="docker/artifacts"
 
 echo -e "${BLUE}Step 1: Cleaning existing artifacts...${NC}"
 if [ -d "$ARTIFACTS_DIR" ]; then

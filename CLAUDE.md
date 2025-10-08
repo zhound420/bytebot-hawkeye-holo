@@ -108,12 +108,7 @@ cd ../bytebot-cv && npm install && npm run build
 Run Bytebot with a Windows 11 desktop environment instead of Linux:
 
 ```bash
-# IMPORTANT: Build packages on HOST first (required for artifact preparation)
-cd packages/shared && npm run build
-cd ../bytebot-cv && npm install && npm run build
-cd ../bytebotd && npm install && npm run build
-
-# Start Windows 11 stack (artifact preparation + auto-install run automatically)
+# Start Windows 11 stack (Windows installer package built automatically)
 ./scripts/start-stack.sh --os windows
 ```
 
@@ -121,25 +116,29 @@ cd ../bytebotd && npm install && npm run build
 - KVM support (`/dev/kvm` must be available)
 - **Recommended**: 12GB+ RAM, 6+ CPU cores
 - **Minimum**: 8GB RAM, 4 cores (slower, may cause delays)
-- 150GB+ disk space (Windows 11 + updates + npm packages)
-- **Pre-built packages on host** (see build commands above)
+- 150GB+ disk space (Windows 11 + updates)
 
 **Setup Process:**
-1. Build packages on host (one-time: ~2-3 minutes)
-2. **Artifact preparation** (automatic: resolves symlinks, copies ~1.8GB to `docker/artifacts/`)
-3. Stack starts Windows 11 container (5-10 minutes for Windows installation)
-4. **Automated installation runs (`install.bat` via `/oem` mount):**
-   - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
-   - Copies **pre-built artifacts** from network share (`\\host.lan\Data`, ~1.8GB, 5-15 minutes)
-   - **Rebuilds platform-specific native modules** (sharp for Windows binaries)
+1. **Windows installer package built automatically** (~74MB vs 1.8GB old approach)
+   - Builds packages on Linux host (shared, bytebot-cv, bytebotd)
+   - Installs Windows-specific node_modules (sharp-win32, uiohook-napi win32 prebuilds)
+   - Creates ZIP package at `docker/windows-installer/bytebotd-windows-installer.zip`
+   - **Size:** ~74MB (96% smaller than old 1.8GB artifacts)
+2. Stack starts Windows 11 container (5-10 minutes for Windows installation)
+3. **Automated installation runs (`install.bat` via `/oem` mount):**
+   - Installs Chocolatey + Node.js 20 (skipped if already present)
+   - Copies installer ZIP from network share (`\\host.lan\Data\bytebotd-windows-installer.zip`, ~30-60 seconds)
+   - Extracts package to `C:\bytebot\packages\` (1-2 minutes)
+   - Rebuilds platform-specific native modules (sharp for Windows binaries)
    - Creates scheduled task for auto-start with retry logic
    - Starts bytebotd service immediately (health check: 30s timeout)
-5. Access Windows web viewer at `http://localhost:8006` to monitor progress
-6. **Total time: 12-28 minutes** (vs 20-35 minutes if building inside Windows)
+4. Access Windows web viewer at `http://localhost:8006` to monitor progress
+5. **Total time: 8-15 minutes** (vs 12-28 minutes with old approach)
 
 **Architecture Note:**
 - Small scripts (~44KB) in `/oem` mount → copied to `C:\OEM` by dockur/windows
-- Large artifacts (1.8GB) in `/shared` mount → accessible via `\\host.lan\Data` Samba share
+- **Pre-built Windows installer package** (~74MB) in `/shared` mount → accessible via `\\host.lan\Data` Samba share
+- ZIP contains Windows-native binaries (no Linux artifacts) → faster download & extraction
 - This separation prevents "Adding OEM folder to image" hangs during Windows installation
 
 **Troubleshooting:**
@@ -148,7 +147,7 @@ cd ../bytebotd && npm install && npm run build
 - **Run diagnostic**: Right-click Windows VM → Run `C:\OEM\diagnose.ps1`
 - **Tray icon**: Green = running, Yellow = starting, Red = stopped
 - **Resource issues**: Increase RAM/CPUs in `docker/.env` if experiencing slowness
-- **Artifact symlink errors**: Run `rm -rf docker/artifacts && ./scripts/prepare-windows-artifacts.sh`
+- **Rebuild installer**: Run `rm -rf docker/windows-installer && ./scripts/build-windows-installer.sh`
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
 
@@ -184,21 +183,27 @@ docker stop bytebot-windows
 - Building inside Windows = 10-20 min npm install + compile
 - Same artifacts work on Linux and Windows containers
 
-**Artifact Preparation (Automatic):**
+**Windows Installer Package (Automatic):**
 
-The Windows container requires all symlinks in `node_modules` to be resolved before mounting into the container. The `prepare-windows-artifacts.sh` script:
+The `build-windows-installer.sh` script creates a portable ZIP package with Windows-native binaries:
 
-1. **Resolves symlinks**: Converts workspace symlinks (`@bytebot/shared -> ../../packages/shared`) to real directories
-2. **Copies built packages**: Copies `dist/`, `node_modules/`, and `package.json` from each package
-3. **Verifies completeness**: Ensures all critical files are present before starting the container
-4. **Cached on subsequent runs**: Artifacts are only regenerated when missing or if symlinks are detected
+1. **Builds packages**: Compiles shared, bytebot-cv, bytebotd on Linux host
+2. **Installs Windows dependencies**: Runs `npm install` with Windows-specific native modules
+3. **Creates ZIP package**: Packages everything into `bytebotd-windows-installer.zip` (~74MB)
+4. **Cached on subsequent runs**: Installer is only regenerated when missing
 
-Location: `docker/oem/artifacts/` (~40MB after preparation)
+Location: `docker/windows-installer/bytebotd-windows-installer.zip` (~74MB)
 
 The script runs automatically during `./scripts/start-stack.sh --os windows` but can be run manually:
 ```bash
-./scripts/prepare-windows-artifacts.sh
+./scripts/build-windows-installer.sh
 ```
+
+**Benefits over old approach:**
+- **96% smaller**: 74MB vs 1.8GB artifacts
+- **Faster transfer**: 30-60 seconds vs 5-15 minutes
+- **Windows-native binaries**: No need to rebuild all modules
+- **Simpler**: No symlink resolution, no workspace copying
 
 **Ports:**
 - `8006` - Web-based VNC viewer

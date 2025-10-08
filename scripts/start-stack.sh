@@ -177,33 +177,28 @@ if [[ "$TARGET_OS" == "windows" ]]; then
 
     # Check if artifacts already exist and are up-to-date
     ARTIFACTS_EXIST=false
-    if [[ -d "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules" ]] && \
-       [[ -f "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/dist/main.js" ]] && \
-       [[ ! -L "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules/@bytebot/shared" ]]; then
-        # Check that symlinks are resolved (not symbolic links)
-        ARTIFACTS_EXIST=true
-    fi
-
-    if [[ "$ARTIFACTS_EXIST" == "true" ]]; then
-        echo -e "${YELLOW}Artifacts already exist and symlinks are resolved${NC}"
-        echo -e "${BLUE}Using existing artifacts from previous build${NC}"
-        echo -e "${BLUE}To force rebuild: rm -rf docker/oem/artifacts${NC}"
+    # Check if Windows installer package exists
+    if [[ -f "$PROJECT_ROOT/docker/windows-installer/bytebotd-windows-installer.zip" ]]; then
+        INSTALLER_SIZE=$(du -sh "$PROJECT_ROOT/docker/windows-installer/bytebotd-windows-installer.zip" | cut -f1)
+        echo -e "${YELLOW}Windows installer package already exists (${INSTALLER_SIZE})${NC}"
+        echo -e "${BLUE}Using existing installer from previous build${NC}"
+        echo -e "${BLUE}To force rebuild: rm -rf docker/windows-installer${NC}"
     else
-        echo -e "${BLUE}Running artifact preparation script (resolves symlinks)...${NC}"
+        echo -e "${BLUE}Building Windows installer package...${NC}"
         echo ""
 
-        # Run the artifact preparation script
-        if [[ -f "$PROJECT_ROOT/scripts/prepare-windows-artifacts.sh" ]]; then
-            bash "$PROJECT_ROOT/scripts/prepare-windows-artifacts.sh"
+        # Run the installer build script
+        if [[ -f "$PROJECT_ROOT/scripts/build-windows-installer.sh" ]]; then
+            bash "$PROJECT_ROOT/scripts/build-windows-installer.sh"
         else
-            echo -e "${RED}✗ Artifact preparation script not found${NC}"
+            echo -e "${RED}✗ Windows installer build script not found${NC}"
             echo ""
-            echo "Expected: $PROJECT_ROOT/scripts/prepare-windows-artifacts.sh"
+            echo "Expected: $PROJECT_ROOT/scripts/build-windows-installer.sh"
             exit 1
         fi
     fi
 
-    echo -e "${BLUE}Artifacts will be available as \\\\host.lan\\Data in Windows container${NC}"
+    echo -e "${BLUE}Installer will be available as \\\\host.lan\\Data\\bytebotd-windows-installer.zip in Windows container${NC}"
     echo ""
 fi
 

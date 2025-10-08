@@ -62,10 +62,10 @@ services:
       # Auto-install script (runs on first boot, copied to C:\OEM)
       # IMPORTANT: Keep /oem small (~30KB scripts) to avoid install hangs
       - ./oem:/oem
-      # Pre-built artifacts (Samba share, accessible as \\host.lan\Data in Windows)
+      # Pre-built Windows installer package (Samba share, accessible as \\host.lan\Data in Windows)
       # dockur/windows Samba config: [Data] path=/shared → \\host.lan\Data
-      # Mounted separately to avoid copying 1.8GB into Windows image
-      - ./artifacts:/shared
+      # Contains bytebotd-windows-installer.zip (~150MB vs 1.8GB artifacts)
+      - ./windows-installer:/shared
     depends_on:
       bytebot-holo:
         condition: service_healthy

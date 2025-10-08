@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Trust Desktop Files
-Exec=/usr/local/bin/trust-desktop-files.sh
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true

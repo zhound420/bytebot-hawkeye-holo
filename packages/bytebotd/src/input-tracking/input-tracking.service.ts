@@ -34,6 +34,7 @@ export class InputTrackingService implements OnModuleDestroy {
   private clickMouseActionBuffer: ClickMouseAction[] = [];
   private clickMouseActionTimeout: NodeJS.Timeout | null = null;
   private readonly CLICK_DEBOUNCE_MS = 250;
+  private readonly MAX_CLICK_BUFFER = 100; // Prevent unbounded growth
 
   private screenshot: { image: string } | null = null;
   private screenshotTimeout: NodeJS.Timeout | null = null;
@@ -43,6 +44,8 @@ export class InputTrackingService implements OnModuleDestroy {
   private readonly typingBuffer: string[] = []; // pending chars
   private typingTimer: NodeJS.Timeout | null = null; // debounce
   private readonly TYPING_DEBOUNCE_MS = 500;
+  private readonly MAX_TYPING_BUFFER = 10000; // Prevent memory leak
+  private readonly MAX_DRAG_PATH_POINTS = 1000; // Limit drag path size
 
   constructor(
     private readonly gateway: InputTrackingGateway,
@@ -70,6 +73,32 @@ export class InputTrackingService implements OnModuleDestroy {
       return;
     }
     this.logger.log('Stopping input tracking');
+
+    // Clear all timers
+    if (this.clickMouseActionTimeout) {
+      clearTimeout(this.clickMouseActionTimeout);
+      this.clickMouseActionTimeout = null;
+    }
+    if (this.screenshotTimeout) {
+      clearTimeout(this.screenshotTimeout);
+      this.screenshotTimeout = null;
+    }
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+    }
+
+    // Clear all buffers
+    this.clickMouseActionBuffer = [];
+    this.typingBuffer.length = 0;
+    this.pressedKeys.clear();
+
+    // Clear state
+    this.screenshot = null;
+    this.dragMouseAction = null;
+    this.scrollAction = null;
+    this.isDragging = false;
+
     uIOhook.stop();
     uIOhook.removeAllListeners();
     this.isTracking = false;
@@ -77,6 +106,12 @@ export class InputTrackingService implements OnModuleDestroy {
 
   /** Adds a printable char to buffer and restarts debounce timer. */
   private bufferChar(char: string) {
+    // Prevent unbounded buffer growth
+    if (this.typingBuffer.length >= this.MAX_TYPING_BUFFER) {
+      this.logger.warn('Typing buffer full, flushing early');
+      this.flushTypingBuffer();
+    }
+
     this.typingBuffer.push(char);
     if (this.typingTimer) clearTimeout(this.typingTimer);
     this.typingTimer = setTimeout(
@@ -102,7 +137,10 @@ export class InputTrackingService implements OnModuleDestroy {
   private registerListeners() {
     uIOhook.on('mousemove', (e: UiohookMouseEvent) => {
       if (this.isDragging && this.dragMouseAction) {
-        this.dragMouseAction.path.push({ x: e.x, y: e.y });
+        // Prevent drag path from growing unbounded
+        if (this.dragMouseAction.path.length < this.MAX_DRAG_PATH_POINTS) {
+          this.dragMouseAction.path.push({ x: e.x, y: e.y });
+        }
       } else {
         if (this.screenshotTimeout) {
           clearTimeout(this.screenshotTimeout);
@@ -126,6 +164,13 @@ export class InputTrackingService implements OnModuleDestroy {
           e.metaKey ? 'meta' : undefined,
         ].filter((key) => key !== undefined),
       };
+
+      // Prevent buffer overflow
+      if (this.clickMouseActionBuffer.length >= this.MAX_CLICK_BUFFER) {
+        this.logger.warn('Click buffer full, discarding oldest clicks');
+        this.clickMouseActionBuffer = this.clickMouseActionBuffer.slice(-10);
+      }
+
       this.clickMouseActionBuffer.push(action);
       if (this.clickMouseActionTimeout) {
         clearTimeout(this.clickMouseActionTimeout);

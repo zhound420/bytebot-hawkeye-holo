@@ -311,14 +311,14 @@ RUN chmod +x /usr/local/bin/bytebot-bluez-stub
 RUN chown -R user:user /home/user
 RUN chmod -R 755 /home/user
 
-RUN mkdir -p /home/user/Desktop && \
+RUN mkdir -p /home/user/Desktop /home/user/.local/share/gvfs-metadata && \
     cp -f /usr/share/applications/firefox.desktop /home/user/Desktop/ && \
     cp -f /usr/share/applications/thunderbird.desktop /home/user/Desktop/ && \
     cp -f /usr/share/applications/1password.desktop /home/user/Desktop/ && \
     cp -f /usr/share/applications/code.desktop /home/user/Desktop/ && \
     cp -f /usr/share/applications/terminal.desktop /home/user/Desktop/ && \
     chmod +x /home/user/Desktop/*.desktop && \
-    chown user:user /home/user/Desktop/*.desktop
+    chown -R user:user /home/user/Desktop /home/user/.local
 
 ENV BYTEBOT_GRID_OVERLAY=true \
     BYTEBOT_GRID_DEBUG=false \

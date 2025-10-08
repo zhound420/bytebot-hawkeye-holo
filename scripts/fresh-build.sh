@@ -102,8 +102,17 @@ echo -e "${GREEN}✓ CV package built${NC}"
 cd ../..
 echo ""
 
+# Build bytebotd package (depends on shared and bytebot-cv)
+echo -e "${BLUE}Step 5: Building bytebotd package...${NC}"
+cd packages/bytebotd
+npm install
+npm run build
+echo -e "${GREEN}✓ Bytebotd package built${NC}"
+cd ../..
+echo ""
+
 # Setup Holo 1.5-7B if needed
-echo -e "${BLUE}Step 5: Setting up Holo 1.5-7B...${NC}"
+echo -e "${BLUE}Step 6: Setting up Holo 1.5-7B...${NC}"
 if [ -f "scripts/setup-holo.sh" ]; then
     ./scripts/setup-holo.sh
 else
@@ -113,7 +122,7 @@ echo ""
 
 # Start OmniParser for Apple Silicon (native with MPS GPU)
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
-    echo -e "${BLUE}Step 6: Starting native Holo 1.5-7B (Apple Silicon with MPS GPU)...${NC}"
+    echo -e "${BLUE}Step 7: Starting native Holo 1.5-7B (Apple Silicon with MPS GPU)...${NC}"
     if [ -f "scripts/start-holo.sh" ]; then
         ./scripts/start-holo.sh
         echo ""
@@ -131,7 +140,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
     fi
     echo ""
 else
-    echo -e "${BLUE}Step 6: OmniParser will run in Docker container${NC}"
+    echo -e "${BLUE}Step 7: OmniParser will run in Docker container${NC}"
     if [[ "$PLATFORM" == "Windows (WSL)" ]] || [[ "$PLATFORM" == "Linux" ]]; then
         echo -e "${BLUE}(CUDA GPU acceleration if available)${NC}"
     fi
@@ -139,7 +148,7 @@ else
 fi
 
 # Build and start Docker stack with fresh build
-echo -e "${BLUE}Step 7: Building Docker containers (this may take several minutes)...${NC}"
+echo -e "${BLUE}Step 8: Building Docker containers (this may take several minutes)...${NC}"
 echo ""
 
 cd docker
@@ -244,4 +253,9 @@ echo -e "  ${BLUE}curl http://localhost:9989/health${NC}"
 echo ""
 echo "Stop stack:"
 echo -e "  ${BLUE}./scripts/stop-stack.sh${NC}"
+echo ""
+echo "For Windows 11 container:"
+echo -e "  ${BLUE}./scripts/start-stack.sh --os windows${NC}"
+echo "For macOS container:"
+echo -e "  ${BLUE}./scripts/start-stack.sh --os macos${NC}"
 echo ""

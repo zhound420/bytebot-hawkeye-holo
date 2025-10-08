@@ -4,6 +4,9 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Error handling configuration - prevent crashes from errors
+$ErrorActionPreference = "SilentlyContinue"
+
 # Configuration
 $script:BytebotdUrl = "http://localhost:9990/health"
 $script:BytebotdPath = "C:\bytebot\packages\bytebotd"
@@ -151,30 +154,47 @@ function Test-BytebotdHealth {
             $script:LastStatus = "Running (Healthy)"
             $script:TrayIcon.Icon = $script:GreenIcon
             $script:TrayIcon.Text = "Bytebot: Running (Healthy)"
-            $menuItemStatus.Text = "Status: Running (Healthy)"
+            if ($menuItemStatus) {
+                $menuItemStatus.Text = "Status: Running (Healthy)"
+            }
             return
         }
     } catch {
-        # Health check failed
+        # Health check failed - continue to process check
     }
 
-    # Check if process is running but not responding
-    $nodeProcess = Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object {
-        $_.Path -like "*Bytebot*" -or $_.CommandLine -like "*bytebotd*"
-    }
+    # Check if node.exe process is running
+    # Note: CommandLine property not available in Windows PowerShell 5.1
+    # In a container, any node.exe is likely bytebotd
+    try {
+        $nodeProcess = Get-Process -Name node -ErrorAction SilentlyContinue
 
-    if ($nodeProcess) {
+        if ($nodeProcess) {
+            $script:IsHealthy = $false
+            $script:LastStatus = "Starting/Not Ready"
+            $script:TrayIcon.Icon = $script:YellowIcon
+            $script:TrayIcon.Text = "Bytebot: Starting/Not Ready"
+            if ($menuItemStatus) {
+                $menuItemStatus.Text = "Status: Starting/Not Ready"
+            }
+        } else {
+            $script:IsHealthy = $false
+            $script:LastStatus = "Stopped"
+            $script:TrayIcon.Icon = $script:RedIcon
+            $script:TrayIcon.Text = "Bytebot: Stopped"
+            if ($menuItemStatus) {
+                $menuItemStatus.Text = "Status: Stopped"
+            }
+        }
+    } catch {
+        # Process check failed - assume stopped
         $script:IsHealthy = $false
-        $script:LastStatus = "Starting/Not Ready"
-        $script:TrayIcon.Icon = $script:YellowIcon
-        $script:TrayIcon.Text = "Bytebot: Starting/Not Ready"
-        $menuItemStatus.Text = "Status: Starting/Not Ready"
-    } else {
-        $script:IsHealthy = $false
-        $script:LastStatus = "Stopped"
+        $script:LastStatus = "Stopped (Error)"
         $script:TrayIcon.Icon = $script:RedIcon
-        $script:TrayIcon.Text = "Bytebot: Stopped"
-        $menuItemStatus.Text = "Status: Stopped"
+        $script:TrayIcon.Text = "Bytebot: Stopped (Error)"
+        if ($menuItemStatus) {
+            $menuItemStatus.Text = "Status: Stopped (Error)"
+        }
     }
 }
 
@@ -182,12 +202,21 @@ function Test-BytebotdHealth {
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = $script:CheckInterval
 $script:Timer.Add_Tick({
-    Test-BytebotdHealth
+    try {
+        Test-BytebotdHealth
+    } catch {
+        # Timer callback error - ignore to prevent crash
+        # Tray icon will show last known state
+    }
 })
 $script:Timer.Start()
 
 # Initial health check
-Test-BytebotdHealth
+try {
+    Test-BytebotdHealth
+} catch {
+    # Initial health check failed - tray will show default "Checking..." state
+}
 
 # Show notification on startup
 $script:TrayIcon.ShowBalloonTip(3000, "Bytebot Monitor", "Bytebotd monitor started. Right-click for options.", [System.Windows.Forms.ToolTipIcon]::Info)

@@ -108,12 +108,12 @@ cd ../bytebot-cv && npm install && npm run build
 Run Bytebot with a Windows 11 desktop environment instead of Linux:
 
 ```bash
-# IMPORTANT: Build packages on HOST first (required for auto-install)
+# IMPORTANT: Build packages on HOST first (required for artifact preparation)
 cd packages/shared && npm run build
 cd ../bytebot-cv && npm install && npm run build
 cd ../bytebotd && npm install && npm run build
 
-# Start Windows 11 stack (auto-install runs automatically)
+# Start Windows 11 stack (artifact preparation + auto-install run automatically)
 ./scripts/start-stack.sh --os windows
 ```
 
@@ -126,14 +126,16 @@ cd ../bytebotd && npm install && npm run build
 
 **Setup Process:**
 1. Build packages on host (one-time: ~2-3 minutes)
-2. Stack starts Windows 11 container (5-10 minutes for Windows installation)
-3. **Automated installation runs (`install.bat` via `/oem` mount):**
+2. **Artifact preparation** (automatic: resolves symlinks, copies ~1.8GB to `docker/oem/artifacts/`)
+3. Stack starts Windows 11 container (5-10 minutes for Windows installation)
+4. **Automated installation runs (`install.bat` via `/oem` mount):**
    - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
-   - Uses **pre-built artifacts** from host (mounted at `C:\bytebot\packages\bytebotd`)
+   - Copies **pre-built artifacts** from network share (~1.8GB, 5-15 minutes)
+   - **Rebuilds platform-specific native modules** (sharp for Windows binaries)
    - Creates scheduled task for auto-start with retry logic
    - Starts bytebotd service immediately (health check: 30s timeout)
-4. Access Windows web viewer at `http://localhost:8006` to monitor progress
-5. **Total time: 7-13 minutes** (vs 15-25 minutes if building inside Windows)
+5. Access Windows web viewer at `http://localhost:8006` to monitor progress
+6. **Total time: 12-28 minutes** (vs 20-35 minutes if building inside Windows)
 
 **Troubleshooting:**
 - **Slow startup**: Normal on slower systems, wait up to 30s for health check
@@ -141,11 +143,30 @@ cd ../bytebotd && npm install && npm run build
 - **Run diagnostic**: Right-click Windows VM → Run `C:\OEM\diagnose.ps1`
 - **Tray icon**: Green = running, Yellow = starting, Red = stopped
 - **Resource issues**: Increase RAM/CPUs in `docker/.env` if experiencing slowness
+- **Artifact symlink errors**: Run `rm -rf docker/oem/artifacts && ./scripts/prepare-windows-artifacts.sh`
+- **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
+- **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup
 - Building inside Windows = 10-20 min npm install + compile
 - Same artifacts work on Linux and Windows containers
+
+**Artifact Preparation (Automatic):**
+
+The Windows container requires all symlinks in `node_modules` to be resolved before mounting into the container. The `prepare-windows-artifacts.sh` script:
+
+1. **Resolves symlinks**: Converts workspace symlinks (`@bytebot/shared -> ../../packages/shared`) to real directories
+2. **Copies built packages**: Copies `dist/`, `node_modules/`, and `package.json` from each package
+3. **Verifies completeness**: Ensures all critical files are present before starting the container
+4. **Cached on subsequent runs**: Artifacts are only regenerated when missing or if symlinks are detected
+
+Location: `docker/oem/artifacts/` (~40MB after preparation)
+
+The script runs automatically during `./scripts/start-stack.sh --os windows` but can be run manually:
+```bash
+./scripts/prepare-windows-artifacts.sh
+```
 
 **Ports:**
 - `8006` - Web-based VNC viewer
@@ -576,10 +597,24 @@ All NestJS packages use Jest:
 - Node.js ≥20.0.0 required for all packages (Python 3.12 for bytebot-holo)
 - TypeScript strict mode enabled
 - Monorepo structure requires building shared package first
-- **OpenCV removed** - system now uses OmniParser (primary) + Tesseract.js (fallback)
+- **OpenCV removed** - system now uses Holo 1.5-7B (primary) + Tesseract.js (fallback)
 - Universal coordinates stored in `config/universal-coordinates.yaml`
 - Desktop accuracy metrics available at `/desktop` UI route
-- OmniParser requires 8-10GB VRAM (NVIDIA GPU, Apple Silicon M1-M4, or CPU fallback)
+- Holo 1.5-7B requires 8-10GB VRAM (NVIDIA GPU, Apple Silicon M1-M4, or CPU fallback)
+
+### Platform-Specific Native Modules
+
+**Sharp (Image Processing):**
+- Bytebotd uses `sharp` for image resizing/cropping (screenshot ROI extraction)
+- Sharp contains platform-specific native binaries (`.node` files)
+- **Windows containers**: Install.bat automatically rebuilds sharp for Windows after copying Linux-built artifacts
+- **Manual rebuild** (if needed): `npm rebuild sharp --platform=win32 --arch=x64`
+- **Cross-platform**: Use `npm install --cpu=<arch> --os=<platform> sharp` for multi-platform builds
+
+**Other native modules:**
+- `uiohook-napi`: Input tracking (keyboard/mouse events) - platform-specific
+- `@nut-tree-fork/nut-js`: Keyboard shortcuts - platform-specific
+- These are currently Linux-only and not rebuilt for Windows (not critical for core functionality)
 
 ## Module Architecture
 

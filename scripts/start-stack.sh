@@ -149,39 +149,13 @@ echo -e "${BLUE}   Starting Bytebot Hawkeye Stack ($TARGET_OS)${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
-# Windows-specific: Copy pre-built artifacts to /oem mount
+# Windows-specific: Prepare artifacts with resolved symlinks
 if [[ "$TARGET_OS" == "windows" ]]; then
     echo -e "${BLUE}Preparing Windows container artifacts...${NC}"
 
     # Get script directory and project root
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-    # Check if packages are built
-    if [[ ! -f "$PROJECT_ROOT/packages/bytebotd/dist/main.js" ]]; then
-        echo -e "${RED}✗ Pre-built bytebotd not found${NC}"
-        echo ""
-        echo "Please build packages on host before starting Windows container:"
-        echo -e "  ${BLUE}cd packages/shared && npm install && npm run build${NC}"
-        echo -e "  ${BLUE}cd ../bytebot-cv && npm install && npm run build${NC}"
-        echo -e "  ${BLUE}cd ../bytebotd && npm install && npm run build${NC}"
-        exit 1
-    fi
-
-    # Check if node_modules exists (workspace or local)
-    BYTEBOTD_NODE_MODULES=""
-    if [[ -d "$PROJECT_ROOT/packages/bytebotd/node_modules/@nestjs" ]]; then
-        BYTEBOTD_NODE_MODULES="$PROJECT_ROOT/packages/bytebotd/node_modules"
-    elif [[ -d "$PROJECT_ROOT/node_modules/@nestjs" ]]; then
-        BYTEBOTD_NODE_MODULES="$PROJECT_ROOT/node_modules"
-        echo -e "${YELLOW}Note: Using workspace node_modules (root/node_modules)${NC}"
-    else
-        echo -e "${RED}✗ NestJS dependencies not found${NC}"
-        echo ""
-        echo "Please install dependencies first:"
-        echo -e "  ${BLUE}npm install${NC} (in project root)"
-        exit 1
-    fi
 
     # Check if Windows container already exists (need to remove for fresh /oem copy)
     if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-windows" 2>/dev/null; then
@@ -193,48 +167,32 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo -e "${GREEN}✓ Old container removed${NC}"
     fi
 
-    # Create artifacts directory in /oem mount
-    mkdir -p "$PROJECT_ROOT/docker/oem/artifacts"/{bytebotd,shared,bytebot-cv}
-
     # Check if artifacts already exist and are up-to-date
     ARTIFACTS_EXIST=false
     if [[ -d "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules" ]] && \
-       [[ -f "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/dist/main.js" ]]; then
+       [[ -f "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/dist/main.js" ]] && \
+       [[ ! -L "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules/@bytebot/shared" ]]; then
+        # Check that symlinks are resolved (not symbolic links)
         ARTIFACTS_EXIST=true
     fi
 
     if [[ "$ARTIFACTS_EXIST" == "true" ]]; then
-        echo -e "${YELLOW}Artifacts already exist, skipping copy (to force rebuild: rm -rf docker/oem/artifacts)${NC}"
+        echo -e "${YELLOW}Artifacts already exist and symlinks are resolved${NC}"
         echo -e "${BLUE}Using existing artifacts from previous build${NC}"
+        echo -e "${BLUE}To force rebuild: rm -rf docker/oem/artifacts${NC}"
     else
-        echo -e "${BLUE}Copying built artifacts to /oem mount...${NC}"
-        echo -e "${YELLOW}Note: This may take 5-10 minutes on Windows (copying ~1.4GB node_modules)${NC}"
+        echo -e "${BLUE}Running artifact preparation script (resolves symlinks)...${NC}"
         echo ""
 
-        # Copy bytebotd
-        echo -e "${BLUE}[1/3] Copying bytebotd artifacts...${NC}"
-        cp -r "$PROJECT_ROOT/packages/bytebotd/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/" 2>/dev/null || true
-        echo "  → Copying node_modules (~1.4GB, please wait)..."
-        cp -r "$BYTEBOTD_NODE_MODULES" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules" 2>/dev/null || true
-        cp "$PROJECT_ROOT/packages/bytebotd/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/" 2>/dev/null || true
-        echo -e "${GREEN}  ✓ Bytebotd copied${NC}"
-
-        # Copy shared
-        echo -e "${BLUE}[2/3] Copying shared artifacts...${NC}"
-        cp -r "$PROJECT_ROOT/packages/shared/dist" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
-        cp -r "$PROJECT_ROOT/packages/shared/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
-        cp "$PROJECT_ROOT/packages/shared/package.json" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
-        echo -e "${GREEN}  ✓ Shared copied${NC}"
-
-        # Copy bytebot-cv
-        echo -e "${BLUE}[3/3] Copying bytebot-cv artifacts...${NC}"
-        cp -r "$PROJECT_ROOT/packages/bytebot-cv/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
-        cp -r "$PROJECT_ROOT/packages/bytebot-cv/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
-        cp "$PROJECT_ROOT/packages/bytebot-cv/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
-        echo -e "${GREEN}  ✓ Bytebot-cv copied${NC}"
-
-        echo ""
-        echo -e "${GREEN}✓ All artifacts copied successfully${NC}"
+        # Run the artifact preparation script
+        if [[ -f "$PROJECT_ROOT/scripts/prepare-windows-artifacts.sh" ]]; then
+            bash "$PROJECT_ROOT/scripts/prepare-windows-artifacts.sh"
+        else
+            echo -e "${RED}✗ Artifact preparation script not found${NC}"
+            echo ""
+            echo "Expected: $PROJECT_ROOT/scripts/prepare-windows-artifacts.sh"
+            exit 1
+        fi
     fi
 
     echo -e "${BLUE}Artifacts will be available as \\\\host.lan\\Data in Windows container${NC}"

@@ -100,8 +100,17 @@ REM Create directory structure
 if not exist "C:\bytebot\packages" mkdir "C:\bytebot\packages"
 if not exist "%BYTEBOTD_PATH%" mkdir "%BYTEBOTD_PATH%"
 
+REM Explicitly mount the network share (forces Samba connection)
+echo Connecting to network share %ARTIFACTS_PATH%...
+net use %ARTIFACTS_PATH% /persistent:no >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo Network share mounted successfully
+) else (
+    echo Warning: net use command returned error (may already be connected)
+)
+
 REM Wait for network share to become available (up to 2 minutes)
-echo Waiting for network share %ARTIFACTS_PATH% to become available...
+echo Verifying network share accessibility...
 set WAIT_ATTEMPTS=0
 set MAX_WAIT=24
 :WaitForShare
@@ -111,9 +120,17 @@ if %WAIT_ATTEMPTS% GEQ %MAX_WAIT% (
     echo ERROR: Network share %ARTIFACTS_PATH% not available after 2 minutes
     echo.
     echo Troubleshooting:
-    echo   1. Check docker-compose.windows.yml has: ./oem/artifacts:/data
+    echo   1. Check docker-compose.windows.yml has: ./oem/artifacts:/shared
     echo   2. Ensure artifacts exist on host: docker/oem/artifacts/bytebotd/
     echo   3. Try accessing manually: File Explorer ^> Network ^> host.lan ^> Data
+    echo   4. Check container /shared mount: docker exec bytebot-windows ls /shared
+    echo.
+    echo Attempting direct path access...
+    if exist "\\host.lan\bytebotd" (
+        echo   Found at \\host.lan\bytebotd instead
+        set ARTIFACTS_PATH=\\host.lan
+        goto ShareReady
+    )
     pause
     exit /b 1
 )
@@ -138,27 +155,62 @@ if not exist "%ARTIFACTS_PATH%\bytebotd\dist\main.js" (
 
 echo Pre-built artifacts found at %ARTIFACTS_PATH%
 echo Copying artifacts to %BYTEBOTD_PATH%...
+echo.
 
 REM Copy bytebotd dist, node_modules, and package files
-robocopy "%ARTIFACTS_PATH%\bytebotd\dist" "%BYTEBOTD_PATH%\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
-robocopy "%ARTIFACTS_PATH%\bytebotd\node_modules" "%BYTEBOTD_PATH%\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+echo [1/3] Copying bytebotd dist...
+robocopy "%ARTIFACTS_PATH%\bytebotd\dist" "%BYTEBOTD_PATH%\dist" /E /NFL /NDL /NJH /NJS /NC /NS
+echo.
+echo [2/3] Copying bytebotd node_modules (~1.8GB, ~30,000 files - this may take 5-15 minutes)...
+echo Please wait, copying from network share...
+robocopy "%ARTIFACTS_PATH%\bytebotd\node_modules" "%BYTEBOTD_PATH%\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS
+echo.
+echo [3/3] Copying bytebotd package files...
 copy /Y "%ARTIFACTS_PATH%\bytebotd\package.json" "%BYTEBOTD_PATH%\" >nul
 if exist "%ARTIFACTS_PATH%\bytebotd\tsconfig.json" copy /Y "%ARTIFACTS_PATH%\bytebotd\tsconfig.json" "%BYTEBOTD_PATH%\" >nul
+echo   Bytebotd copied successfully
+echo.
 
 REM Copy shared package dependency
 if not exist "C:\bytebot\packages\shared" mkdir "C:\bytebot\packages\shared"
-robocopy "%ARTIFACTS_PATH%\shared\dist" "C:\bytebot\packages\shared\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
-robocopy "%ARTIFACTS_PATH%\shared\node_modules" "C:\bytebot\packages\shared\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+echo Copying shared package...
+robocopy "%ARTIFACTS_PATH%\shared\dist" "C:\bytebot\packages\shared\dist" /E /NFL /NDL /NJH /NJS /NC /NS
+robocopy "%ARTIFACTS_PATH%\shared\node_modules" "C:\bytebot\packages\shared\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS
 copy /Y "%ARTIFACTS_PATH%\shared\package.json" "C:\bytebot\packages\shared\" >nul
+echo   Shared copied successfully
+echo.
 
 REM Copy bytebot-cv package dependency
 if not exist "C:\bytebot\packages\bytebot-cv" mkdir "C:\bytebot\packages\bytebot-cv"
-robocopy "%ARTIFACTS_PATH%\bytebot-cv\dist" "C:\bytebot\packages\bytebot-cv\dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP
-robocopy "%ARTIFACTS_PATH%\bytebot-cv\node_modules" "C:\bytebot\packages\bytebot-cv\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS /NP
+echo Copying bytebot-cv package...
+robocopy "%ARTIFACTS_PATH%\bytebot-cv\dist" "C:\bytebot\packages\bytebot-cv\dist" /E /NFL /NDL /NJH /NJS /NC /NS
+robocopy "%ARTIFACTS_PATH%\bytebot-cv\node_modules" "C:\bytebot\packages\bytebot-cv\node_modules" /E /NFL /NDL /NJH /NJS /NC /NS
 copy /Y "%ARTIFACTS_PATH%\bytebot-cv\package.json" "C:\bytebot\packages\bytebot-cv\" >nul
+echo   Bytebot-cv copied successfully
+echo.
 
 echo Artifacts copied successfully
-echo Skipping build steps (using host-built artifacts)
+echo.
+
+REM Rebuild platform-specific native modules (sharp has native binaries)
+echo Rebuilding platform-specific native modules for Windows...
+echo   - sharp (image processing library with native bindings)
+cd /d "%BYTEBOTD_PATH%"
+call npm rebuild sharp --platform=win32 --arch=x64 >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo   Sharp rebuilt successfully for Windows
+) else (
+    echo   WARNING: Sharp rebuild failed, attempting full reinstall...
+    call npm install --no-save --force sharp@^0.34.2 >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo   ERROR: Sharp installation failed
+        echo   Bytebotd may not start correctly
+    ) else (
+        echo   Sharp reinstalled successfully
+    )
+)
+echo.
+echo Skipping other build steps (using host-built artifacts)
 
 REM Create auto-start mechanisms (both scheduled task AND startup folder for redundancy)
 echo.

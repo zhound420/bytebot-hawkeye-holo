@@ -338,7 +338,11 @@ echo   - Startup folder shortcut as fallback
 echo.
 echo System tray icon will show bytebotd status (green = running)
 echo Right-click the tray icon for logs and service controls
-echo Diagnostic scripts: C:\shared\scripts\diagnose.ps1
+echo.
+echo Manual scripts (if needed):
+echo   - Run diagnostic: C:\OEM\diagnose.ps1
+echo   - Start bytebotd: C:\OEM\start-bytebotd.bat
+echo   - Start tray icon: C:\OEM\start-tray.bat
 echo.
 echo The system will continue Windows setup...
 

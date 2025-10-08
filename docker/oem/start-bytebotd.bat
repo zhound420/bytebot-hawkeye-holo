@@ -14,12 +14,17 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Check if bytebotd is mounted
-if not exist "C:\app\bytebotd\dist\main.js" (
+REM Check if bytebotd exists
+if not exist "C:\bytebot\packages\bytebotd\dist\main.js" (
     echo ERROR: bytebotd not found
-    echo main.js not found at C:\app\bytebotd\dist\main.js
+    echo main.js not found at C:\bytebot\packages\bytebotd\dist\main.js
     echo.
-    echo Please ensure packages are built on host and container is running
+    echo Please ensure packages are built on host:
+    echo   cd packages/shared ^&^& npm run build
+    echo   cd ../bytebot-cv ^&^& npm install ^&^& npm run build
+    echo   cd ../bytebotd ^&^& npm install ^&^& npm run build
+    echo.
+    echo Then restart the Windows container
     pause
     exit /b 1
 )
@@ -29,12 +34,18 @@ taskkill /F /IM node.exe >nul 2>&1
 
 REM Start bytebotd
 echo Starting bytebotd service...
-cd C:\app\bytebotd
+cd C:\bytebot\packages\bytebotd
 start "Bytebot Desktop Daemon" node dist\main.js
 
 echo.
 echo Bytebotd started!
 echo API should be available at: http://localhost:9990
+echo Logs: C:\Bytebot-Logs\bytebotd-*.log
+echo.
+echo If it doesn't work:
+echo   - Check logs above
+echo   - Run diagnostic: C:\OEM\diagnose.ps1
+echo   - Check tray icon for status
 echo.
 echo Press any key to exit (bytebotd will continue running)...
 pause >nul

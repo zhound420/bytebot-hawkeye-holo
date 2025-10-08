@@ -146,6 +146,10 @@ cd ../bytebotd && npm install && npm run build
 - **Artifact symlink errors**: Run `rm -rf docker/oem/artifacts && ./scripts/prepare-windows-artifacts.sh`
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
+- **BTRFS filesystem**: If Windows Setup hangs at 75%, container uses `DISK_CACHE=writeback` to avoid O_DIRECT incompatibility
+  - Known issue: BTRFS doesn't support O_DIRECT properly (checksumming conflicts)
+  - Workaround: writeback cache mode instead of default cache=none
+  - Alternative: Move storage to ext4/xfs partition if available
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup

@@ -27,7 +27,6 @@ services:
       - DISK_SIZE=${WINDOWS_DISK_SIZE:-150G}
       - RESOLUTION=${WINDOWS_RESOLUTION:-1280x960}
       - ARGUMENTS=-rtc base=localtime
-      - DISK_CACHE=writeback
       # Bytebot Hawkeye settings
       - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
       - BYTEBOT_GRID_DEBUG=${BYTEBOT_GRID_DEBUG:-false}

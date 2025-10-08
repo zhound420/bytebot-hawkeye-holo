@@ -146,10 +146,29 @@ cd ../bytebotd && npm install && npm run build
 - **Artifact symlink errors**: Run `rm -rf docker/oem/artifacts && ./scripts/prepare-windows-artifacts.sh`
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
-- **BTRFS filesystem**: If Windows Setup hangs at 75%, container uses `DISK_CACHE=writeback` to avoid O_DIRECT incompatibility
-  - Known issue: BTRFS doesn't support O_DIRECT properly (checksumming conflicts)
-  - Workaround: writeback cache mode instead of default cache=none
-  - Alternative: Move storage to ext4/xfs partition if available
+
+**IMPORTANT - BTRFS Filesystem Incompatibility:**
+- ⚠️ **Windows containers DO NOT work on BTRFS filesystems**
+- Docker will show warning: `Warning: you are using the BTRFS filesystem for /storage`
+- Windows Setup will hang at ~75% during OOBE installation
+- **Root cause**: dockur/windows uses `aio=native` + `cache=none` which require O_DIRECT
+- BTRFS doesn't support O_DIRECT properly due to checksumming conflicts
+- **No simple workaround exists** - changing cache modes breaks aio=native compatibility
+
+**Solutions** (choose one):
+1. **Use ext4/xfs host** (recommended): Run Windows containers on system with ext4/xfs root
+2. **Loop device workaround** (advanced):
+   ```bash
+   # Create 160GB ext4 loop device on BTRFS
+   dd if=/dev/zero of=/opt/windows-storage.img bs=1G count=160
+   mkfs.ext4 /opt/windows-storage.img
+   mkdir -p /mnt/windows-ext4
+   mount -o loop /opt/windows-storage.img /mnt/windows-ext4
+   # Update docker-compose.windows.yml volumes section:
+   # volumes:
+   #   - /mnt/windows-ext4:/storage
+   ```
+3. **Skip Windows container**: Use Linux container only (works fine on BTRFS)
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup

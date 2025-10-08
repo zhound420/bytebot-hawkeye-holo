@@ -168,6 +168,21 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         exit 1
     fi
 
+    # Check if node_modules exists (workspace or local)
+    BYTEBOTD_NODE_MODULES=""
+    if [[ -d "$PROJECT_ROOT/packages/bytebotd/node_modules/@nestjs" ]]; then
+        BYTEBOTD_NODE_MODULES="$PROJECT_ROOT/packages/bytebotd/node_modules"
+    elif [[ -d "$PROJECT_ROOT/node_modules/@nestjs" ]]; then
+        BYTEBOTD_NODE_MODULES="$PROJECT_ROOT/node_modules"
+        echo -e "${YELLOW}Note: Using workspace node_modules (root/node_modules)${NC}"
+    else
+        echo -e "${RED}✗ NestJS dependencies not found${NC}"
+        echo ""
+        echo "Please install dependencies first:"
+        echo -e "  ${BLUE}npm install${NC} (in project root)"
+        exit 1
+    fi
+
     # Check if Windows container already exists (need to remove for fresh /oem copy)
     if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-windows" 2>/dev/null; then
         echo -e "${YELLOW}Existing Windows container found - removing to ensure fresh /oem mount...${NC}"
@@ -185,7 +200,7 @@ if [[ "$TARGET_OS" == "windows" ]]; then
 
     # Copy bytebotd
     cp -r "$PROJECT_ROOT/packages/bytebotd/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
-    cp -r "$PROJECT_ROOT/packages/bytebotd/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
+    cp -r "$BYTEBOTD_NODE_MODULES" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules"
     cp "$PROJECT_ROOT/packages/bytebotd/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
 
     # Copy shared

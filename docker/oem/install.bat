@@ -222,10 +222,24 @@ echo Creating scheduled task...
 schtasks /create /tn "Bytebot Desktop Daemon" /tr "\"%BYTEBOTD_PATH%\start.bat\"" /sc onlogon /ru SYSTEM /rl HIGHEST /f
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully
-    REM Start the task immediately (don't wait for next login)
+    REM Start the task immediately with retry logic (don't wait for next login)
     echo Starting bytebotd service now...
+    set TASK_START_ATTEMPTS=0
+    :TaskStartLoop
+    set /a TASK_START_ATTEMPTS+=1
     schtasks /run /tn "Bytebot Desktop Daemon"
-    timeout /t 5 /nobreak >nul
+    if %ERRORLEVEL% EQU 0 (
+        echo   Task started successfully
+        timeout /t 5 /nobreak >nul
+        goto TaskStartSuccess
+    )
+    if %TASK_START_ATTEMPTS% LSS 3 (
+        echo   Retry %TASK_START_ATTEMPTS%/3: Task start failed, retrying in 10 seconds...
+        timeout /t 10 /nobreak >nul
+        goto TaskStartLoop
+    )
+    echo   WARNING: Failed to start task after 3 attempts
+    :TaskStartSuccess
 ) else (
     echo WARNING: Failed to create scheduled task
 )
@@ -264,9 +278,10 @@ echo.
 REM Verify bytebotd started successfully
 echo.
 echo Verifying bytebotd service...
-timeout /t 3 /nobreak >nul
+timeout /t 5 /nobreak >nul
 
 set VERIFY_ATTEMPTS=0
+set MAX_VERIFY_ATTEMPTS=15
 :VerifyLoop
 set /a VERIFY_ATTEMPTS+=1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:9990/health' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }"
@@ -275,14 +290,22 @@ if %ERRORLEVEL% EQU 0 (
     goto VerifySuccess
 )
 
-if %VERIFY_ATTEMPTS% LSS 10 (
-    echo Waiting for bytebotd to start... (attempt %VERIFY_ATTEMPTS%/10)
+if %VERIFY_ATTEMPTS% LSS %MAX_VERIFY_ATTEMPTS% (
+    echo Waiting for bytebotd to start... (attempt %VERIFY_ATTEMPTS%/%MAX_VERIFY_ATTEMPTS%)
     timeout /t 2 /nobreak >nul
     goto VerifyLoop
 )
 
-echo WARNING: bytebotd did not respond to health check after 20 seconds
-echo The service may still be starting up. Check manually later.
+echo.
+echo WARNING: bytebotd did not respond to health check after 30 seconds
+echo This is normal on slower systems or during first boot.
+echo.
+echo What to check:
+echo   1. View logs: C:\Bytebot-Logs\bytebotd-*.log
+echo   2. Run diagnostic: C:\OEM\diagnose.ps1
+echo   3. Check tray icon for status (green = running)
+echo.
+echo The service will continue starting in the background.
 :VerifySuccess
 
 echo.

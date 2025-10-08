@@ -7,20 +7,20 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Check 1: Bytebot directory exists
-Write-Host "[1/8] Checking Bytebot installation directory..." -ForegroundColor Yellow
-if (Test-Path "C:\Bytebot") {
-    Write-Host "  OK: C:\Bytebot exists" -ForegroundColor Green
-    $bytebotSize = (Get-ChildItem C:\Bytebot -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+Write-Host "[1/9] Checking Bytebot installation directory..." -ForegroundColor Yellow
+if (Test-Path "C:\bytebot") {
+    Write-Host "  OK: C:\bytebot exists" -ForegroundColor Green
+    $bytebotSize = (Get-ChildItem C:\bytebot -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
     Write-Host "  Size: $([math]::Round($bytebotSize, 2)) MB" -ForegroundColor Gray
 } else {
-    Write-Host "  ERROR: C:\Bytebot does not exist!" -ForegroundColor Red
+    Write-Host "  ERROR: C:\bytebot does not exist!" -ForegroundColor Red
     Write-Host "  Install.bat did not run or failed early" -ForegroundColor Red
     exit 1
 }
 Write-Host ""
 
 # Check 2: Node.js installation
-Write-Host "[2/8] Checking Node.js installation..." -ForegroundColor Yellow
+Write-Host "[2/9] Checking Node.js installation..." -ForegroundColor Yellow
 try {
     $nodeVersion = node --version 2>$null
     if ($nodeVersion) {
@@ -34,7 +34,7 @@ try {
 Write-Host ""
 
 # Check 3: npm installation
-Write-Host "[3/8] Checking npm installation..." -ForegroundColor Yellow
+Write-Host "[3/9] Checking npm installation..." -ForegroundColor Yellow
 try {
     $npmVersion = npm --version 2>$null
     if ($npmVersion) {
@@ -48,12 +48,12 @@ try {
 Write-Host ""
 
 # Check 4: Build artifacts
-Write-Host "[4/8] Checking build artifacts..." -ForegroundColor Yellow
+Write-Host "[4/9] Checking build artifacts..." -ForegroundColor Yellow
 $artifacts = @(
-    "C:\Bytebot\packages\shared\dist",
-    "C:\Bytebot\packages\bytebot-cv\dist",
-    "C:\Bytebot\packages\bytebotd\dist",
-    "C:\Bytebot\packages\bytebotd\dist\main.js"
+    "C:\bytebot\packages\shared\dist",
+    "C:\bytebot\packages\bytebot-cv\dist",
+    "C:\bytebot\packages\bytebotd\dist",
+    "C:\bytebot\packages\bytebotd\dist\main.js"
 )
 $allExist = $true
 foreach ($artifact in $artifacts) {
@@ -69,8 +69,27 @@ if (-not $allExist) {
 }
 Write-Host ""
 
-# Check 5: Scheduled tasks
-Write-Host "[5/8] Checking scheduled tasks..." -ForegroundColor Yellow
+# Check 5: Log directory
+Write-Host "[5/9] Checking log directory..." -ForegroundColor Yellow
+if (Test-Path "C:\Bytebot-Logs") {
+    Write-Host "  OK: C:\Bytebot-Logs exists" -ForegroundColor Green
+    $logCount = (Get-ChildItem "C:\Bytebot-Logs" -Filter "*.log" -File -ErrorAction SilentlyContinue).Count
+    Write-Host "  Log files: $logCount" -ForegroundColor Gray
+    if ($logCount -gt 0) {
+        $latestLog = Get-ChildItem "C:\Bytebot-Logs" -Filter "*.log" -File -ErrorAction SilentlyContinue |
+                     Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 1
+        Write-Host "  Latest log: $($latestLog.Name)" -ForegroundColor Gray
+        Write-Host "  Modified: $($latestLog.LastWriteTime)" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "  WARNING: C:\Bytebot-Logs does not exist" -ForegroundColor Yellow
+    Write-Host "  Logs may not be written yet" -ForegroundColor Gray
+}
+Write-Host ""
+
+# Check 6: Scheduled tasks
+Write-Host "[6/9] Checking scheduled tasks..." -ForegroundColor Yellow
 $daemonTask = Get-ScheduledTask -TaskName "Bytebot Desktop Daemon" -ErrorAction SilentlyContinue
 $trayTask = Get-ScheduledTask -TaskName "Bytebot Tray Monitor" -ErrorAction SilentlyContinue
 
@@ -93,8 +112,8 @@ if ($trayTask) {
 }
 Write-Host ""
 
-# Check 6: Running processes
-Write-Host "[6/8] Checking running processes..." -ForegroundColor Yellow
+# Check 7: Running processes
+Write-Host "[7/9] Checking running processes..." -ForegroundColor Yellow
 $nodeProcesses = Get-Process -Name node -ErrorAction SilentlyContinue
 if ($nodeProcesses) {
     Write-Host "  OK: Found $($nodeProcesses.Count) Node.js process(es)" -ForegroundColor Green
@@ -116,8 +135,8 @@ if ($powershellProcesses) {
 }
 Write-Host ""
 
-# Check 7: Port 9990 listening
-Write-Host "[7/8] Checking if port 9990 is listening..." -ForegroundColor Yellow
+# Check 8: Port 9990 listening
+Write-Host "[8/9] Checking if port 9990 is listening..." -ForegroundColor Yellow
 $listener = Get-NetTCPConnection -LocalPort 9990 -State Listen -ErrorAction SilentlyContinue
 if ($listener) {
     Write-Host "  OK: Port 9990 is listening" -ForegroundColor Green
@@ -128,8 +147,8 @@ if ($listener) {
 }
 Write-Host ""
 
-# Check 8: Test health endpoint
-Write-Host "[8/8] Testing bytebotd health endpoint..." -ForegroundColor Yellow
+# Check 9: Test health endpoint
+Write-Host "[9/9] Testing bytebotd health endpoint..." -ForegroundColor Yellow
 try {
     $response = Invoke-WebRequest -Uri "http://localhost:9990/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
     Write-Host "  OK: Health endpoint responding (HTTP $($response.StatusCode))" -ForegroundColor Green
@@ -156,9 +175,9 @@ if ($nodeProcesses -and $listener) {
     Write-Host "STATUS: bytebotd is NOT running!" -ForegroundColor Red
     Write-Host ""
     Write-Host "Recommended actions:" -ForegroundColor Yellow
-    Write-Host "  1. Check if build completed: ls C:\Bytebot\packages\bytebotd\dist\main.js" -ForegroundColor White
+    Write-Host "  1. Check if build completed: ls C:\bytebot\packages\bytebotd\dist\main.js" -ForegroundColor White
     Write-Host "  2. Try starting manually: .\start-bytebotd.bat" -ForegroundColor White
-    Write-Host "  3. Check logs: C:\Bytebot\packages\bytebotd\logs\bytebot.log" -ForegroundColor White
+    Write-Host "  3. Check logs: C:\Bytebot-Logs\bytebotd-*.log" -ForegroundColor White
     Write-Host "  4. Re-run install.bat if build failed" -ForegroundColor White
 }
 

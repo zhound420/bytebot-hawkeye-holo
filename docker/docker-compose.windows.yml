@@ -22,9 +22,9 @@ services:
     environment:
       # Windows container settings
       - VERSION=${WINDOWS_VERSION:-11}
-      - RAM_SIZE=${WINDOWS_RAM_SIZE:-8G}
-      - CPU_CORES=${WINDOWS_CPU_CORES:-4}
-      - DISK_SIZE=${WINDOWS_DISK_SIZE:-128G}
+      - RAM_SIZE=${WINDOWS_RAM_SIZE:-12G}
+      - CPU_CORES=${WINDOWS_CPU_CORES:-6}
+      - DISK_SIZE=${WINDOWS_DISK_SIZE:-150G}
       - RESOLUTION=${WINDOWS_RESOLUTION:-1280x960}
       # Bytebot Hawkeye settings
       - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
@@ -72,7 +72,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 180s  # Increased from 120s to allow more time for Windows startup
 
   postgres:
     image: ${BYTEBOT_POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}

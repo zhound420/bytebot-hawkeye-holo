@@ -117,10 +117,11 @@ cd ../bytebotd && npm install && npm run build
 ./scripts/start-stack.sh --os windows
 ```
 
-**Requirements:**
+**System Requirements:**
 - KVM support (`/dev/kvm` must be available)
-- 8GB+ RAM recommended
-- 128GB+ disk space
+- **Recommended**: 12GB+ RAM, 6+ CPU cores
+- **Minimum**: 8GB RAM, 4 cores (slower, may cause delays)
+- 150GB+ disk space (Windows 11 + updates + npm packages)
 - **Pre-built packages on host** (see build commands above)
 
 **Setup Process:**
@@ -128,11 +129,18 @@ cd ../bytebotd && npm install && npm run build
 2. Stack starts Windows 11 container (5-10 minutes for Windows installation)
 3. **Automated installation runs (`install.bat` via `/oem` mount):**
    - Installs Chocolatey, Node.js 20, Git, VSCode, 1Password
-   - Uses **pre-built artifacts** from host (mounted at `C:\app\bytebotd`)
-   - Creates scheduled task for auto-start
-   - Starts bytebotd service immediately
+   - Uses **pre-built artifacts** from host (mounted at `C:\bytebot\packages\bytebotd`)
+   - Creates scheduled task for auto-start with retry logic
+   - Starts bytebotd service immediately (health check: 30s timeout)
 4. Access Windows web viewer at `http://localhost:8006` to monitor progress
 5. **Total time: 7-13 minutes** (vs 15-25 minutes if building inside Windows)
+
+**Troubleshooting:**
+- **Slow startup**: Normal on slower systems, wait up to 30s for health check
+- **Check logs**: `C:\Bytebot-Logs\bytebotd-*.log` (view via tray icon)
+- **Run diagnostic**: Right-click Windows VM → Run `C:\OEM\diagnose.ps1`
+- **Tray icon**: Green = running, Yellow = starting, Red = stopped
+- **Resource issues**: Increase RAM/CPUs in `docker/.env` if experiencing slowness
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup

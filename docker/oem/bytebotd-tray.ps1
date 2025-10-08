@@ -6,8 +6,8 @@ Add-Type -AssemblyName System.Drawing
 
 # Configuration
 $script:BytebotdUrl = "http://localhost:9990/health"
-$script:BytebotdPath = "C:\Bytebot\packages\bytebotd"
-$script:LogPath = "$script:BytebotdPath\logs\bytebot.log"
+$script:BytebotdPath = "C:\bytebot\packages\bytebotd"
+$script:LogDir = "C:\Bytebot-Logs"
 $script:CheckInterval = 5000 # 5 seconds
 
 # Global state
@@ -60,10 +60,19 @@ $contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | O
 $menuItemViewLogs = New-Object System.Windows.Forms.ToolStripMenuItem
 $menuItemViewLogs.Text = "View Logs"
 $menuItemViewLogs.Add_Click({
-    if (Test-Path $script:LogPath) {
-        Start-Process notepad.exe -ArgumentList $script:LogPath
+    if (Test-Path $script:LogDir) {
+        # Find most recent bytebotd log file
+        $latestLog = Get-ChildItem -Path $script:LogDir -Filter "bytebotd-*.log" -File -ErrorAction SilentlyContinue |
+                     Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 1
+
+        if ($latestLog) {
+            Start-Process notepad.exe -ArgumentList $latestLog.FullName
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("No bytebotd log files found in: $script:LogDir", "Bytebot Logs")
+        }
     } else {
-        [System.Windows.Forms.MessageBox]::Show("Log file not found at: $script:LogPath", "Bytebot Logs")
+        [System.Windows.Forms.MessageBox]::Show("Log directory not found: $script:LogDir", "Bytebot Logs")
     }
 })
 $contextMenu.Items.Add($menuItemViewLogs) | Out-Null
@@ -93,8 +102,8 @@ $contextMenu.Items.Add($menuItemRestart) | Out-Null
 $menuItemOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
 $menuItemOpenFolder.Text = "Open Installation Folder"
 $menuItemOpenFolder.Add_Click({
-    if (Test-Path "C:\Bytebot") {
-        Start-Process explorer.exe -ArgumentList "C:\Bytebot"
+    if (Test-Path "C:\bytebot") {
+        Start-Process explorer.exe -ArgumentList "C:\bytebot"
     }
 })
 $contextMenu.Items.Add($menuItemOpenFolder) | Out-Null
@@ -123,7 +132,8 @@ Bytebot Desktop Daemon Status
 
 Status: $script:LastStatus
 Endpoint: $script:BytebotdUrl
-Installation: C:\Bytebot
+Installation: C:\bytebot
+Logs: $script:LogDir
 
 Health checks run every 5 seconds.
 Right-click the tray icon for options.

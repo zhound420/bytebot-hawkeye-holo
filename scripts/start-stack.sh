@@ -196,24 +196,48 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     # Create artifacts directory in /oem mount
     mkdir -p "$PROJECT_ROOT/docker/oem/artifacts"/{bytebotd,shared,bytebot-cv}
 
-    echo -e "${BLUE}Copying built artifacts to /oem mount...${NC}"
+    # Check if artifacts already exist and are up-to-date
+    ARTIFACTS_EXIST=false
+    if [[ -d "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules" ]] && \
+       [[ -f "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/dist/main.js" ]]; then
+        ARTIFACTS_EXIST=true
+    fi
 
-    # Copy bytebotd
-    cp -r "$PROJECT_ROOT/packages/bytebotd/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
-    cp -r "$BYTEBOTD_NODE_MODULES" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules"
-    cp "$PROJECT_ROOT/packages/bytebotd/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/"
+    if [[ "$ARTIFACTS_EXIST" == "true" ]]; then
+        echo -e "${YELLOW}Artifacts already exist, skipping copy (to force rebuild: rm -rf docker/oem/artifacts)${NC}"
+        echo -e "${BLUE}Using existing artifacts from previous build${NC}"
+    else
+        echo -e "${BLUE}Copying built artifacts to /oem mount...${NC}"
+        echo -e "${YELLOW}Note: This may take 5-10 minutes on Windows (copying ~1.4GB node_modules)${NC}"
+        echo ""
 
-    # Copy shared
-    cp -r "$PROJECT_ROOT/packages/shared/dist" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
-    cp -r "$PROJECT_ROOT/packages/shared/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
-    cp "$PROJECT_ROOT/packages/shared/package.json" "$PROJECT_ROOT/docker/oem/artifacts/shared/"
+        # Copy bytebotd
+        echo -e "${BLUE}[1/3] Copying bytebotd artifacts...${NC}"
+        cp -r "$PROJECT_ROOT/packages/bytebotd/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/" 2>/dev/null || true
+        echo "  → Copying node_modules (~1.4GB, please wait)..."
+        cp -r "$BYTEBOTD_NODE_MODULES" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/node_modules" 2>/dev/null || true
+        cp "$PROJECT_ROOT/packages/bytebotd/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebotd/" 2>/dev/null || true
+        echo -e "${GREEN}  ✓ Bytebotd copied${NC}"
 
-    # Copy bytebot-cv
-    cp -r "$PROJECT_ROOT/packages/bytebot-cv/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
-    cp -r "$PROJECT_ROOT/packages/bytebot-cv/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
-    cp "$PROJECT_ROOT/packages/bytebot-cv/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/"
+        # Copy shared
+        echo -e "${BLUE}[2/3] Copying shared artifacts...${NC}"
+        cp -r "$PROJECT_ROOT/packages/shared/dist" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
+        cp -r "$PROJECT_ROOT/packages/shared/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
+        cp "$PROJECT_ROOT/packages/shared/package.json" "$PROJECT_ROOT/docker/oem/artifacts/shared/" 2>/dev/null || true
+        echo -e "${GREEN}  ✓ Shared copied${NC}"
 
-    echo -e "${GREEN}✓ Artifacts prepared (will be copied to C:\OEM during Windows installation)${NC}"
+        # Copy bytebot-cv
+        echo -e "${BLUE}[3/3] Copying bytebot-cv artifacts...${NC}"
+        cp -r "$PROJECT_ROOT/packages/bytebot-cv/dist" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
+        cp -r "$PROJECT_ROOT/packages/bytebot-cv/node_modules" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
+        cp "$PROJECT_ROOT/packages/bytebot-cv/package.json" "$PROJECT_ROOT/docker/oem/artifacts/bytebot-cv/" 2>/dev/null || true
+        echo -e "${GREEN}  ✓ Bytebot-cv copied${NC}"
+
+        echo ""
+        echo -e "${GREEN}✓ All artifacts copied successfully${NC}"
+    fi
+
+    echo -e "${BLUE}Artifacts will be available as \\\\host.lan\\Data in Windows container${NC}"
     echo ""
 fi
 

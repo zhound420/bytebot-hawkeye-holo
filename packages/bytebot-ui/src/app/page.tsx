@@ -42,7 +42,14 @@ export default function Home() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<FileWithBase64[]>([]);
-  const [directVisionMode, setDirectVisionMode] = useState(false);
+  const [directVisionMode, setDirectVisionMode] = useState(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("directVisionMode");
+      return stored === "true";
+    }
+    return false;
+  });
   const router = useRouter();
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
     null,
@@ -81,6 +88,13 @@ export default function Home() {
       })
       .catch((err) => console.error("Failed to load models", err));
   }, [updateSelectedModel]);
+
+  // Persist directVisionMode to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("directVisionMode", String(directVisionMode));
+    }
+  }, [directVisionMode]);
 
   // Close popover when clicking outside or pressing ESC
   useEffect(() => {

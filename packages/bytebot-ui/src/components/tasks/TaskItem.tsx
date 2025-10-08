@@ -88,6 +88,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
   }
   metadataSegments.push(formatDate(task.createdAt));
 
+  // Check for Direct Vision Mode
+  const isDirectVisionMode = task.directVisionMode === true;
+
   const StatusIcon = ({ status }: { status: TaskStatus }) => {
     const config = STATUS_CONFIGS[status];
     if (!config) return null;
@@ -128,6 +131,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
                 <span className="text-muted-foreground">{segment}</span>
               </React.Fragment>
             ))}
+            {isDirectVisionMode && (
+              <>
+                <span className="text-muted-foreground">•</span>
+                <span className="inline-flex items-center rounded-md bg-purple-500/10 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400 ring-1 ring-inset ring-purple-500/20">
+                  Direct Vision
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

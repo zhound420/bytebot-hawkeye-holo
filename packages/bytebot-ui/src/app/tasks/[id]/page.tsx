@@ -49,6 +49,7 @@ export default function TaskPage() {
     handleCancelTask,
     currentTaskId,
     taskModel,
+    directVisionMode,
     initialPrompt,
   } = useChatSession({ initialTaskId: taskId });
 
@@ -148,9 +149,16 @@ export default function TaskPage() {
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Active Model
                 </span>
-                <span className="text-[11px] font-semibold text-foreground">
-                  {modelIdentifier || "Model unavailable"}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    {modelIdentifier || "Model unavailable"}
+                  </span>
+                  {directVisionMode && (
+                    <span className="inline-flex items-center rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600 dark:text-purple-400 ring-1 ring-inset ring-purple-500/20">
+                      Direct Vision
+                    </span>
+                  )}
+                </div>
                 {modelNameDetails && (
                   <span className="text-[9px] text-muted-foreground">
                     ID: {modelNameDetails}

@@ -487,6 +487,17 @@ export class AgentProcessor {
   }
 
   /**
+   * Get tool names for logging purposes
+   * @param directVisionMode - If true, return direct vision mode tools (no CV)
+   * @returns Array of tool names
+   */
+  private getToolsForLogging(directVisionMode: boolean): string[] {
+    const { getToolsForTask } = require('./agent.tools');
+    const tools = getToolsForTask(directVisionMode);
+    return tools.map((tool: any) => tool.name);
+  }
+
+  /**
    * Check CV-first enforcement: Reject computer_click_mouse for UI elements if CV not tried
    * Uses model-specific enforcement rules based on model tier
    */
@@ -1112,6 +1123,12 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       // Calculate effective mode considering global override
       const effectiveDirectVisionMode = FORCE_DIRECT_VISION_MODE || task.directVisionMode || false;
 
+      // Log Direct Vision Mode status for visibility
+      this.logger.log(
+        `Task ${task.id}: Direct Vision Mode = ${effectiveDirectVisionMode} ` +
+        `(task.directVisionMode=${task.directVisionMode}, FORCE=${FORCE_DIRECT_VISION_MODE})`,
+      );
+
       // Use direct vision prompt if enabled, otherwise use tier-specific CV-first prompt
       const systemPrompt = effectiveDirectVisionMode
         ? buildAgentSystemPrompt(currentDate, currentTime, timeZone, true)
@@ -1123,6 +1140,19 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             timeZone,
             supportsVision(model),  // Pass vision capability for appropriate prompts
           );
+
+      // Log which prompt system is being used
+      this.logger.log(
+        `Task ${task.id}: Using ${effectiveDirectVisionMode ? 'Direct Vision' : `Tier ${rules.tier} CV-First`} prompt system`,
+      );
+
+      // Log tools available to model (for debugging)
+      const toolsForLogging = effectiveDirectVisionMode
+        ? this.getToolsForLogging(true)
+        : this.getToolsForLogging(false);
+      this.logger.log(
+        `Task ${task.id}: Tools provided to model: ${toolsForLogging.join(', ')}`,
+      );
 
       agentResponse = await service.generateMessage(
         systemPrompt,

@@ -147,28 +147,32 @@ cd ../bytebotd && npm install && npm run build
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
 
-**IMPORTANT - BTRFS Filesystem Incompatibility:**
-- ⚠️ **Windows containers DO NOT work on BTRFS filesystems**
-- Docker will show warning: `Warning: you are using the BTRFS filesystem for /storage`
-- Windows Setup will hang at ~75% during OOBE installation
-- **Root cause**: dockur/windows uses `aio=native` + `cache=none` which require O_DIRECT
-- BTRFS doesn't support O_DIRECT properly due to checksumming conflicts
-- **No simple workaround exists** - changing cache modes breaks aio=native compatibility
+**BTRFS Filesystem - Automatic Workaround:**
+- ⚠️ **Windows containers require O_DIRECT, which BTRFS doesn't support properly**
+- **Root cause**: dockur/windows uses `aio=native` + `cache=none` → requires O_DIRECT
+- BTRFS doesn't support O_DIRECT due to checksumming conflicts
+- Windows Setup would hang at ~75% without workaround
 
-**Solutions** (choose one):
-1. **Use ext4/xfs host** (recommended): Run Windows containers on system with ext4/xfs root
-2. **Loop device workaround** (advanced):
-   ```bash
-   # Create 160GB ext4 loop device on BTRFS
-   dd if=/dev/zero of=/opt/windows-storage.img bs=1G count=160
-   mkfs.ext4 /opt/windows-storage.img
-   mkdir -p /mnt/windows-ext4
-   mount -o loop /opt/windows-storage.img /mnt/windows-ext4
-   # Update docker-compose.windows.yml volumes section:
-   # volumes:
-   #   - /mnt/windows-ext4:/storage
-   ```
-3. **Skip Windows container**: Use Linux container only (works fine on BTRFS)
+**✅ Automatic Solution** (BTRFS hosts only):
+- `start-stack.sh` automatically detects BTRFS filesystem
+- Creates 160GB ext4 loop device at `/opt/bytebot-windows.img`
+- Mounts at `/opt/bytebot-windows-storage`
+- **Transparent**: No manual intervention needed
+- **Sparse file**: Grows as needed (not 160GB upfront)
+- **Performance**: Slight overhead vs native ext4, but fully functional
+
+**Manual Cleanup** (if needed):
+```bash
+# Stop Windows container first
+docker stop bytebot-windows
+
+# Run cleanup script
+./scripts/cleanup-windows-btrfs-workaround.sh
+```
+
+**Persistence**: Loop device mount doesn't survive reboots. Either:
+- Run `./scripts/start-stack.sh --os windows` after reboot (re-mounts automatically)
+- OR add to `/etc/fstab`: `/opt/bytebot-windows.img /opt/bytebot-windows-storage ext4 loop 0 2`
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup

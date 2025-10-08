@@ -56,7 +56,9 @@ services:
       # - BYTEBOT_SCREENSHOT_PATH=C:\Windows\Temp\bytebot-screenshots
       # - BYTEBOT_TELEMETRY_DIR=C:\Windows\Temp\bytebot-telemetry
     volumes:
-      - windows_storage:/storage
+      # Windows storage: use ext4 loop device on BTRFS, otherwise Docker volume
+      # WINDOWS_STORAGE_PATH set by start-stack.sh if BTRFS detected
+      - ${WINDOWS_STORAGE_PATH:-windows_storage}:/storage
       # Auto-install script (runs on first boot, copied to C:\OEM)
       - ./oem:/oem
       # Pre-built artifacts (Samba share, accessible as \\host.lan\Data in Windows)

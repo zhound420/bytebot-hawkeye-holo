@@ -151,11 +151,19 @@ echo ""
 
 # Windows-specific: Prepare artifacts with resolved symlinks
 if [[ "$TARGET_OS" == "windows" ]]; then
-    echo -e "${BLUE}Preparing Windows container artifacts...${NC}"
-
     # Get script directory and project root
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+    # Check for BTRFS and set up workaround if needed
+    WINDOWS_STORAGE_PATH=$(bash "$SCRIPT_DIR/setup-windows-btrfs-workaround.sh")
+    if [[ -n "$WINDOWS_STORAGE_PATH" ]]; then
+        export WINDOWS_STORAGE_PATH
+        echo -e "${GREEN}✓ Using ext4 loop device at ${WINDOWS_STORAGE_PATH}${NC}"
+        echo ""
+    fi
+
+    echo -e "${BLUE}Preparing Windows container artifacts...${NC}"
 
     # Check if Windows container already exists (need to remove for fresh /oem copy)
     if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-windows" 2>/dev/null; then

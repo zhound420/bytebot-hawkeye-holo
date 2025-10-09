@@ -16,7 +16,7 @@ echo.
 REM Set paths
 set BYTEBOT_ROOT=C:\bytebot\packages
 set BYTEBOTD_PATH=%BYTEBOT_ROOT%\bytebotd
-set INSTALLER_ZIP=\\host.lan\Data\bytebotd-windows-installer.zip
+set INSTALLER_ZIP=C:\shared\bytebotd-windows-installer.zip
 set TEMP_ZIP=C:\Windows\Temp\bytebot-installer.zip
 set LOG_DIR=C:\Bytebot-Install-Logs
 set BYTEBOTD_LOG_DIR=C:\Bytebot-Logs
@@ -128,20 +128,22 @@ echo   Extracting Bytebot Package
 echo ========================================
 echo.
 
-REM Wait for network share to become available
-echo Waiting for network share %INSTALLER_ZIP%...
+REM Wait for installer package to become available
+echo Waiting for installer package %INSTALLER_ZIP%...
 set WAIT_ATTEMPTS=0
 set MAX_WAIT=24
 :WaitForShare
 if exist "%INSTALLER_ZIP%" goto ShareReady
 set /a WAIT_ATTEMPTS+=1
 if %WAIT_ATTEMPTS% GEQ %MAX_WAIT% (
-    echo ERROR: Network share not available after 2 minutes
+    echo ERROR: Installer package not available after 2 minutes
+    echo Expected: %INSTALLER_ZIP%
     echo.
     echo Troubleshooting:
     echo   1. Check docker-compose.windows.yml has: ./windows-installer:/shared
     echo   2. Ensure installer exists: docker/windows-installer/bytebotd-windows-installer.zip
     echo   3. Build installer: ./scripts/build-windows-installer.sh
+    echo   4. Verify /shared mount is accessible in container
     echo.
     pause
     exit /b 1

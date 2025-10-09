@@ -133,6 +133,30 @@ if not exist "%BYTEBOTD_PATH%\dist\main.js" (
 
 echo.
 echo ========================================
+echo   Rebuilding Native Modules
+echo ========================================
+echo.
+
+REM Rebuild sharp for Windows (Linux binaries don't work on Windows)
+echo Rebuilding sharp module for Windows...
+cd /d "%BYTEBOTD_PATH%"
+npm rebuild sharp --verbose >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo WARNING: Sharp rebuild failed, trying alternative approach...
+    echo Reinstalling sharp for win32-x64...
+    npm uninstall sharp >> "%LOG_FILE%" 2>&1
+    npm install --save-exact sharp@0.33.5 >> "%LOG_FILE%" 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo ERROR: Failed to install sharp
+        echo Check log: %LOG_FILE%
+        pause
+        exit /b 1
+    )
+)
+echo Sharp module ready for Windows!
+
+echo.
+echo ========================================
 echo   Configuring Auto-Start
 echo ========================================
 echo.

@@ -3,6 +3,35 @@ REM Bytebot Windows Installer - ZIP-based approach
 REM This script is copied into the installer ZIP as install.bat
 REM It's also available in C:\OEM for manual installation
 
+REM Set paths (needed for guard check)
+set BYTEBOT_ROOT=C:\bytebot\packages
+set BYTEBOTD_PATH=%BYTEBOT_ROOT%\bytebotd
+
+REM ========================================
+REM   Installation Guard
+REM ========================================
+REM Check if installation already completed
+if exist "%BYTEBOTD_PATH%\dist\main.js" (
+    if exist "%BYTEBOTD_PATH%\start.bat" (
+        echo Installation already complete
+        echo Checking if bytebotd is running...
+
+        REM Check if scheduled task exists
+        schtasks /query /tn "Bytebot Desktop Daemon" >nul 2>&1
+        if %ERRORLEVEL% EQU 0 (
+            echo Scheduled task exists, starting if not running...
+            schtasks /run /tn "Bytebot Desktop Daemon" >nul 2>&1
+        ) else (
+            echo WARNING: Scheduled task not found, starting bytebotd manually...
+            start "" "%BYTEBOTD_PATH%\start.bat"
+        )
+
+        echo.
+        echo To reinstall, delete: %BYTEBOTD_PATH%
+        exit /b 0
+    )
+)
+
 echo ========================================
 echo   Bytebot Windows Installation
 echo ========================================
@@ -12,10 +41,6 @@ echo   1. Extract pre-built bytebotd package
 echo   2. Create auto-start scheduled task
 echo   3. Launch bytebotd service
 echo.
-
-REM Set paths
-set BYTEBOT_ROOT=C:\bytebot\packages
-set BYTEBOTD_PATH=%BYTEBOT_ROOT%\bytebotd
 set INSTALLER_ZIP=C:\shared\bytebotd-windows-installer.zip
 set TEMP_ZIP=C:\Windows\Temp\bytebot-installer.zip
 set LOG_DIR=C:\Bytebot-Install-Logs

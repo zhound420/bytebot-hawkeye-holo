@@ -59,29 +59,32 @@ goto WaitForNetwork
 
 REM Install Chocolatey with retry logic
 where choco >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    set CHOCO_ATTEMPTS=0
-    :RetryChoco
-    set /a CHOCO_ATTEMPTS+=1
-    echo Installing Chocolatey package manager (attempt %CHOCO_ATTEMPTS%/3)...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))" >> "%LOG_FILE%" 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        set "PATH=C:\ProgramData\chocolatey\bin;%PATH%"
-        echo Chocolatey installed successfully!
-        goto ChocoInstalled
-    )
+if %ERRORLEVEL% NEQ 0 goto InstallChoco
+goto ChocoExists
 
-    if %CHOCO_ATTEMPTS% LSS 3 (
-        echo WARNING: Chocolatey install failed, retrying in 30 seconds...
-        timeout /t 30 /nobreak >nul
-        goto RetryChoco
-    )
-
-    echo ERROR: Chocolatey installation failed after 3 attempts
-    echo Trying alternative Node.js installation method...
-    goto DirectNodeInstall
+:InstallChoco
+set CHOCO_ATTEMPTS=0
+:RetryChoco
+set /a CHOCO_ATTEMPTS+=1
+echo Installing Chocolatey package manager (attempt %CHOCO_ATTEMPTS%/3)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))" >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% EQU 0 (
+    set "PATH=C:\ProgramData\chocolatey\bin;%PATH%"
+    echo Chocolatey installed successfully!
+    goto ChocoExists
 )
-:ChocoInstalled
+
+if %CHOCO_ATTEMPTS% LSS 3 (
+    echo WARNING: Chocolatey install failed, retrying in 30 seconds...
+    timeout /t 30 /nobreak >nul
+    goto RetryChoco
+)
+
+echo ERROR: Chocolatey installation failed after 3 attempts
+echo Trying alternative Node.js installation method...
+goto DirectNodeInstall
+
+:ChocoExists
 
 REM Install Node.js via Chocolatey
 echo Installing Node.js 20 via Chocolatey...

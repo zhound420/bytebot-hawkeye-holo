@@ -241,6 +241,30 @@ echo Creating startup wrapper...
   echo set LOG_FILE=%BYTEBOTD_LOG_DIR%\bytebotd-%%date:~-4,4%%%%date:~-10,2%%%%date:~-7,2%%-%%time:~0,2%%%%time:~3,2%%%%time:~6,2%%.log
   echo set LOG_FILE=%%LOG_FILE: =0%%
   echo.
+  echo REM Hawkeye/Holo 1.5-7B environment variables
+  echo set BYTEBOT_CV_USE_HOLO=true
+  echo set HOLO_URL=http://bytebot-holo:9989
+  echo set HOLO_TIMEOUT=120000
+  echo set BYTEBOT_ENFORCE_CV_FIRST=true
+  echo set BYTEBOT_GRID_OVERLAY=true
+  echo set BYTEBOT_GRID_DEBUG=false
+  echo set BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true
+  echo set BYTEBOT_UNIVERSAL_TEACHING=true
+  echo set BYTEBOT_ADAPTIVE_CALIBRATION=true
+  echo set BYTEBOT_ZOOM_REFINEMENT=true
+  echo set BYTEBOT_COORDINATE_METRICS=true
+  echo set BYTEBOT_POST_CLICK_CALIBRATION=true
+  echo set BYTEBOT_DRIFT_COMPENSATION=true
+  echo set BYTEBOT_DRIFT_SMOOTHING=0.2
+  echo set BYTEBOT_PRECLICK_SNAP=true
+  echo set BYTEBOT_SNAP_RADIUS=6
+  echo set BYTEBOT_SNAP_PENALTY=0.25
+  echo set BYTEBOT_CLICK_RETRY_ON_NOCHANGE=true
+  echo set BYTEBOT_CLICK_VERIFY_DELAY=250
+  echo set BYTEBOT_CLICK_VERIFY_RADIUS=12
+  echo set BYTEBOT_CLICK_VERIFY_THRESHOLD=4.0
+  echo set BYTEBOT_CLICK_RETRY_MAX=1
+  echo.
   echo echo [%%date%% %%time%%] Starting Bytebot Desktop Daemon... ^> "%%LOG_FILE%%"
   echo cd /d "%BYTEBOTD_PATH%" ^>^> "%%LOG_FILE%%" 2^>^&1
   echo "%NODE_EXE%" dist\main.js ^>^> "%%LOG_FILE%%" 2^>^&1

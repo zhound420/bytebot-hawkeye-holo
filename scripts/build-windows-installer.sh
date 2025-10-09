@@ -94,13 +94,13 @@ echo ""
 
 # Install bytebotd dependencies for Windows
 cd "$TEMP_BUILD/bytebot/packages/bytebotd"
-echo "Installing bytebotd production dependencies only..."
+echo "Installing bytebotd production dependencies..."
 echo "Using npm install --production to exclude devDependencies"
-echo "Note: Sharp will install Linux binaries here and be rebuilt for Windows in install.bat"
+echo "Note: Sharp installs with optional native bindings, will be rebuilt for Windows in install.bat"
 
-# Install production dependencies (sharp's postinstall will download binaries for current platform)
+# Install production dependencies INCLUDING optional (sharp needs optional deps for native bindings)
 # We allow scripts to run so sharp downloads its prebuilt binaries (Linux here, rebuilt in Windows later)
-npm install --production --no-optional
+npm install --production
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}✗ npm install failed${NC}"
@@ -129,14 +129,20 @@ echo ""
 cd "$TEMP_BUILD/bytebot/packages/shared"
 if [ -f "package.json" ]; then
     echo "Installing shared dependencies..."
-    npm install --production --no-optional --ignore-scripts 2>/dev/null || echo "  (no dependencies, skipped)"
+    npm install --production 2>&1 | grep -v "npm warn" || echo "  (no dependencies, skipped)"
 fi
 
-# Install bytebot-cv dependencies
+# Install bytebot-cv dependencies (CRITICAL: needs reflect-metadata, canvas, tesseract.js, @nestjs/common)
 cd "$TEMP_BUILD/bytebot/packages/bytebot-cv"
 if [ -f "package.json" ]; then
-    echo "Installing bytebot-cv dependencies..."
-    npm install --production --no-optional --ignore-scripts 2>/dev/null || echo "  (no dependencies, skipped)"
+    echo "Installing bytebot-cv dependencies (reflect-metadata, canvas, tesseract.js)..."
+    npm install --production
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ bytebot-cv npm install failed${NC}"
+        echo "This will cause 'Cannot find module reflect-metadata' errors"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ bytebot-cv dependencies installed${NC}"
 fi
 
 echo ""

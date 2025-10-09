@@ -217,6 +217,28 @@ if %ERRORLEVEL% NEQ 0 (
 echo Sharp module ready for Windows!
 echo [%date% %time%] Sharp module rebuilt successfully >> "%LOG_FILE%"
 
+REM Verify sharp can load properly
+echo Verifying sharp module...
+echo [%date% %time%] Verifying sharp module can load >> "%LOG_FILE%"
+"%NODE_EXE%" -e "require('sharp')" >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo WARNING: Sharp verification failed, installing with optional dependencies...
+    echo [%date% %time%] Sharp verification failed, installing with --include=optional >> "%LOG_FILE%"
+    npm install --include=optional sharp >> "%LOG_FILE%" 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo ERROR: Sharp installation with optional deps failed
+        echo [%date% %time%] Sharp installation with optional deps failed >> "%LOG_FILE%"
+        echo Check log: %LOG_FILE%
+        pause
+        exit /b 1
+    )
+    echo Sharp installed successfully with optional dependencies!
+    echo [%date% %time%] Sharp installed with optional dependencies >> "%LOG_FILE%"
+) else (
+    echo Sharp verification passed!
+    echo [%date% %time%] Sharp verification passed >> "%LOG_FILE%"
+)
+
 echo.
 echo ========================================
 echo   Configuring Auto-Start

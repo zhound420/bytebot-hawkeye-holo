@@ -195,11 +195,25 @@ echo   Rebuilding Native Modules
 echo ========================================
 echo.
 
-REM Rebuild sharp for Windows (Linux binaries don't work on Windows)
-echo Rebuilding sharp module for Windows...
-echo [%date% %time%] Rebuilding sharp for Windows >> "%LOG_FILE%"
+REM Set NODE_EXE early for sharp testing
+set NODE_EXE=C:\Program Files\nodejs\node.exe
+
+REM Test if sharp already works (maybe Windows binaries were pre-installed in ZIP)
 cd /d "%BYTEBOTD_PATH%"
-npm rebuild sharp --verbose >> "%LOG_FILE%" 2>&1
+echo Checking if sharp module needs rebuild...
+echo [%date% %time%] Testing sharp module before rebuild >> "%LOG_FILE%"
+"%NODE_EXE%" -e "require('sharp')" >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo Sharp module already works, skipping rebuild!
+    echo [%date% %time%] Sharp already works, skipping rebuild >> "%LOG_FILE%"
+    goto SharpReady
+)
+
+REM Rebuild sharp for Windows (Linux binaries don't work on Windows)
+echo Sharp needs rebuild for Windows platform...
+echo This may take 3-5 minutes, please wait...
+echo [%date% %time%] Rebuilding sharp for Windows (this may take several minutes) >> "%LOG_FILE%"
+npm rebuild sharp >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo WARNING: Sharp rebuild failed, trying alternative approach...
     echo [%date% %time%] Sharp rebuild failed, reinstalling >> "%LOG_FILE%"
@@ -214,9 +228,10 @@ if %ERRORLEVEL% NEQ 0 (
         exit /b 1
     )
 )
-echo Sharp module ready for Windows!
-echo [%date% %time%] Sharp module rebuilt successfully >> "%LOG_FILE%"
+echo Sharp rebuild completed!
+echo [%date% %time%] Sharp rebuild completed >> "%LOG_FILE%"
 
+:SharpReady
 REM Verify sharp can load properly
 echo Verifying sharp module...
 echo [%date% %time%] Verifying sharp module can load >> "%LOG_FILE%"
@@ -224,6 +239,7 @@ echo [%date% %time%] Verifying sharp module can load >> "%LOG_FILE%"
 if %ERRORLEVEL% NEQ 0 (
     echo WARNING: Sharp verification failed, installing with optional dependencies...
     echo [%date% %time%] Sharp verification failed, installing with --include=optional >> "%LOG_FILE%"
+    echo This may take 2-3 minutes...
     npm install --include=optional sharp >> "%LOG_FILE%" 2>&1
     if %ERRORLEVEL% NEQ 0 (
         echo ERROR: Sharp installation with optional deps failed
@@ -248,9 +264,8 @@ echo.
 REM Create log directory for bytebotd
 if not exist "%BYTEBOTD_LOG_DIR%" mkdir "%BYTEBOTD_LOG_DIR%"
 
-REM Verify Node.js
+REM Verify Node.js (NODE_EXE already set earlier for sharp testing)
 echo [%date% %time%] Verifying Node.js installation >> "%LOG_FILE%"
-set NODE_EXE=C:\Program Files\nodejs\node.exe
 if not exist "%NODE_EXE%" (
     echo ERROR: Node.js not found at %NODE_EXE%
     echo [%date% %time%] Node.js not found at expected path >> "%LOG_FILE%"

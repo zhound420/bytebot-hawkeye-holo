@@ -6,6 +6,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BytebotMcpModule } from './mcp';
+import { HeartbeatModule } from './heartbeat/heartbeat.module';
 import * as fs from 'fs';
 
 // Build ServeStaticModule imports conditionally
@@ -34,6 +35,7 @@ staticModules.push({
     ComputerUseModule,
     InputTrackingModule,
     BytebotMcpModule,
+    HeartbeatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

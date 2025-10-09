@@ -5,6 +5,17 @@ import { AppService } from './app.service';
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
+  // Health check endpoint for monitoring tools (tray icon, health checks, etc.)
+  @Get('health')
+  getHealth() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'bytebotd',
+      uptime: process.uptime(),
+    };
+  }
+
   // When a client makes a GET request to /vnc,
   // this method will automatically redirect them to the noVNC URL.
   @Get('vnc')

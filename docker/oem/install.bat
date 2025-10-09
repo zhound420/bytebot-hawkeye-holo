@@ -38,29 +38,82 @@ if %ERRORLEVEL% EQU 0 (
     goto ExtractPackage
 )
 
-REM Install Chocolatey if not present
+REM Wait for network to be ready (Windows networking initializes slowly)
+echo Waiting for network connectivity...
+set NETWORK_WAIT=0
+:WaitForNetwork
+set /a NETWORK_WAIT+=1
+ping -n 1 8.8.8.8 >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo Network is ready!
+    goto NetworkReady
+)
+if %NETWORK_WAIT% GEQ 12 (
+    echo WARNING: Network not responding after 60 seconds, proceeding anyway...
+    goto NetworkReady
+)
+echo   Waiting for network... (attempt %NETWORK_WAIT%/12)
+timeout /t 5 /nobreak >nul
+goto WaitForNetwork
+:NetworkReady
+
+REM Install Chocolatey with retry logic
 where choco >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Installing Chocolatey package manager...
+    set CHOCO_ATTEMPTS=0
+    :RetryChoco
+    set /a CHOCO_ATTEMPTS+=1
+    echo Installing Chocolatey package manager (attempt %CHOCO_ATTEMPTS%/3)...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))" >> "%LOG_FILE%" 2>&1
-    if %ERRORLEVEL% NEQ 0 (
-        echo ERROR: Chocolatey installation failed
-        pause
-        exit /b 1
+    if %ERRORLEVEL% EQU 0 (
+        set "PATH=C:\ProgramData\chocolatey\bin;%PATH%"
+        echo Chocolatey installed successfully!
+        goto ChocoInstalled
     )
-    set "PATH=C:\ProgramData\chocolatey\bin;%PATH%"
-    echo Chocolatey installed successfully
+
+    if %CHOCO_ATTEMPTS% LSS 3 (
+        echo WARNING: Chocolatey install failed, retrying in 30 seconds...
+        timeout /t 30 /nobreak >nul
+        goto RetryChoco
+    )
+
+    echo ERROR: Chocolatey installation failed after 3 attempts
+    echo Trying alternative Node.js installation method...
+    goto DirectNodeInstall
+)
+:ChocoInstalled
+
+REM Install Node.js via Chocolatey
+echo Installing Node.js 20 via Chocolatey...
+choco install nodejs --version=20.19.0 -y --force >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo Node.js installed successfully via Chocolatey!
+    set "PATH=C:\Program Files\nodejs;%PATH%"
+    goto ExtractPackage
 )
 
-REM Install Node.js 20
-echo Installing Node.js 20...
-choco install nodejs --version=20.19.0 -y --force >> "%LOG_FILE%" 2>&1
+REM Chocolatey Node.js install failed, try direct download
+:DirectNodeInstall
+echo Attempting direct Node.js MSI download...
+set NODE_MSI=C:\Windows\Temp\node-v20.19.0-x64.msi
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.19.0/node-v20.19.0-x64.msi' -OutFile '%NODE_MSI%'" >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Node.js installation failed
+    echo ERROR: Failed to download Node.js installer
+    echo Check network connectivity and try manual installation
     pause
     exit /b 1
 )
-echo Node.js installed successfully
+
+echo Installing Node.js from MSI...
+msiexec /i "%NODE_MSI%" /qn /norestart >> "%LOG_FILE%" 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Node.js MSI installation failed
+    pause
+    exit /b 1
+)
+
+echo Node.js installed successfully via MSI!
+del /f /q "%NODE_MSI%" 2>nul
 
 REM Update PATH
 set "PATH=C:\Program Files\nodejs;%PATH%"

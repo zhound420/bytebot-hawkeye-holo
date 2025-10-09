@@ -197,21 +197,25 @@ echo.
 
 REM Rebuild sharp for Windows (Linux binaries don't work on Windows)
 echo Rebuilding sharp module for Windows...
+echo [%date% %time%] Rebuilding sharp for Windows >> "%LOG_FILE%"
 cd /d "%BYTEBOTD_PATH%"
 npm rebuild sharp --verbose >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo WARNING: Sharp rebuild failed, trying alternative approach...
+    echo [%date% %time%] Sharp rebuild failed, reinstalling >> "%LOG_FILE%"
     echo Reinstalling sharp for win32-x64...
     npm uninstall sharp >> "%LOG_FILE%" 2>&1
     npm install --save-exact sharp@0.33.5 >> "%LOG_FILE%" 2>&1
     if %ERRORLEVEL% NEQ 0 (
         echo ERROR: Failed to install sharp
+        echo [%date% %time%] Sharp installation failed >> "%LOG_FILE%"
         echo Check log: %LOG_FILE%
         pause
         exit /b 1
     )
 )
 echo Sharp module ready for Windows!
+echo [%date% %time%] Sharp module rebuilt successfully >> "%LOG_FILE%"
 
 echo.
 echo ========================================
@@ -223,19 +227,23 @@ REM Create log directory for bytebotd
 if not exist "%BYTEBOTD_LOG_DIR%" mkdir "%BYTEBOTD_LOG_DIR%"
 
 REM Verify Node.js
+echo [%date% %time%] Verifying Node.js installation >> "%LOG_FILE%"
 set NODE_EXE=C:\Program Files\nodejs\node.exe
 if not exist "%NODE_EXE%" (
     echo ERROR: Node.js not found at %NODE_EXE%
+    echo [%date% %time%] Node.js not found at expected path >> "%LOG_FILE%"
     where node
     pause
     exit /b 1
 )
 
 echo Node.js: %NODE_EXE%
-"%NODE_EXE%" --version
+"%NODE_EXE%" --version >> "%LOG_FILE%" 2>&1
+echo [%date% %time%] Node.js version verified >> "%LOG_FILE%"
 
 REM Create startup wrapper script
 echo Creating startup wrapper...
+echo [%date% %time%] Creating startup wrapper script >> "%LOG_FILE%"
 (
   echo @echo off
   echo REM Bytebot Desktop Daemon Startup Wrapper
@@ -273,34 +281,48 @@ echo Creating startup wrapper...
   echo echo [%%date%% %%time%%] Bytebotd exited with code %%ERRORLEVEL%% ^>^> "%%LOG_FILE%%"
 ) > "%BYTEBOTD_PATH%\start.bat"
 
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Failed to create startup wrapper
+    echo [%date% %time%] Failed to create start.bat >> "%LOG_FILE%"
+    pause
+    exit /b 1
+)
 echo Startup wrapper created
+echo [%date% %time%] Startup wrapper created successfully >> "%LOG_FILE%"
 
 REM Create scheduled task
 echo Creating scheduled task...
+echo [%date% %time%] Creating scheduled task >> "%LOG_FILE%"
 schtasks /create /tn "Bytebot Desktop Daemon" /tr "\"%BYTEBOTD_PATH%\start.bat\"" /sc onlogon /ru SYSTEM /rl HIGHEST /f >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo Scheduled task created successfully
+    echo [%date% %time%] Scheduled task created successfully >> "%LOG_FILE%"
 
     REM Start task immediately
     echo Starting bytebotd service...
+    echo [%date% %time%] Starting bytebotd service >> "%LOG_FILE%"
     schtasks /run /tn "Bytebot Desktop Daemon" >> "%LOG_FILE%" 2>&1
     timeout /t 3 /nobreak >nul
 ) else (
     echo WARNING: Failed to create scheduled task
+    echo [%date% %time%] WARNING: Failed to create scheduled task >> "%LOG_FILE%"
 )
 
 REM Verify bytebotd is running
 echo.
 echo Verifying service...
+echo [%date% %time%] Starting health check verification >> "%LOG_FILE%"
 timeout /t 5 /nobreak >nul
 
 set VERIFY_ATTEMPTS=0
 set MAX_VERIFY=10
 :VerifyLoop
 set /a VERIFY_ATTEMPTS+=1
+echo [%date% %time%] Health check attempt %VERIFY_ATTEMPTS%/%MAX_VERIFY% >> "%LOG_FILE%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:9990/health' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo SUCCESS: Bytebotd is running!
+    echo [%date% %time%] Health check passed - bytebotd is running >> "%LOG_FILE%"
     goto InstallComplete
 )
 
@@ -312,6 +334,7 @@ if %VERIFY_ATTEMPTS% LSS %MAX_VERIFY% (
 
 echo.
 echo WARNING: Bytebotd health check timeout
+echo [%date% %time%] WARNING: Health check timeout after %MAX_VERIFY% attempts >> "%LOG_FILE%"
 echo Service may still be starting...
 echo Check logs: %BYTEBOTD_LOG_DIR%
 

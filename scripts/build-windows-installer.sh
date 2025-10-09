@@ -96,9 +96,11 @@ echo ""
 cd "$TEMP_BUILD/bytebot/packages/bytebotd"
 echo "Installing bytebotd production dependencies only..."
 echo "Using npm install --production to exclude devDependencies"
+echo "Note: Sharp will install Linux binaries here and be rebuilt for Windows in install.bat"
 
-# Install production dependencies only (no dev deps, no optional deps)
-npm install --production --no-optional --ignore-scripts
+# Install production dependencies (sharp's postinstall will download binaries for current platform)
+# We allow scripts to run so sharp downloads its prebuilt binaries (Linux here, rebuilt in Windows later)
+npm install --production --no-optional
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}✗ npm install failed${NC}"

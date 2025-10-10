@@ -21,6 +21,21 @@ done
 echo -e "${BLUE}Stopping Bytebot Hawkeye Stack...${NC}"
 echo ""
 
+# First, stop any orphaned containers (from different compose projects or manual starts)
+echo "Checking for orphaned bytebot containers..."
+ORPHANED=$(docker ps -a --format '{{.Names}}' | grep -E "bytebot|windows.*byte|test.*windows|test.*macos" || true)
+if [ -n "$ORPHANED" ]; then
+    echo -e "${YELLOW}Found orphaned containers:${NC}"
+    echo "$ORPHANED" | while read container; do
+        echo "  • $container"
+    done
+    echo ""
+    echo "Stopping orphaned containers..."
+    echo "$ORPHANED" | xargs -r docker rm -f
+    echo -e "${GREEN}✓ Orphaned containers removed${NC}"
+    echo ""
+fi
+
 cd docker
 
 # Stop all possible compose stacks

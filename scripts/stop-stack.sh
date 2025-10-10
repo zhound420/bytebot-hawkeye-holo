@@ -4,24 +4,56 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Parse arguments
+REMOVE_VOLUMES=false
+for arg in "$@"; do
+    case $arg in
+        --remove-volumes|-v)
+            REMOVE_VOLUMES=true
+            shift
+            ;;
+    esac
+done
 
 echo -e "${BLUE}Stopping Bytebot Hawkeye Stack...${NC}"
 echo ""
 
 cd docker
 
-# Determine which compose file is active
-if docker ps --format '{{.Names}}' | grep -q "bytebot-llm-proxy"; then
-    COMPOSE_FILE="docker-compose.proxy.yml"
-    echo "Detected: Proxy Stack"
-else
-    COMPOSE_FILE="docker-compose.yml"
-    echo "Detected: Standard Stack"
-fi
+# Stop all possible compose stacks
+COMPOSE_FILES=(
+    "docker-compose.yml"
+    "docker-compose.proxy.yml"
+    "docker-compose.windows.yml"
+    "docker-compose.windows-prebaked.yml"
+    "docker-compose.macos.yml"
+)
 
-# Stop Docker services
-docker compose -f $COMPOSE_FILE down
+echo "Stopping all active stacks..."
+
+for COMPOSE_FILE in "${COMPOSE_FILES[@]}"; do
+    if [ -f "$COMPOSE_FILE" ]; then
+        # Check if any containers from this stack are running
+        PROJECT_NAME=$(docker compose -f "$COMPOSE_FILE" ps -q 2>/dev/null | wc -l || echo "0")
+        if [ "$PROJECT_NAME" -gt 0 ] || docker ps -a --format '{{.Names}}' | grep -q "bytebot\|postgres\|windows"; then
+            echo "  Stopping: $COMPOSE_FILE"
+            if [ "$REMOVE_VOLUMES" = true ]; then
+                docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
+            else
+                docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+            fi
+        fi
+    fi
+done
+
+# Clean up orphaned volumes from all compose projects
+if [ "$REMOVE_VOLUMES" = true ]; then
+    echo -e "${YELLOW}⚠️  Cleaning up all bytebot volumes (including Windows/macOS stacks)${NC}"
+    docker volume ls --format "{{.Name}}" | grep -E "bytebot|postgres|windows_storage|holo" | xargs -r docker volume rm 2>/dev/null || true
+fi
 
 echo ""
 echo -e "${GREEN}✓ Docker services stopped${NC}"

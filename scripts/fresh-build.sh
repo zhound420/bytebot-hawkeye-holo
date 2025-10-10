@@ -8,10 +8,27 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Parse arguments
+FULL_RESET=false
+for arg in "$@"; do
+    case $arg in
+        --full-reset)
+            FULL_RESET=true
+            shift
+            ;;
+    esac
+done
+
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   Bytebot Hawkeye - Fresh Build${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
+
+if [ "$FULL_RESET" = true ]; then
+    echo -e "${RED}⚠️  FULL RESET MODE ENABLED${NC}"
+    echo -e "${RED}All Docker volumes, images, and data will be removed!${NC}"
+    echo ""
+fi
 
 # Detect platform with enhanced Windows/WSL support
 ARCH=$(uname -m)
@@ -49,20 +66,97 @@ echo ""
 
 # Stop any running services
 echo -e "${BLUE}Step 1: Stopping existing services...${NC}"
+
+# Determine cleanup level
+REMOVE_VOLUMES=false
+REMOVE_IMAGES=false
+CLEAR_BUILD_CACHE=false
+
+if [ "$FULL_RESET" = true ]; then
+    REMOVE_VOLUMES=true
+    REMOVE_IMAGES=true
+    CLEAR_BUILD_CACHE=true
+    echo -e "${YELLOW}Auto-cleanup: volumes, images, and build cache${NC}"
+else
+    # Interactive prompts
+    echo ""
+    echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}   Cleanup Options (Select Carefully!)${NC}"
+    echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+    echo ""
+
+    # Prompt 1: Docker volumes (DESTRUCTIVE)
+    echo -e "${RED}⚠️  Remove Docker volumes?${NC}"
+    echo "   • PostgreSQL database (all tasks, messages, settings)"
+    echo "   • Holo 1.5-7B model weights (~5.5GB)"
+    echo "   • Windows container disk (~150GB if using Windows)"
+    echo -e "${RED}   THIS WILL DELETE ALL YOUR DATA!${NC}"
+    read -p "Remove volumes? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        REMOVE_VOLUMES=true
+        echo -e "${YELLOW}✓ Will remove volumes${NC}"
+    else
+        echo -e "${GREEN}✓ Volumes will be preserved${NC}"
+    fi
+    echo ""
+
+    # Prompt 2: Docker images (safe but slower)
+    echo -e "${BLUE}Remove Docker images?${NC}"
+    echo "   • bytebot-agent, bytebot-holo, bytebot-ui images"
+    echo "   • Forces complete rebuild (slower but truly fresh)"
+    echo "   • Does NOT remove base images (dockurr/windows, postgres)"
+    read -p "Remove images? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        REMOVE_IMAGES=true
+        echo -e "${YELLOW}✓ Will remove images${NC}"
+    else
+        echo -e "${GREEN}✓ Images will be reused${NC}"
+    fi
+    echo ""
+
+    # Prompt 3: Build cache (safe but slower)
+    echo -e "${BLUE}Clear Docker build cache?${NC}"
+    echo "   • Clears all cached build layers"
+    echo "   • Slower build but ensures fresh dependencies"
+    read -p "Clear build cache? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        CLEAR_BUILD_CACHE=true
+        echo -e "${YELLOW}✓ Will clear build cache${NC}"
+    else
+        echo -e "${GREEN}✓ Build cache will be preserved${NC}"
+    fi
+    echo ""
+fi
+
+# Execute cleanup
 if [ -f "scripts/stop-stack.sh" ]; then
-    ./scripts/stop-stack.sh || true
+    if [ "$REMOVE_VOLUMES" = true ]; then
+        ./scripts/stop-stack.sh --remove-volumes || true
+    else
+        ./scripts/stop-stack.sh || true
+    fi
 fi
 echo ""
 
-# Clean Docker build cache (optional - ask user)
-read -p "Clear Docker build cache? (Slower but ensures fresh build) [y/N] " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+# Remove Docker images if requested
+if [ "$REMOVE_IMAGES" = true ]; then
+    echo -e "${BLUE}Removing Bytebot Docker images...${NC}"
+    # Remove bytebot images but keep base images (postgres, dockurr/windows)
+    docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "^bytebot|^ghcr.io/bytebot" | xargs -r docker rmi -f || true
+    echo -e "${GREEN}✓ Docker images removed${NC}"
+    echo ""
+fi
+
+# Clean Docker build cache if requested
+if [ "$CLEAR_BUILD_CACHE" = true ]; then
     echo -e "${BLUE}Pruning Docker build cache...${NC}"
     docker builder prune -f
     echo -e "${GREEN}✓ Build cache cleared${NC}"
+    echo ""
 fi
-echo ""
 
 # Clean problematic node_modules (OpenCV build artifacts)
 echo -e "${BLUE}Step 2: Cleaning node_modules...${NC}"
@@ -258,4 +352,7 @@ echo "For Windows 11 container:"
 echo -e "  ${BLUE}./scripts/start-stack.sh --os windows${NC}"
 echo "For macOS container:"
 echo -e "  ${BLUE}./scripts/start-stack.sh --os macos${NC}"
+echo ""
+echo "For complete reset (removes all data):"
+echo -e "  ${BLUE}./scripts/fresh-build.sh --full-reset${NC}"
 echo ""

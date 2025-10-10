@@ -96,6 +96,33 @@ PACKAGE_SIZE=$(du -sh "$PACKAGE_PATH" | cut -f1)
 echo -e "${GREEN}✓ Package found: $PACKAGE_SIZE${NC}"
 echo ""
 
+# Step 1.5: Create OEM archive with CRLF-preserved files
+echo -e "${BLUE}[1.5/3] Creating OEM archive (CRLF preservation)...${NC}"
+echo ""
+
+OEM_ARCHIVE="docker/oem/oem-files.tar.gz"
+
+if [ -f "$REPO_ROOT/scripts/create-windows-prebaked-oem-archive.sh" ]; then
+    bash "$REPO_ROOT/scripts/create-windows-prebaked-oem-archive.sh"
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ OEM archive creation failed${NC}"
+        exit 1
+    fi
+else
+    echo -e "${RED}✗ OEM archive script not found${NC}"
+    echo "Expected: $REPO_ROOT/scripts/create-windows-prebaked-oem-archive.sh"
+    exit 1
+fi
+
+# Verify OEM archive exists
+if [ ! -f "$OEM_ARCHIVE" ]; then
+    echo -e "${RED}✗ OEM archive not found: $OEM_ARCHIVE${NC}"
+    exit 1
+fi
+
+echo ""
+
 # Step 2: Build Docker image
 echo -e "${BLUE}[2/3] Building Docker image...${NC}"
 echo ""

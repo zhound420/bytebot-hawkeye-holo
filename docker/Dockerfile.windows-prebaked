@@ -19,14 +19,11 @@ LABEL version="1.0.0"
 # Copy pre-baked package ZIP to /oem directory
 COPY docker/windows-installer/bytebotd-prebaked.zip /oem/
 
-# Copy PowerShell installation script
-COPY docker/oem/install-prebaked.ps1 /oem/
-
-# Copy wrapper CMD script to run PowerShell installer
-COPY docker/oem/run-install-prebaked.cmd /oem/
-
-# Set custom script to run during Windows OOBE
-ENV CUSTOM=/oem/run-install-prebaked.cmd
+# ADD OEM scripts as tar.gz archive to preserve CRLF line endings
+# Docker's COPY converts text files to LF on Linux, breaking PowerShell
+# Using ADD with tar.gz preserves exact file bytes including CRLF
+# dockur/windows automatically executes install.bat from /oem after installation
+ADD docker/oem/oem-files.tar.gz /oem/
 
 # Environment variables for Bytebotd
 ENV BYTEBOT_GRID_OVERLAY=true \
@@ -43,7 +40,7 @@ ENV VERSION=win11 \
     RAM_SIZE=8G \
     CPU_CORES=4 \
     DISK_SIZE=100G \
-    ARGUMENTS=-rtc base=localtime
+    ARGUMENTS="-rtc base=localtime"
 
 # Expose ports
 # 8006 - Web-based VNC viewer

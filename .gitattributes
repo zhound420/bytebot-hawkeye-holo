@@ -5,8 +5,10 @@
 # Enforce LF line endings for shell scripts (critical for Docker on Windows)
 *.sh text eol=lf
 
-# Enforce CRLF for PowerShell scripts (Windows compatibility)
+# Enforce CRLF for Windows scripts (PowerShell and CMD)
 *.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
 
 # Enforce LF for Python scripts (shebang compatibility)
 *.py text eol=lf

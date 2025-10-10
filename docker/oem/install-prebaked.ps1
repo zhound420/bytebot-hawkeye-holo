@@ -107,34 +107,54 @@ try {
 
 Write-Log ""
 
-# Step 3: Rebuild Sharp module for Windows
-Write-Log "Step 3: Rebuilding Sharp module for Windows..."
+# Step 3: Install Node.js (portable)
+Write-Log "Step 3: Installing Node.js..."
 
+$NodeInstallPath = "C:\Program Files\nodejs"
+if (-not (Test-Path $NodeInstallPath)) {
+    Write-Log "Downloading Node.js portable..."
+    $NodeVersion = "v20.18.1"
+    $NodeUrl = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-x64.zip"
+    $NodeZip = Join-Path $env:TEMP "node.zip"
+
+    try {
+        # Download Node.js
+        Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip -UseBasicParsing
+        Write-Log "✓ Downloaded Node.js"
+
+        # Extract to Program Files
+        Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+
+        # Rename extracted folder
+        $ExtractedFolder = Join-Path "C:\Program Files" "node-$NodeVersion-win-x64"
+        if (Test-Path $ExtractedFolder) {
+            Rename-Item -Path $ExtractedFolder -NewName "nodejs" -Force
+        }
+
+        # Clean up
+        Remove-Item $NodeZip -Force -ErrorAction SilentlyContinue
+
+        Write-Log "✓ Node.js installed to $NodeInstallPath" "SUCCESS"
+    } catch {
+        Write-Log "WARN: Failed to install Node.js: $_" "WARN"
+        Write-Log "Bytebotd may not start without Node.js" "WARN"
+    }
+} else {
+    Write-Log "✓ Node.js already installed" "SUCCESS"
+}
+
+# Verify Sharp module
 $BytebotdDir = Join-Path $InstallRoot "packages\bytebotd"
 if (-not (Test-Path $BytebotdDir)) {
     Write-Log "ERROR: Bytebotd directory not found at $BytebotdDir" "ERROR"
     exit 1
 }
 
-try {
-    Push-Location $BytebotdDir
-
-    Write-Log "Running: npm rebuild sharp --verbose"
-    $RebuildLog = Join-Path $LogDir "sharp-rebuild.log"
-    npm rebuild sharp --verbose > $RebuildLog 2>&1
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "WARN: Sharp rebuild exited with code $LASTEXITCODE" "WARN"
-        Write-Log "Check log: $RebuildLog" "WARN"
-        Write-Log "Continuing anyway (Sharp may still work)..." "WARN"
-    } else {
-        Write-Log "✓ Sharp rebuilt successfully" "SUCCESS"
-    }
-
-    Pop-Location
-} catch {
-    Write-Log "ERROR: Sharp rebuild failed: $_" "ERROR"
-    Write-Log "Installation may not function correctly" "WARN"
+$SharpPath = Join-Path $BytebotdDir "node_modules\sharp"
+if (Test-Path $SharpPath) {
+    Write-Log "✓ Sharp module found (pre-built for Windows)" "SUCCESS"
+} else {
+    Write-Log "WARN: Sharp module not found, image processing may not work" "WARN"
 }
 
 Write-Log ""

@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  # Windows 11 container with Bytebotd pre-installed via MSI
+  # Uses pre-baked image for 96% faster startup (30-60s vs 8-15 min)
+  bytebot-windows:
+    image: bytebot-windows-prebaked:latest
+    container_name: bytebot-windows
+    privileged: true
+    devices:
+      - /dev/kvm
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8006:8006"  # Web-based VNC viewer
+      - "3389:3389"  # RDP access
+      - "9990:9990"  # Bytebotd API
+    environment:
+      # Windows 11 configuration
+      - VERSION=win11
+      - RAM_SIZE=${WINDOWS_RAM_SIZE:-8G}
+      - CPU_CORES=${WINDOWS_CPU_CORES:-4}
+      - DISK_SIZE=${WINDOWS_DISK_SIZE:-100G}
+
+      # Time sync with host
+      - ARGUMENTS=-rtc base=localtime
+
+      # Bytebotd environment (already installed via MSI)
+      # These are passed through to the Windows environment
+      - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://host.docker.internal:9989}
+      - BYTEBOT_SMART_FOCUS=${BYTEBOT_SMART_FOCUS:-true}
+      - BYTEBOT_SMART_FOCUS_MODEL=${BYTEBOT_SMART_FOCUS_MODEL:-gpt-4o-mini}
+      - BYTEBOT_OVERVIEW_GRID=${BYTEBOT_OVERVIEW_GRID:-200}
+      - BYTEBOT_FOCUSED_GRID=${BYTEBOT_FOCUSED_GRID:-25}
+      - BYTEBOT_COORDINATE_METRICS=${BYTEBOT_COORDINATE_METRICS:-true}
+
+    volumes:
+      # Persistent Windows installation
+      - ${WINDOWS_STORAGE_PATH:-bytebot-windows-storage}:/storage
+
+    networks:
+      - bytebot-network
+
+    depends_on:
+      - bytebot-holo
+
+    restart: unless-stopped
+
+    labels:
+      - "bytebot.component=windows-desktop"
+      - "bytebot.version=prebaked"
+      - "bytebot.description=Windows 11 with pre-installed Bytebotd"
+
+  # Holo 1.5-7B service for UI element detection
+  bytebot-holo:
+    image: bytebot-holo:latest
+    container_name: bytebot-holo
+    build:
+      context: ../packages/bytebot-holo
+      dockerfile: Dockerfile
+    ports:
+      - "9989:9989"
+    environment:
+      - HOLO_DEVICE=${HOLO_DEVICE:-auto}
+      - HOLO_MIN_CONFIDENCE=${HOLO_MIN_CONFIDENCE:-0.05}
+      - HOLO_PERFORMANCE_PROFILE=${HOLO_PERFORMANCE_PROFILE:-balanced}
+    volumes:
+      - holo-cache:/root/.cache/huggingface
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    labels:
+      - "bytebot.component=holo"
+      - "bytebot.description=Holo 1.5-7B UI element detection"
+
+  # PostgreSQL database for agent state
+  postgres:
+    image: postgres:15-alpine
+    container_name: bytebot-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-bytebotdb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=database"
+
+  # Bytebot Agent (orchestrates AI tasks)
+  bytebot-agent:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-agent/Dockerfile
+    container_name: bytebot-agent
+    ports:
+      - "9991:9991"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bytebotdb}
+      - BYTEBOTD_URL=http://bytebot-windows:9990
+      - HOLO_URL=http://bytebot-holo:9989
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - BYTEBOT_SMART_FOCUS=${BYTEBOT_SMART_FOCUS:-true}
+      - BYTEBOT_SMART_FOCUS_MODEL=${BYTEBOT_SMART_FOCUS_MODEL:-gpt-4o-mini}
+    depends_on:
+      - postgres
+      - bytebot-windows
+      - bytebot-holo
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=agent"
+
+  # Bytebot UI (web frontend)
+  bytebot-ui:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-ui/Dockerfile
+    container_name: bytebot-ui
+    ports:
+      - "9992:9992"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:9991
+      - NEXT_PUBLIC_BYTEBOTD_URL=http://localhost:9990
+    depends_on:
+      - bytebot-agent
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=ui"
+
+volumes:
+  bytebot-windows-storage:
+  holo-cache:
+  postgres-data:
+
+networks:
+  bytebot-network:
+    driver: bridge

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <?define ProductName = "Bytebotd Desktop Agent" ?>
+  <?define ProductVersion = "1.0.0" ?>
+  <?define ProductManufacturer = "Bytebot" ?>
+  <?define ProductUpgradeCode = "12345678-1234-1234-1234-123456789ABC" ?>
+
+  <Product Id="*"
+           Name="$(var.ProductName)"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="$(var.ProductManufacturer)"
+           UpgradeCode="$(var.ProductUpgradeCode)">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="$(var.ProductName) Installer"
+             Comments="Installs Bytebotd Desktop Agent with auto-start service" />
+
+    <!-- Require Windows 10 or later -->
+    <Condition Message="This application requires Windows 10 or later.">
+      <![CDATA[Installed OR (VersionNT >= 603)]]>
+    </Condition>
+
+    <!-- Upgrade logic -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  AllowSameVersionUpgrades="yes" />
+
+    <!-- Embedded CAB for single-file installer -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Custom UI (minimal, silent by default) -->
+    <UIRef Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- Installation directory -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Bytebot">
+          <Directory Id="PACKAGESDIR" Name="packages">
+            <Directory Id="BYTEBOTDDIR" Name="bytebotd" />
+            <Directory Id="SHAREDDIR" Name="shared" />
+            <Directory Id="BYTEBOTCVDIR" Name="bytebot-cv" />
+          </Directory>
+        </Directory>
+      </Directory>
+
+      <!-- ProgramData for logs and heartbeat -->
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="BYTEBOTDATADIR" Name="Bytebot" />
+        <Directory Id="BYTEBOTLOGSDIR" Name="Bytebot-Logs" />
+      </Directory>
+
+      <!-- Start Menu shortcut -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Bytebot" />
+      </Directory>
+    </Directory>
+
+    <!-- Feature: Main application -->
+    <Feature Id="MainApplication"
+             Title="Bytebotd Desktop Agent"
+             Level="1"
+             Description="Core desktop automation agent with computer vision capabilities"
+             ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="ProgramDataComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <!-- Custom actions -->
+    <CustomActionRef Id="RebuildSharpModule" />
+    <CustomActionRef Id="RegisterWindowsService" />
+    <CustomActionRef Id="StartBytebotdService" />
+    <CustomActionRef Id="StopBytebotdService" />
+    <CustomActionRef Id="UnregisterWindowsService" />
+
+    <!-- Install sequence -->
+    <InstallExecuteSequence>
+      <!-- Stop service before uninstall -->
+      <Custom Action="StopBytebotdService" Before="RemoveFiles">
+        Installed AND NOT UPGRADINGPRODUCTCODE
+      </Custom>
+
+      <!-- Unregister service before uninstall -->
+      <Custom Action="UnregisterWindowsService" Before="RemoveFiles">
+        Installed AND NOT UPGRADINGPRODUCTCODE
+      </Custom>
+
+      <!-- Rebuild Sharp module after files installed -->
+      <Custom Action="RebuildSharpModule" After="InstallFiles">
+        NOT Installed AND NOT REMOVE
+      </Custom>
+
+      <!-- Register Windows service after Sharp rebuild -->
+      <Custom Action="RegisterWindowsService" After="RebuildSharpModule">
+        NOT Installed AND NOT REMOVE
+      </Custom>
+
+      <!-- Start service after registration -->
+      <Custom Action="StartBytebotdService" After="RegisterWindowsService">
+        NOT Installed AND NOT REMOVE
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- UI sequence for silent installs -->
+    <InstallUISequence>
+      <Show Dialog="WelcomeDlg" Before="ProgressDlg">NOT Installed</Show>
+      <Show Dialog="VerifyReadyDlg" Before="ExecuteAction" />
+    </InstallUISequence>
+
+    <!-- Application shortcuts -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="ABCD1234-5678-90AB-CDEF-123456789ABC">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="Bytebotd Desktop Agent"
+                  Description="Launch Bytebotd Desktop Agent"
+                  Target="[INSTALLFOLDER]packages\bytebotd\start-bytebotd.bat"
+                  WorkingDirectory="BYTEBOTDDIR" />
+
+        <Shortcut Id="TrayIconShortcut"
+                  Name="Bytebotd Tray Monitor"
+                  Description="Launch Bytebotd Tray Icon Monitor"
+                  Target="powershell.exe"
+                  Arguments="-WindowStyle Hidden -File &quot;[INSTALLFOLDER]packages\bytebotd\bytebotd-tray.ps1&quot;"
+                  WorkingDirectory="BYTEBOTDDIR" />
+
+        <Shortcut Id="UninstallProduct"
+                  Name="Uninstall Bytebotd"
+                  Target="[SystemFolder]msiexec.exe"
+                  Arguments="/x [ProductCode]"
+                  Description="Uninstalls Bytebotd Desktop Agent" />
+
+        <RemoveFolder Id="CleanupApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Bytebot\Bytebotd"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+  </Product>
+</Wix>

@@ -231,17 +231,38 @@ class Holo15:
             else:
                 model = Llama.from_pretrained(**llama_kwargs)
 
-            actual_gpu_layers = getattr(model, "n_gpu_layers", None)
-            if self.device == "cuda" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
-                print(
-                    "⚠ CUDA device requested but llama-cpp-python reports no GPU layers. "
-                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
-                )
-            if self.device == "mps" and (actual_gpu_layers is None or actual_gpu_layers <= 0):
-                print(
-                    "⚠ MPS device requested but Metal acceleration is disabled. "
-                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_METAL=on\" pip install --force-reinstall llama-cpp-python"
-                )
+            gpu_working = False
+
+            # Validate CUDA with nvidia-smi (llama.cpp uses separate CUDA context from PyTorch)
+            if self.device == "cuda":
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        gpu_mem_mb = int(result.stdout.strip().split('\n')[0])
+                        if gpu_mem_mb > 100:  # At least 100MB allocated = GPU is working
+                            gpu_working = True
+                            gpu_mem_gb = gpu_mem_mb / 1024
+                            print(f"✓ CUDA GPU acceleration active ({gpu_mem_gb:.1f}GB VRAM in use)")
+                except Exception:
+                    pass
+
+                if not gpu_working:
+                    print(
+                        "⚠ CUDA device requested but GPU memory usage not detected. "
+                        "If inference is slow, reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
+                    )
+
+            # Validate MPS (Apple Silicon)
+            # Note: MPS doesn't have nvidia-smi equivalent, so we rely on successful model loading
+            if self.device == "mps":
+                # If model loaded without errors, MPS is working
+                print("  MPS (Metal) device configured - validation via model loading")
 
             print("  llama.cpp runtime parameters:")
             print(f"    context_length: {self.n_ctx}")

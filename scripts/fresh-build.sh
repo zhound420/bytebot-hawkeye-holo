@@ -10,23 +10,57 @@ NC='\033[0m' # No Color
 
 # Parse arguments
 FULL_RESET=false
-for arg in "$@"; do
-    case $arg in
+TARGET_OS="linux"  # Default to Linux
+USE_PREBAKED=false  # Use pre-baked Windows image
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --full-reset)
             FULL_RESET=true
             shift
             ;;
+        --os)
+            TARGET_OS="$2"
+            shift 2
+            ;;
+        --prebaked)
+            USE_PREBAKED=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown argument: $1${NC}"
+            echo "Usage: $0 [--os linux|windows|macos] [--prebaked] [--full-reset]"
+            exit 1
+            ;;
     esac
 done
 
+# Validate TARGET_OS
+if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" && "$TARGET_OS" != "macos" ]]; then
+    echo -e "${RED}Invalid OS: $TARGET_OS${NC}"
+    echo "Valid options: linux, windows, macos"
+    exit 1
+fi
+
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   Bytebot Hawkeye - Fresh Build${NC}"
+echo -e "${BLUE}   Bytebot Hawkeye - Fresh Build ($TARGET_OS)${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
 if [ "$FULL_RESET" = true ]; then
     echo -e "${RED}⚠️  FULL RESET MODE ENABLED${NC}"
     echo -e "${RED}All Docker volumes, images, and data will be removed!${NC}"
+    echo ""
+fi
+
+if [[ "$TARGET_OS" == "windows" ]] && [[ "$USE_PREBAKED" == "true" ]]; then
+    echo -e "${BLUE}Target: Windows 11 (Pre-baked Image - 96% faster startup)${NC}"
+    echo ""
+elif [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${BLUE}Target: Windows 11 (Runtime Installation)${NC}"
+    echo ""
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    echo -e "${BLUE}Target: macOS Container${NC}"
     echo ""
 fi
 
@@ -63,6 +97,72 @@ esac
 
 echo -e "${BLUE}Platform: $PLATFORM ($ARCH)${NC}"
 echo ""
+
+# Interactive OS selection if not specified via flag
+OS_SELECTED_INTERACTIVELY=false
+if [[ "$TARGET_OS" == "linux" ]] && [[ "$#" -eq 0 || ! "$@" =~ "--os" ]]; then
+    # Only show prompt if no --os flag was provided
+    # (Check if we're running with default TARGET_OS and no flags were originally passed)
+    if [[ ${TARGET_OS_FROM_FLAG:-} != "true" ]]; then
+        echo ""
+        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+        echo -e "${BLUE}   Target OS Selection${NC}"
+        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Which OS would you like to build for?"
+        echo "  1) Linux (desktop container - default)"
+        echo "  2) Windows 11 (requires KVM)"
+        echo "  3) macOS (requires KVM, Apple hardware)"
+        echo ""
+        read -p "Select option [1-3] (default: 1): " -n 1 -r OS_CHOICE
+        echo ""
+
+        case $OS_CHOICE in
+            2)
+                TARGET_OS="windows"
+                echo -e "${YELLOW}✓ Windows 11 selected${NC}"
+                OS_SELECTED_INTERACTIVELY=true
+                ;;
+            3)
+                TARGET_OS="macos"
+                echo -e "${YELLOW}✓ macOS selected${NC}"
+                OS_SELECTED_INTERACTIVELY=true
+                ;;
+            1|"")
+                TARGET_OS="linux"
+                echo -e "${GREEN}✓ Linux selected${NC}"
+                OS_SELECTED_INTERACTIVELY=true
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid choice, defaulting to Linux${NC}"
+                TARGET_OS="linux"
+                OS_SELECTED_INTERACTIVELY=true
+                ;;
+        esac
+        echo ""
+
+        # If Windows selected, ask about pre-baked image
+        if [[ "$TARGET_OS" == "windows" ]]; then
+            echo -e "${BLUE}Use pre-baked Windows image?${NC}"
+            echo "  • Pre-baked: 30-60 seconds startup (96% faster)"
+            echo "  • Runtime:   8-15 minutes startup"
+            read -p "Use pre-baked image? [Y/n] " -n 1 -r PREBAKED_CHOICE
+            echo ""
+            if [[ ! $PREBAKED_CHOICE =~ ^[Nn]$ ]]; then
+                USE_PREBAKED=true
+                echo -e "${GREEN}✓ Using pre-baked image${NC}"
+            else
+                echo -e "${YELLOW}✓ Using runtime installation${NC}"
+            fi
+            echo ""
+        fi
+    fi
+fi
+
+# Mark that TARGET_OS was set via flag (for future reference)
+if [[ "$@" =~ "--os" ]]; then
+    TARGET_OS_FROM_FLAG=true
+fi
 
 # Stop any running services
 echo -e "${BLUE}Step 1: Stopping existing services...${NC}"
@@ -158,6 +258,64 @@ if [ "$CLEAR_BUILD_CACHE" = true ]; then
     echo ""
 fi
 
+# Windows-specific preparation
+if [[ "$TARGET_OS" == "windows" ]]; then
+    if [[ "$USE_PREBAKED" == "true" ]]; then
+        echo -e "${BLUE}Step 1.5: Preparing Windows pre-baked image...${NC}"
+
+        # Check if pre-baked image exists
+        if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "bytebot-windows-prebaked:latest"; then
+            echo -e "${YELLOW}Pre-baked image not found${NC}"
+            echo ""
+            echo "Building pre-baked image now..."
+            echo ""
+
+            # Build pre-baked image
+            bash "./scripts/build-windows-prebaked-image.sh"
+
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}✗ Failed to build pre-baked image${NC}"
+                echo ""
+                echo "Fallback to runtime installation:"
+                echo -e "  ${BLUE}./scripts/fresh-build.sh --os windows${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${GREEN}✓ Pre-baked image found${NC}"
+        fi
+
+        echo -e "${BLUE}Startup time: ~30-60 seconds (vs 8-15 minutes with runtime installation)${NC}"
+        echo ""
+
+    else
+        echo -e "${BLUE}Step 1.5: Preparing Windows container artifacts (runtime installation)...${NC}"
+
+        # Check if Windows installer package exists
+        if [[ -f "docker/windows-installer/bytebotd-windows-installer.zip" ]]; then
+            INSTALLER_SIZE=$(du -sh "docker/windows-installer/bytebotd-windows-installer.zip" | cut -f1)
+            echo -e "${YELLOW}Windows installer package already exists (${INSTALLER_SIZE})${NC}"
+            echo -e "${BLUE}Using existing installer from previous build${NC}"
+            echo -e "${BLUE}To force rebuild: rm -rf docker/windows-installer${NC}"
+        else
+            echo -e "${BLUE}Building Windows installer package...${NC}"
+            echo ""
+
+            # Run the installer build script
+            if [[ -f "scripts/build-windows-installer.sh" ]]; then
+                bash "./scripts/build-windows-installer.sh"
+            else
+                echo -e "${RED}✗ Windows installer build script not found${NC}"
+                echo ""
+                echo "Expected: scripts/build-windows-installer.sh"
+                exit 1
+            fi
+        fi
+
+        echo -e "${BLUE}Installer will be available as \\\\host.lan\\Data\\bytebotd-windows-installer.zip in Windows container${NC}"
+        echo ""
+    fi
+fi
+
 # Clean problematic node_modules (OpenCV build artifacts)
 echo -e "${BLUE}Step 2: Cleaning node_modules...${NC}"
 if [ -d "node_modules/@u4/opencv-build" ]; then
@@ -247,39 +405,60 @@ echo ""
 
 cd docker
 
-# Determine compose file
-if [[ -f "docker-compose.proxy.yml" ]]; then
-    COMPOSE_FILE="docker-compose.proxy.yml"
-    echo -e "${BLUE}Using: Proxy Stack (with LiteLLM)${NC}"
+# Determine compose file based on TARGET_OS
+if [[ "$TARGET_OS" == "windows" ]]; then
+    if [[ "$USE_PREBAKED" == "true" ]]; then
+        COMPOSE_FILE="docker-compose.windows-prebaked.yml"
+        echo -e "${BLUE}Using: Windows Stack (Pre-baked Image)${NC}"
+        DESKTOP_SERVICE="bytebot-windows"
+    else
+        COMPOSE_FILE="docker-compose.windows.yml"
+        echo -e "${BLUE}Using: Windows Stack (Runtime Installation)${NC}"
+        DESKTOP_SERVICE="bytebot-windows"
+    fi
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    COMPOSE_FILE="docker-compose.macos.yml"
+    echo -e "${BLUE}Using: macOS Stack${NC}"
+    DESKTOP_SERVICE="bytebot-macos"
 else
-    COMPOSE_FILE="docker-compose.yml"
-    echo -e "${BLUE}Using: Standard Stack${NC}"
+    # Linux - check for proxy vs standard
+    if [[ -f "docker-compose.proxy.yml" ]]; then
+        COMPOSE_FILE="docker-compose.proxy.yml"
+        echo -e "${BLUE}Using: Proxy Stack (with LiteLLM)${NC}"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+        echo -e "${BLUE}Using: Standard Stack${NC}"
+    fi
+    DESKTOP_SERVICE="bytebot-desktop"
 fi
 
-# Build services - now unified across all platforms with x86_64 architecture
-echo -e "${BLUE}Building services (forced x86_64 architecture for consistency)...${NC}"
+# Build services
+echo ""
 
-if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
+# Determine service list based on compose file
+STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres)
+if [[ "$COMPOSE_FILE" == *"proxy"* ]]; then
+    STACK_SERVICES+=(bytebot-llm-proxy)
+fi
+
+# Check if we should include Holo service (not for native Apple Silicon setup)
+INCLUDE_HOLO=true
+if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]] && [[ "$TARGET_OS" == "linux" ]]; then
+    INCLUDE_HOLO=false
+fi
+
+if [[ "$INCLUDE_HOLO" == "false" ]]; then
     echo -e "${YELLOW}Note: Running via Rosetta 2 on Apple Silicon${NC}"
-    echo -e "${BLUE}Building without OmniParser container (using native)...${NC}"
-    # Build without OmniParser container (running natively with MPS)
-    docker compose -f $COMPOSE_FILE build \
-        bytebot-desktop \
-        bytebot-agent \
-        bytebot-ui \
-        $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
+    echo -e "${BLUE}Building without Holo container (using native)...${NC}"
+    # Build without Holo container (running natively with MPS)
+    docker compose -f $COMPOSE_FILE build "${STACK_SERVICES[@]}"
 
     echo ""
     echo -e "${BLUE}Starting services...${NC}"
-    docker compose -f $COMPOSE_FILE up -d --no-deps \
-        bytebot-desktop \
-        bytebot-agent \
-        bytebot-ui \
-        postgres \
-        $([ "$COMPOSE_FILE" = "docker-compose.proxy.yml" ] && echo "bytebot-llm-proxy" || echo "")
+    docker compose -f $COMPOSE_FILE up -d --no-deps "${STACK_SERVICES[@]}"
 else
-    # Linux and Windows (WSL) - build everything including OmniParser
-    echo -e "${BLUE}Building all services including OmniParser...${NC}"
+    # Standard build - includes all services
+    echo -e "${BLUE}Building all services...${NC}"
     docker compose -f $COMPOSE_FILE up -d --build
 fi
 
@@ -348,11 +527,25 @@ echo ""
 echo "Stop stack:"
 echo -e "  ${BLUE}./scripts/stop-stack.sh${NC}"
 echo ""
-echo "For Windows 11 container:"
-echo -e "  ${BLUE}./scripts/start-stack.sh --os windows${NC}"
-echo "For macOS container:"
-echo -e "  ${BLUE}./scripts/start-stack.sh --os macos${NC}"
+echo -e "${BLUE}Fresh Build Examples:${NC}"
+echo "  • Interactive (prompts for OS):"
+echo -e "    ${BLUE}./scripts/fresh-build.sh${NC}"
 echo ""
-echo "For complete reset (removes all data):"
-echo -e "  ${BLUE}./scripts/fresh-build.sh --full-reset${NC}"
+echo "  • Linux (default):"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --os linux${NC}"
+echo ""
+echo "  • Windows 11 (runtime installation):"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --os windows${NC}"
+echo ""
+echo "  • Windows 11 (pre-baked - 96% faster):"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --os windows --prebaked${NC}"
+echo ""
+echo "  • macOS:"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --os macos${NC}"
+echo ""
+echo "  • Full reset (removes all data):"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --full-reset${NC}"
+echo ""
+echo "  • Windows + full reset:"
+echo -e "    ${BLUE}./scripts/fresh-build.sh --os windows --prebaked --full-reset${NC}"
 echo ""

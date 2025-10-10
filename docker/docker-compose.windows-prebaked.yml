@@ -25,6 +25,11 @@ services:
       # Time sync with host
       - ARGUMENTS=-rtc base=localtime
 
+      # BTRFS compatibility (avoids O_DIRECT requirement)
+      # Allows Windows containers to work on BTRFS without ext4 loop device
+      - DISK_IO=threads
+      - DISK_CACHE=writeback
+
       # Bytebotd environment (already installed via MSI)
       # These are passed through to the Windows environment
       - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
@@ -37,8 +42,8 @@ services:
       - BYTEBOT_COORDINATE_METRICS=${BYTEBOT_COORDINATE_METRICS:-true}
 
     volumes:
-      # Persistent Windows installation
-      - ${WINDOWS_STORAGE_PATH:-bytebot-windows-storage}:/storage
+      # Persistent Windows installation (BTRFS compatible via DISK_IO/DISK_CACHE)
+      - bytebot-windows-storage:/storage
 
     networks:
       - bytebot-network

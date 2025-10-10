@@ -151,32 +151,25 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 - **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
 
-**BTRFS Filesystem - Automatic Workaround:**
-- ⚠️ **Windows containers require O_DIRECT, which BTRFS doesn't support properly**
-- **Root cause**: dockur/windows uses `aio=native` + `cache=none` → requires O_DIRECT
-- BTRFS doesn't support O_DIRECT due to checksumming conflicts
-- Windows Setup would hang at ~75% without workaround
+**BTRFS Filesystem - Native Compatibility:**
+- ✅ **Windows containers now work directly on BTRFS** (no workaround needed!)
+- **Solution**: dockur/windows provides `DISK_IO=threads` and `DISK_CACHE=writeback` environment variables
+- These settings avoid the O_DIRECT requirement that BTRFS doesn't support
+- **Performance**: Minimal performance impact, fully functional on BTRFS
 
-**✅ Automatic Solution** (BTRFS hosts only):
-- `start-stack.sh` automatically detects BTRFS filesystem
-- Creates 160GB ext4 loop device at `/opt/bytebot-windows.img`
-- Mounts at `/opt/bytebot-windows-storage`
-- **Transparent**: No manual intervention needed
-- **Sparse file**: Grows as needed (not 160GB upfront)
-- **Performance**: Slight overhead vs native ext4, but fully functional
-
-**Manual Cleanup** (if needed):
-```bash
-# Stop Windows container first
-docker stop bytebot-windows
-
-# Run cleanup script
-./scripts/cleanup-windows-btrfs-workaround.sh
+**Configuration** (already applied in docker-compose files):
+```yaml
+environment:
+  - DISK_IO=threads
+  - DISK_CACHE=writeback
 ```
 
-**Persistence**: Loop device mount doesn't survive reboots. Either:
-- Run `./scripts/start-stack.sh --os windows` after reboot (re-mounts automatically)
-- OR add to `/etc/fstab`: `/opt/bytebot-windows.img /opt/bytebot-windows-storage ext4 loop 0 2`
+**Benefits:**
+- ✅ No loop device creation or sudo required
+- ✅ Works directly on BTRFS root filesystem
+- ✅ Standard Docker volumes (no manual mount points)
+- ✅ Simpler setup and maintenance
+- ✅ No filesystem corruption risk from loop devices
 
 **Why build on host?**
 - Pre-built artifacts mounted as read-only volumes = 2-3 min setup

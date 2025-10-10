@@ -160,13 +160,8 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-    # Check for BTRFS and set up workaround if needed
-    WINDOWS_STORAGE_PATH=$(bash "$SCRIPT_DIR/setup-windows-btrfs-workaround.sh")
-    if [[ -n "$WINDOWS_STORAGE_PATH" ]]; then
-        export WINDOWS_STORAGE_PATH
-        echo -e "${GREEN}✓ Using ext4 loop device at ${WINDOWS_STORAGE_PATH}${NC}"
-        echo ""
-    fi
+    # Note: BTRFS compatibility now handled by DISK_IO=threads and DISK_CACHE=writeback
+    # in docker-compose files. No loop device workaround needed.
 
     if [[ "$USE_PREBAKED" == "true" ]]; then
         echo -e "${BLUE}Using pre-baked Windows image (96% faster startup)${NC}"

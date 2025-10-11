@@ -449,17 +449,21 @@ fi
 
 if [[ "$INCLUDE_HOLO" == "false" ]]; then
     echo -e "${YELLOW}Note: Running via Rosetta 2 on Apple Silicon${NC}"
-    echo -e "${BLUE}Building without Holo container (using native)...${NC}"
+    echo -e "${BLUE}Building without Holo container (using native with --no-cache)...${NC}"
+    echo -e "${YELLOW}This ensures a truly fresh build but may take longer${NC}"
     # Build without Holo container (running natively with MPS)
-    docker compose -f $COMPOSE_FILE build "${STACK_SERVICES[@]}"
+    docker compose -f $COMPOSE_FILE build --no-cache "${STACK_SERVICES[@]}"
 
     echo ""
     echo -e "${BLUE}Starting services...${NC}"
     docker compose -f $COMPOSE_FILE up -d --no-deps "${STACK_SERVICES[@]}"
 else
     # Standard build - includes all services
-    echo -e "${BLUE}Building all services...${NC}"
-    docker compose -f $COMPOSE_FILE up -d --build
+    echo -e "${BLUE}Building all services with --no-cache (truly fresh, may take longer)...${NC}"
+    docker compose -f $COMPOSE_FILE build --no-cache
+    echo ""
+    echo -e "${BLUE}Starting services...${NC}"
+    docker compose -f $COMPOSE_FILE up -d
 fi
 
 cd ..

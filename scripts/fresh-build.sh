@@ -239,6 +239,24 @@ if [ -f "scripts/stop-stack.sh" ]; then
         ./scripts/stop-stack.sh || true
     fi
 fi
+
+# Force cleanup of Windows container ports before starting (prevents port conflicts)
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${BLUE}Cleaning up Windows container ports...${NC}"
+
+    # Find and remove containers using Windows ports
+    WINDOWS_PORTS=(3389 8006 9990 8081)
+    for port in "${WINDOWS_PORTS[@]}"; do
+        CONTAINER_ID=$(docker ps -a --filter "publish=$port" --format "{{.ID}}" 2>/dev/null | head -n 1)
+        if [ -n "$CONTAINER_ID" ]; then
+            CONTAINER_NAME=$(docker ps -a --filter "id=$CONTAINER_ID" --format "{{.Names}}")
+            echo "  Removing container $CONTAINER_NAME using port $port..."
+            docker rm -f "$CONTAINER_ID" 2>/dev/null || true
+        fi
+    done
+
+    echo -e "${GREEN}✓ Port cleanup complete${NC}"
+fi
 echo ""
 
 # Remove Docker images if requested
@@ -462,6 +480,38 @@ else
     echo -e "${BLUE}Building all services with --no-cache (truly fresh, may take longer)...${NC}"
     docker compose -f $COMPOSE_FILE build --no-cache
     echo ""
+
+    # Verify Windows ports are available before starting (final safety check)
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        echo -e "${BLUE}Verifying Windows ports are available...${NC}"
+
+        PORTS_IN_USE=()
+        for port in 3389 8006 9990 8081; do
+            if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+                PORTS_IN_USE+=($port)
+            fi
+        done
+
+        if [ ${#PORTS_IN_USE[@]} -gt 0 ]; then
+            echo -e "${RED}ERROR: Ports already in use: ${PORTS_IN_USE[@]}${NC}"
+            echo ""
+            echo "Run cleanup manually:"
+            echo -e "  ${BLUE}./scripts/stop-stack.sh${NC}"
+            echo ""
+            echo "Or force remove containers:"
+            for port in "${PORTS_IN_USE[@]}"; do
+                CONTAINER=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
+                if [ -n "$CONTAINER" ]; then
+                    echo -e "  ${BLUE}docker rm -f $CONTAINER${NC}"
+                fi
+            done
+            exit 1
+        fi
+
+        echo -e "${GREEN}✓ All ports available${NC}"
+        echo ""
+    fi
+
     echo -e "${BLUE}Starting services...${NC}"
     docker compose -f $COMPOSE_FILE up -d
 fi

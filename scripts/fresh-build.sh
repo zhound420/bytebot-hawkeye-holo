@@ -189,7 +189,13 @@ else
     echo -e "${RED}⚠️  Remove Docker volumes?${NC}"
     echo "   • PostgreSQL database (all tasks, messages, settings)"
     echo "   • Holo 1.5-7B model weights (~5.5GB)"
-    echo "   • Windows container disk (~150GB if using Windows)"
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        echo -e "   ${YELLOW}• Windows container disk (~150GB) - REMOVES INSTALLED WINDOWS!${NC}"
+        echo -e "   ${YELLOW}  Removing this forces full Windows reinstall (8-15 min)${NC}"
+        echo -e "   ${YELLOW}  Keeping it allows fast boot of existing Windows (30-60s)${NC}"
+    else
+        echo "   • Windows container disk (~150GB if using Windows)"
+    fi
     echo -e "${RED}   THIS WILL DELETE ALL YOUR DATA!${NC}"
     read -p "Remove volumes? [y/N] " -n 1 -r
     echo ""
@@ -271,6 +277,71 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo -e "${GREEN}✓ No orphaned containers found${NC}"
     else
         echo -e "${GREEN}✓ Cleaned up $CLEANUP_COUNT orphaned container(s)${NC}"
+    fi
+    echo ""
+fi
+
+# Windows volume intelligence: Detect and optionally remove existing Windows installation
+# This gives users control over whether to reuse existing Windows (fast) or reinstall (slow but fresh)
+if [[ "$TARGET_OS" == "windows" ]] && [[ "$REMOVE_VOLUMES" == "false" ]]; then
+    # Check if windows_storage volume exists (named volumes from compose file)
+    WINDOWS_VOLUME=$(docker volume ls --format "{{.Name}}" | grep -E "^bytebot_windows_storage$|^windows_storage$" | head -n 1)
+
+    if [ -n "$WINDOWS_VOLUME" ]; then
+        echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}   Existing Windows Installation Detected${NC}"
+        echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Found existing Windows 11 installation in Docker volume: $WINDOWS_VOLUME"
+        echo ""
+        echo "Options:"
+        echo -e "  ${GREEN}• Keep (default):${NC} Boot existing Windows (30-60 seconds) ✅ FAST"
+        echo -e "  ${YELLOW}• Remove:${NC}         Fresh Windows install (8-15 minutes) ⏱️  SLOW"
+        echo ""
+        read -p "Keep existing Windows installation? [Y/n] " -n 1 -r KEEP_WINDOWS
+        echo ""
+        echo ""
+
+        if [[ $KEEP_WINDOWS =~ ^[Nn]$ ]]; then
+            echo -e "${YELLOW}Removing Windows volume for fresh installation...${NC}"
+            docker volume rm "$WINDOWS_VOLUME" 2>/dev/null || true
+            echo -e "${GREEN}✓ Windows volume removed - will perform fresh install (8-15 min)${NC}"
+        else
+            echo -e "${GREEN}✓ Using existing Windows installation (30-60s boot)${NC}"
+        fi
+        echo ""
+    fi
+
+    # Clean up stale Windows installer artifacts if requested
+    if [ -d "docker/windows-installer" ]; then
+        INSTALLER_SIZE=$(du -sh docker/windows-installer 2>/dev/null | cut -f1 || echo "unknown")
+        echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}   Windows Installer Artifacts Detected${NC}"
+        echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Found pre-built installer packages: $INSTALLER_SIZE"
+        echo ""
+        echo "These ZIPs contain compiled bytebotd packages and may become stale if:"
+        echo "  • Source code in packages/bytebotd has changed"
+        echo "  • Dependencies in package.json were updated"
+        echo "  • You want to ensure truly fresh Windows installation"
+        echo ""
+        echo -e "${BLUE}Options:${NC}"
+        echo -e "  ${GREEN}• Keep (default):${NC} Reuse existing installer (faster, may be stale)"
+        echo -e "  ${YELLOW}• Remove:${NC}         Force rebuild installer (slower, always fresh)"
+        echo ""
+        read -p "Keep existing installer artifacts? [Y/n] " -n 1 -r KEEP_INSTALLER
+        echo ""
+        echo ""
+
+        if [[ $KEEP_INSTALLER =~ ^[Nn]$ ]]; then
+            echo -e "${YELLOW}Removing Windows installer artifacts...${NC}"
+            rm -rf docker/windows-installer
+            echo -e "${GREEN}✓ Installer artifacts removed (will rebuild on next run)${NC}"
+        else
+            echo -e "${GREEN}✓ Using existing installer artifacts${NC}"
+        fi
+        echo ""
     fi
 fi
 echo ""
@@ -597,6 +668,18 @@ echo ""
 echo "Stop stack:"
 echo -e "  ${BLUE}./scripts/stop-stack.sh${NC}"
 echo ""
+
+# Windows-specific help
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo -e "${BLUE}Windows Container Notes:${NC}"
+    echo "  • First run: 8-15 min Windows install (one-time)"
+    echo "  • Subsequent runs: 30-60s boot (reuses existing Windows)"
+    echo "  • For fresh install: Remove volumes when prompted"
+    echo "  • Web viewer: http://localhost:8006 (monitor Windows desktop)"
+    echo "  • RDP access: localhost:3389"
+    echo ""
+fi
+
 echo -e "${BLUE}Fresh Build Examples:${NC}"
 echo "  • Interactive (prompts for OS):"
 echo -e "    ${BLUE}./scripts/fresh-build.sh${NC}"

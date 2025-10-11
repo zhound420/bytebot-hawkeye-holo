@@ -23,7 +23,7 @@ echo ""
 
 # First, stop any orphaned containers (from different compose projects or manual starts)
 echo "Checking for orphaned bytebot containers..."
-ORPHANED=$(docker ps -a --format '{{.Names}}' | grep -E "bytebot|windows.*byte|test.*windows|test.*macos" || true)
+ORPHANED=$(docker ps -a --format '{{.Names}}' | grep -E "(bytebot|postgres|holo|test-.*windows|test-.*macos)" || true)
 if [ -n "$ORPHANED" ]; then
     echo -e "${YELLOW}Found orphaned containers:${NC}"
     echo "$ORPHANED" | while read container; do
@@ -65,10 +65,18 @@ for COMPOSE_FILE in "${COMPOSE_FILES[@]}"; do
 done
 
 # Clean up orphaned volumes from all compose projects
+# Match ALL volume prefixes (bytebot_, docker_, test-) and patterns
 if [ "$REMOVE_VOLUMES" = true ]; then
     echo -e "${YELLOW}⚠️  Cleaning up all bytebot volumes (including Windows/macOS stacks)${NC}"
-    docker volume ls --format "{{.Name}}" | grep -E "bytebot|postgres|windows_storage|holo" | xargs -r docker volume rm 2>/dev/null || true
+    docker volume ls --format "{{.Name}}" | grep -E "(bytebot|postgres|windows|holo)" | xargs -r docker volume rm 2>/dev/null || true
+    echo -e "${GREEN}✓ Volumes removed${NC}"
 fi
+
+# Clean up all bytebot-related networks
+echo ""
+echo "Cleaning up Docker networks..."
+docker network ls --format "{{.Name}}" | grep -E "bytebot" | xargs -r docker network rm 2>/dev/null || true
+echo -e "${GREEN}✓ Networks cleaned${NC}"
 
 echo ""
 echo -e "${GREEN}✓ Docker services stopped${NC}"

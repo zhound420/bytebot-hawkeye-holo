@@ -151,6 +151,15 @@ try {
     exit 1
 }
 
+# Verify bytebotd directory exists after extraction and move
+$BytebotdDir = Join-Path $InstallRoot "packages\bytebotd"
+if (-not (Test-Path $BytebotdDir)) {
+    Write-Log "ERROR: Bytebotd directory not found at $BytebotdDir" "ERROR"
+    Write-Log "Expected structure after extraction: $InstallRoot\packages\bytebotd\" "ERROR"
+    exit 1
+}
+Write-Log "✓ Bytebotd directory verified: $BytebotdDir" "SUCCESS"
+
 Write-Log ""
 
 # Step 4: Install Node.js (portable)
@@ -190,11 +199,6 @@ if (-not (Test-Path $NodeInstallPath)) {
 }
 
 # Verify Sharp module
-$BytebotdDir = Join-Path $InstallRoot "packages\bytebotd"
-if (-not (Test-Path $BytebotdDir)) {
-    Write-Log "ERROR: Bytebotd directory not found at $BytebotdDir" "ERROR"
-    exit 1
-}
 
 $SharpPath = Join-Path $BytebotdDir "node_modules\sharp"
 if (Test-Path $SharpPath) {

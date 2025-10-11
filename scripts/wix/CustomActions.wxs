@@ -12,9 +12,10 @@
                   Return="check" />
 
     <!-- Custom Action: Register Windows Service using schtasks -->
+    <!-- IMPORTANT: Batch files must be executed through cmd.exe, not directly -->
     <CustomAction Id="RegisterWindowsService"
                   Directory="BYTEBOTDDIR"
-                  ExeCommand="cmd.exe /c &quot;schtasks /create /tn &quot;Bytebotd Desktop Agent&quot; /tr &quot;\&quot;[INSTALLFOLDER]packages\bytebotd\start-bytebotd.bat\&quot;&quot; /sc onstart /delay 0000:30 /ru SYSTEM /f &gt; &quot;[BYTEBOTLOGSDIR]service-register.log&quot; 2>&amp;1&quot;"
+                  ExeCommand="cmd.exe /c &quot;schtasks /create /tn &quot;Bytebotd Desktop Agent&quot; /tr &quot;cmd.exe /c \&quot;[INSTALLFOLDER]packages\bytebotd\start-bytebotd.bat\&quot;&quot; /sc onstart /delay 0000:30 /ru SYSTEM /f &gt; &quot;[BYTEBOTLOGSDIR]service-register.log&quot; 2>&amp;1&quot;"
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />

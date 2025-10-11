@@ -35,21 +35,24 @@ echo ""
 echo -e "${BLUE}Step 1: Verifying source files...${NC}"
 if [ ! -f "$OEM_DIR/install.bat" ]; then
     echo -e "${RED}ERROR: install.bat not found${NC}"
-    echo "  Run: ./scripts/generate-base64-installer.sh"
+    exit 1
+fi
+if [ ! -f "$OEM_DIR/install-prebaked.ps1" ]; then
+    echo -e "${RED}ERROR: install-prebaked.ps1 not found${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Source files found${NC}"
-echo "  Note: PowerShell script is embedded as base64 inside install.bat"
+echo "  - install.bat (CMD wrapper)"
+echo "  - install-prebaked.ps1 (PowerShell installer)"
 
-# Step 2: Check CMD file encoding
-echo -e "${BLUE}Step 2: Checking install.bat file...${NC}"
-CMD_ENCODING=$(file "$OEM_DIR/install.bat")
+# Step 2: Check file sizes
+echo -e "${BLUE}Step 2: Checking file sizes...${NC}"
 CMD_SIZE=$(wc -c < "$OEM_DIR/install.bat")
+PS1_SIZE=$(wc -c < "$OEM_DIR/install-prebaked.ps1")
 
-echo -e "${GREEN}✓ CMD file ready${NC}"
-echo "  Size: $CMD_SIZE bytes"
-echo "  Encoding: $(echo $CMD_ENCODING | grep -o 'CRLF\|ASCII\|with very long lines')"
-echo "  Contains: Base64-encoded PowerShell (immune to line ending issues)"
+echo -e "${GREEN}✓ Files ready${NC}"
+echo "  install.bat: $CMD_SIZE bytes (under 8191 char limit)"
+echo "  install-prebaked.ps1: $PS1_SIZE bytes"
 
 # Step 3: Create tar.gz archive
 echo -e "${BLUE}Step 3: Creating tar.gz archive...${NC}"
@@ -63,9 +66,8 @@ fi
 # Create tar.gz with explicit binary handling to preserve CRLF
 # --format=ustar ensures compatibility
 # Files are added relative to OEM dir (no path prefix)
-# NOTE: Only include install.bat (PowerShell is embedded as base64 inside)
 # dockur/windows will automatically execute install.bat from /oem after installation
-tar --format=ustar -czf oem-files.tar.gz install.bat
+tar --format=ustar -czf oem-files.tar.gz install.bat install-prebaked.ps1
 
 if [ ! -f "oem-files.tar.gz" ]; then
     echo -e "${RED}ERROR: Failed to create archive${NC}"
@@ -85,18 +87,18 @@ trap "rm -rf $TEMP_DIR" EXIT
 cd "$TEMP_DIR"
 tar -xzf "$OUTPUT_ARCHIVE"
 
-# Verify extracted files have CRLF
-EXTRACTED_CMD_ENCODING=$(file install.bat)
-
-if [[ ! "$EXTRACTED_CMD_ENCODING" =~ "CRLF" ]] && [[ ! "$EXTRACTED_CMD_ENCODING" =~ "with very long lines" ]]; then
-    echo -e "${RED}ERROR: Extracted install.bat lost CRLF line endings!${NC}"
-    echo "  Detected: $EXTRACTED_CMD_ENCODING"
+# Verify extracted files
+if [ ! -f "install.bat" ] || [ ! -f "install-prebaked.ps1" ]; then
+    echo -e "${RED}ERROR: Files missing from extracted archive!${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Archive verified - file extracted successfully${NC}"
-echo "  Extracted install.bat: $(echo $EXTRACTED_CMD_ENCODING | grep -o 'CRLF\|with very long lines')"
-echo "  Note: PowerShell script is embedded as base64 (immune to line ending issues)"
+EXTRACTED_CMD_ENCODING=$(file install.bat)
+EXTRACTED_PS1_ENCODING=$(file install-prebaked.ps1)
+
+echo -e "${GREEN}✓ Archive verified - both files extracted successfully${NC}"
+echo "  install.bat: $(echo $EXTRACTED_CMD_ENCODING | grep -o 'CRLF\|ASCII')"
+echo "  install-prebaked.ps1: $(echo $EXTRACTED_PS1_ENCODING | grep -o 'CRLF\|ASCII')"
 echo "  dockur/windows will auto-execute install.bat during Windows setup"
 
 # Success

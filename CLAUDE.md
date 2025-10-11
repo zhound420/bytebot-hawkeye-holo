@@ -141,6 +141,31 @@ Run Bytebot with a Windows 11 desktop environment instead of Linux:
 - ZIP contains Windows-native binaries (no Linux artifacts) → faster download & extraction
 - This separation prevents "Adding OEM folder to image" hangs during Windows installation
 
+**Port Conflict Protection:**
+- fresh-build.sh now uses Docker's port filter (`docker ps --filter "publish=$port"`) instead of `lsof`
+- `lsof` only detects listening processes; Docker reserves ports at kernel level before services start
+- Final cleanup pass removes orphaned containers (e.g., test-bytebot-windows) before starting new ones
+- Prevents "Bind for 0.0.0.0:3389 failed: port is already allocated" errors
+
+**Windows Scheduled Task Fix:**
+- install-prebaked.ps1 now wraps batch file execution in `cmd.exe /c` for scheduled tasks
+- MSI CustomActions.wxs also updated to use `cmd.exe /c` wrapper
+- Windows scheduled tasks require executables (.exe), not batch files (.bat) directly
+- Fixes "The system cannot find the file specified" error during service registration
+
+**Performance Benchmarks (Actual Hardware):**
+
+| Hardware | CPU | RAM | Disk | Fresh Build Time | Notes |
+|----------|-----|-----|------|------------------|-------|
+| **Developer Machine** | Intel i7-4770 (4C/8T, 2013) | 31GB | 70% full | **21+ minutes** | Older CPU, KVM overhead significant |
+| **Expected (Modern)** | Intel i7-12700+ or AMD Ryzen 5 5600X+ | 16GB+ | <50% full | **8-15 minutes** | Recommended baseline |
+
+**Performance Factors:**
+- **CPU age**: Older CPUs (2010-2015) may take 2-3x longer due to KVM virtualization overhead
+- **Disk I/O**: SSDs recommended; HDDs or near-full disks (>70%) significantly slower
+- **RAM pressure**: <12GB available RAM may cause swapping, adding 5-10 minutes
+- **Network speed**: Initial Windows ISO download (~6GB) depends on connection
+
 **Troubleshooting:**
 - **Slow startup**: Normal on slower systems, wait up to 30s for health check
 - **Check logs**: `C:\Bytebot-Logs\bytebotd-*.log` (view via tray icon)

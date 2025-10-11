@@ -231,6 +231,10 @@ else
     echo ""
 fi
 
+# Capture baseline of existing containers before starting new ones
+# This allows us to distinguish between orphaned containers (remove) and newly started ones (keep)
+EXISTING_CONTAINERS=$(docker ps -a --format "{{.Names}}" 2>/dev/null || echo "")
+
 # Execute cleanup
 if [ -f "scripts/stop-stack.sh" ]; then
     if [ "$REMOVE_VOLUMES" = true ]; then
@@ -240,22 +244,34 @@ if [ -f "scripts/stop-stack.sh" ]; then
     fi
 fi
 
-# Force cleanup of Windows container ports before starting (prevents port conflicts)
+# Smart cleanup: Only remove Windows containers that existed BEFORE this script run
+# This prevents removing newly started containers while cleaning up orphans from previous sessions
 if [[ "$TARGET_OS" == "windows" ]]; then
-    echo -e "${BLUE}Cleaning up Windows container ports...${NC}"
+    echo -e "${BLUE}Cleaning up orphaned Windows containers (preserving new ones)...${NC}"
 
-    # Find and remove containers using Windows ports
     WINDOWS_PORTS=(3389 8006 9990 8081)
+    CLEANUP_COUNT=0
+
     for port in "${WINDOWS_PORTS[@]}"; do
-        CONTAINER_ID=$(docker ps -a --filter "publish=$port" --format "{{.ID}}" 2>/dev/null | head -n 1)
-        if [ -n "$CONTAINER_ID" ]; then
-            CONTAINER_NAME=$(docker ps -a --filter "id=$CONTAINER_ID" --format "{{.Names}}")
-            echo "  Removing container $CONTAINER_NAME using port $port..."
-            docker rm -f "$CONTAINER_ID" 2>/dev/null || true
+        CONTAINER_NAME=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
+
+        if [ -n "$CONTAINER_NAME" ]; then
+            # Only remove if it existed BEFORE this script run (orphaned container)
+            if echo "$EXISTING_CONTAINERS" | grep -q "^${CONTAINER_NAME}$"; then
+                echo "  Removing orphaned container: $CONTAINER_NAME (port $port)"
+                docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+                ((CLEANUP_COUNT++))
+            else
+                echo "  Preserving newly started container: $CONTAINER_NAME"
+            fi
         fi
     done
 
-    echo -e "${GREEN}✓ Port cleanup complete${NC}"
+    if [ $CLEANUP_COUNT -eq 0 ]; then
+        echo -e "${GREEN}✓ No orphaned containers found${NC}"
+    else
+        echo -e "${GREEN}✓ Cleaned up $CLEANUP_COUNT orphaned container(s)${NC}"
+    fi
 fi
 echo ""
 

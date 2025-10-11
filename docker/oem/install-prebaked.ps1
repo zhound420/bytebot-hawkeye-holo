@@ -76,32 +76,78 @@ $PackageSize = (Get-Item $PackageZip).Length / 1MB
 Write-Log "✓ Package found: $([math]::Round($PackageSize, 2))MB"
 Write-Log ""
 
-# Step 2: Download 7-Zip (faster extraction than Expand-Archive)
-Write-Log "Step 2: Downloading 7-Zip for fast extraction..."
+# Step 2: Download dependencies in parallel (7-Zip + Node.js)
+Write-Log "Step 2: Downloading dependencies in parallel..."
 
 $SevenZipDir = Join-Path $env:TEMP "7zip"
 $SevenZipExe = Join-Path $SevenZipDir "7z.exe"
+$SevenZipDownload = Join-Path $env:TEMP "7zr.exe"
 
-if (-not (Test-Path $SevenZipExe)) {
+$NodeVersion = "v20.18.1"
+$NodeUrl = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-x64.zip"
+$NodeZip = Join-Path $env:TEMP "node.zip"
+$NodeInstallPath = "C:\Program Files\nodejs"
+
+# Check if downloads are needed
+$Need7Zip = -not (Test-Path $SevenZipExe)
+$NeedNodeJs = -not (Test-Path $NodeInstallPath)
+
+if ($Need7Zip -or $NeedNodeJs) {
     try {
-        # Download 7-Zip portable (3MB, x64 CLI version)
-        $SevenZipUrl = "https://www.7-zip.org/a/7zr.exe"
-        $SevenZipDownload = Join-Path $env:TEMP "7zr.exe"
+        $DownloadJobs = @()
+        $DownloadStart = Get-Date
 
-        Write-Log "Downloading 7-Zip CLI (~700KB)..."
-        Invoke-WebRequest -Uri $SevenZipUrl -OutFile $SevenZipDownload -UseBasicParsing -TimeoutSec 30
+        # Job 1: Download 7-Zip (if needed)
+        if ($Need7Zip) {
+            Write-Log "Starting parallel download: 7-Zip (~700KB)..."
+            $SevenZipJob = Start-Job -ScriptBlock {
+                param($Url, $OutFile)
+                Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec 30
+            } -ArgumentList "https://www.7-zip.org/a/7zr.exe", $SevenZipDownload
+            $DownloadJobs += $SevenZipJob
+        }
 
-        # 7zr.exe is self-extracting, just use it directly
-        New-Item -ItemType Directory -Path $SevenZipDir -Force | Out-Null
-        Move-Item -Path $SevenZipDownload -Destination $SevenZipExe -Force
+        # Job 2: Download Node.js (if needed)
+        if ($NeedNodeJs) {
+            Write-Log "Starting parallel download: Node.js (~30MB)..."
+            $NodeJob = Start-Job -ScriptBlock {
+                param($Url, $OutFile)
+                Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+            } -ArgumentList $NodeUrl, $NodeZip
+            $DownloadJobs += $NodeJob
+        }
 
-        Write-Log "✓ 7-Zip downloaded" "SUCCESS"
+        # Wait for all downloads to complete
+        if ($DownloadJobs.Count -gt 0) {
+            Write-Log "Waiting for parallel downloads to complete..."
+            $DownloadJobs | Wait-Job | Out-Null
+
+            # Check for errors
+            $DownloadJobs | ForEach-Object {
+                if ($_.State -eq "Failed") {
+                    throw "Download job failed: $($_ | Receive-Job 2>&1)"
+                }
+            }
+
+            $DownloadJobs | Remove-Job -Force
+
+            $DownloadDuration = (Get-Date) - $DownloadStart
+            Write-Log "✓ Parallel downloads completed in $([math]::Round($DownloadDuration.TotalSeconds, 1))s" "SUCCESS"
+
+            # Setup 7-Zip if downloaded
+            if ($Need7Zip -and (Test-Path $SevenZipDownload)) {
+                New-Item -ItemType Directory -Path $SevenZipDir -Force | Out-Null
+                Move-Item -Path $SevenZipDownload -Destination $SevenZipExe -Force
+                Write-Log "✓ 7-Zip ready" "SUCCESS"
+            }
+        }
     } catch {
-        Write-Log "WARN: Failed to download 7-Zip, falling back to Expand-Archive: $_" "WARN"
+        Write-Log "WARN: Parallel download failed, falling back to sequential: $_" "WARN"
         $SevenZipExe = $null
+        $NeedNodeJs = $true  # Will download later in Step 4
     }
 } else {
-    Write-Log "✓ 7-Zip already available" "SUCCESS"
+    Write-Log "✓ 7-Zip and Node.js already available" "SUCCESS"
 }
 
 Write-Log ""
@@ -162,23 +208,38 @@ Write-Log "✓ Bytebotd directory verified: $BytebotdDir" "SUCCESS"
 
 Write-Log ""
 
-# Step 4: Install Node.js (portable)
+# Step 4: Install Node.js (portable, may have been downloaded in parallel)
 Write-Log "Step 4: Installing Node.js..."
 
-$NodeInstallPath = "C:\Program Files\nodejs"
 if (-not (Test-Path $NodeInstallPath)) {
-    Write-Log "Downloading Node.js portable..."
-    $NodeVersion = "v20.18.1"
-    $NodeUrl = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-x64.zip"
-    $NodeZip = Join-Path $env:TEMP "node.zip"
-
     try {
-        # Download Node.js
-        Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip -UseBasicParsing
-        Write-Log "✓ Downloaded Node.js"
+        # Download Node.js if not already downloaded in Step 2
+        if (-not (Test-Path $NodeZip)) {
+            Write-Log "Downloading Node.js portable..."
+            Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip -UseBasicParsing
+            Write-Log "✓ Downloaded Node.js"
+        } else {
+            Write-Log "✓ Using Node.js from parallel download" "SUCCESS"
+        }
 
-        # Extract to Program Files
-        Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+        # Measure extraction time
+        $NodeExtractStart = Get-Date
+
+        # Extract Node.js with 7-Zip (10x faster) or fallback to Expand-Archive
+        if ($SevenZipExe -and (Test-Path $SevenZipExe)) {
+            Write-Log "Extracting Node.js with 7-Zip (2-4 seconds)..."
+            $ExtractProcess = Start-Process -FilePath $SevenZipExe -ArgumentList "x", "-y", "-o`"C:\Program Files`"", "`"$NodeZip`"" -Wait -NoNewWindow -PassThru
+
+            if ($ExtractProcess.ExitCode -ne 0) {
+                throw "7-Zip extraction failed with exit code $($ExtractProcess.ExitCode)"
+            }
+        } else {
+            Write-Log "Extracting Node.js with Expand-Archive (slower fallback)..."
+            Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+        }
+
+        $NodeExtractDuration = (Get-Date) - $NodeExtractStart
+        Write-Log "✓ Node.js extracted in $([math]::Round($NodeExtractDuration.TotalSeconds, 1))s" "SUCCESS"
 
         # Rename extracted folder
         $ExtractedFolder = Join-Path "C:\Program Files" "node-$NodeVersion-win-x64"

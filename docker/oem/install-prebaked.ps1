@@ -17,8 +17,9 @@
     6. Verify health check
 
 .NOTES
-    Expected execution time: 30-40 seconds
+    Expected execution time: 20-30 seconds (with 7-Zip) or 60-90 seconds (fallback)
     Runs as SYSTEM user during first boot
+    Uses 7-Zip for 5-10x faster extraction than Expand-Archive
 #>
 
 [CmdletBinding()]
@@ -75,8 +76,38 @@ $PackageSize = (Get-Item $PackageZip).Length / 1MB
 Write-Log "✓ Package found: $([math]::Round($PackageSize, 2))MB"
 Write-Log ""
 
-# Step 2: Extract package
-Write-Log "Step 2: Extracting package to $InstallRoot..."
+# Step 2: Download 7-Zip (faster extraction than Expand-Archive)
+Write-Log "Step 2: Downloading 7-Zip for fast extraction..."
+
+$SevenZipDir = Join-Path $env:TEMP "7zip"
+$SevenZipExe = Join-Path $SevenZipDir "7z.exe"
+
+if (-not (Test-Path $SevenZipExe)) {
+    try {
+        # Download 7-Zip portable (3MB, x64 CLI version)
+        $SevenZipUrl = "https://www.7-zip.org/a/7zr.exe"
+        $SevenZipDownload = Join-Path $env:TEMP "7zr.exe"
+
+        Write-Log "Downloading 7-Zip CLI (~700KB)..."
+        Invoke-WebRequest -Uri $SevenZipUrl -OutFile $SevenZipDownload -UseBasicParsing -TimeoutSec 30
+
+        # 7zr.exe is self-extracting, just use it directly
+        New-Item -ItemType Directory -Path $SevenZipDir -Force | Out-Null
+        Move-Item -Path $SevenZipDownload -Destination $SevenZipExe -Force
+
+        Write-Log "✓ 7-Zip downloaded" "SUCCESS"
+    } catch {
+        Write-Log "WARN: Failed to download 7-Zip, falling back to Expand-Archive: $_" "WARN"
+        $SevenZipExe = $null
+    }
+} else {
+    Write-Log "✓ 7-Zip already available" "SUCCESS"
+}
+
+Write-Log ""
+
+# Step 3: Extract package
+Write-Log "Step 3: Extracting package to $InstallRoot..."
 
 if (Test-Path $InstallRoot) {
     Write-Log "Removing existing installation..." "WARN"
@@ -87,9 +118,24 @@ try {
     # Create install directory
     New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 
-    # Extract ZIP
-    Write-Log "Extracting ZIP archive (this may take 1-2 minutes)..."
-    Expand-Archive -Path $PackageZip -DestinationPath $InstallRoot -Force
+    # Measure extraction time
+    $ExtractionStart = Get-Date
+
+    # Extract ZIP using 7-Zip (5-10x faster) or fallback to Expand-Archive
+    if ($SevenZipExe -and (Test-Path $SevenZipExe)) {
+        Write-Log "Extracting with 7-Zip (10-20 seconds)..."
+        $ExtractProcess = Start-Process -FilePath $SevenZipExe -ArgumentList "x", "-y", "-o`"$InstallRoot`"", "`"$PackageZip`"" -Wait -NoNewWindow -PassThru
+
+        if ($ExtractProcess.ExitCode -ne 0) {
+            throw "7-Zip extraction failed with exit code $($ExtractProcess.ExitCode)"
+        }
+    } else {
+        Write-Log "Extracting with Expand-Archive (1-2 minutes, slower fallback)..."
+        Expand-Archive -Path $PackageZip -DestinationPath $InstallRoot -Force
+    }
+
+    $ExtractionDuration = (Get-Date) - $ExtractionStart
+    Write-Log "✓ Extraction completed in $([math]::Round($ExtractionDuration.TotalSeconds, 1))s" "SUCCESS"
 
     # Move contents from bytebot subdirectory to root if needed
     $BytebotSubdir = Join-Path $InstallRoot "bytebot"
@@ -107,8 +153,8 @@ try {
 
 Write-Log ""
 
-# Step 3: Install Node.js (portable)
-Write-Log "Step 3: Installing Node.js..."
+# Step 4: Install Node.js (portable)
+Write-Log "Step 4: Installing Node.js..."
 
 $NodeInstallPath = "C:\Program Files\nodejs"
 if (-not (Test-Path $NodeInstallPath)) {
@@ -159,8 +205,8 @@ if (Test-Path $SharpPath) {
 
 Write-Log ""
 
-# Step 4: Create data directories
-Write-Log "Step 4: Creating data directories..."
+# Step 5: Create data directories
+Write-Log "Step 5: Creating data directories..."
 
 @($DataDir, $LogDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
@@ -173,8 +219,8 @@ Write-Log "Step 4: Creating data directories..."
 
 Write-Log ""
 
-# Step 5: Create scheduled task for auto-start
-Write-Log "Step 5: Creating Windows Service (Scheduled Task)..."
+# Step 6: Create scheduled task for auto-start
+Write-Log "Step 6: Creating Windows Service (Scheduled Task)..."
 
 $TaskName = $ServiceName
 $StartScript = Join-Path $BytebotdDir "start-bytebotd.bat"
@@ -210,8 +256,8 @@ try {
 
 Write-Log ""
 
-# Step 6: Start service
-Write-Log "Step 6: Starting Bytebotd service..."
+# Step 7: Start service
+Write-Log "Step 7: Starting Bytebotd service..."
 
 try {
     Start-ScheduledTask -TaskName $TaskName
@@ -223,14 +269,14 @@ try {
 
 Write-Log ""
 
-# Step 7: Wait for service to be ready
-Write-Log "Step 7: Waiting for service to be ready (30 seconds)..."
+# Step 8: Wait for service to be ready
+Write-Log "Step 8: Waiting for service to be ready (30 seconds)..."
 Start-Sleep -Seconds 30
 
 Write-Log ""
 
-# Step 8: Verify health check
-Write-Log "Step 8: Verifying service health..."
+# Step 9: Verify health check
+Write-Log "Step 9: Verifying service health..."
 
 $MaxAttempts = 6
 $AttemptDelay = 10
@@ -258,8 +304,8 @@ if (-not $ServiceHealthy) {
 
 Write-Log ""
 
-# Step 9: Check heartbeat file
-Write-Log "Step 9: Checking heartbeat file..."
+# Step 10: Check heartbeat file
+Write-Log "Step 10: Checking heartbeat file..."
 
 $HeartbeatFile = Join-Path $DataDir "heartbeat.txt"
 if (Test-Path $HeartbeatFile) {
@@ -273,8 +319,8 @@ if (Test-Path $HeartbeatFile) {
 
 Write-Log ""
 
-# Step 10: Start tray icon (optional)
-Write-Log "Step 10: Starting tray icon monitor..."
+# Step 11: Start tray icon (optional)
+Write-Log "Step 11: Starting tray icon monitor..."
 
 $TrayScript = Join-Path $InstallRoot "packages\bytebotd\bytebotd-tray.ps1"
 if (Test-Path $TrayScript) {

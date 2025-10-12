@@ -568,34 +568,86 @@ else
     docker compose -f $COMPOSE_FILE build --no-cache
     echo ""
 
-    # Verify Windows ports are available before starting (final safety check)
+    # Final cleanup pass: Remove any Windows containers still holding ports
+    # This catches containers that survived previous cleanup attempts (e.g., locked during installation)
     if [[ "$TARGET_OS" == "windows" ]]; then
-        echo -e "${BLUE}Verifying Windows ports are available...${NC}"
+        echo -e "${BLUE}Final port cleanup check (removing lingering containers)...${NC}"
 
+        WINDOWS_PORTS=(3389 8006 9990 8081)
+        FINAL_CLEANUP_COUNT=0
+        CONTAINERS_TO_REMOVE=()
+
+        # First pass: Identify all containers holding Windows ports
+        for port in "${WINDOWS_PORTS[@]}"; do
+            CONTAINER_NAME=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
+            if [ -n "$CONTAINER_NAME" ]; then
+                # Check if this container is not the one we're about to start
+                if [[ "$CONTAINER_NAME" != "bytebot-windows" ]]; then
+                    CONTAINERS_TO_REMOVE+=("$CONTAINER_NAME:$port")
+                fi
+            fi
+        done
+
+        # Second pass: Remove containers (deduplicated)
+        if [ ${#CONTAINERS_TO_REMOVE[@]} -gt 0 ]; then
+            echo ""
+            echo -e "${YELLOW}Found containers holding Windows ports:${NC}"
+            UNIQUE_CONTAINERS=()
+            for entry in "${CONTAINERS_TO_REMOVE[@]}"; do
+                IFS=: read -r container_name port <<< "$entry"
+                # Add to unique list if not already present
+                if [[ ! " ${UNIQUE_CONTAINERS[@]} " =~ " ${container_name} " ]]; then
+                    UNIQUE_CONTAINERS+=("$container_name")
+                    echo "  • $container_name (port $port)"
+                fi
+            done
+
+            echo ""
+            echo -e "${YELLOW}Removing orphaned containers...${NC}"
+            for container in "${UNIQUE_CONTAINERS[@]}"; do
+                echo "  Removing: $container"
+                docker rm -f "$container" 2>/dev/null || true
+                ((FINAL_CLEANUP_COUNT++))
+            done
+            echo -e "${GREEN}✓ Cleaned up $FINAL_CLEANUP_COUNT container(s)${NC}"
+            echo ""
+        fi
+
+        # Verify ports are now available using Docker's port filter (not lsof)
+        echo -e "${BLUE}Verifying Windows ports are available...${NC}"
         PORTS_IN_USE=()
-        for port in 3389 8006 9990 8081; do
-            if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        CONFLICTING_CONTAINERS=()
+
+        for port in "${WINDOWS_PORTS[@]}"; do
+            CONTAINER=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
+            if [ -n "$CONTAINER" ]; then
                 PORTS_IN_USE+=($port)
+                CONFLICTING_CONTAINERS+=("$CONTAINER")
             fi
         done
 
         if [ ${#PORTS_IN_USE[@]} -gt 0 ]; then
-            echo -e "${RED}ERROR: Ports already in use: ${PORTS_IN_USE[@]}${NC}"
+            echo -e "${RED}✗ ERROR: Ports still in use after cleanup!${NC}"
             echo ""
-            echo "Run cleanup manually:"
-            echo -e "  ${BLUE}./scripts/stop-stack.sh${NC}"
-            echo ""
-            echo "Or force remove containers:"
-            for port in "${PORTS_IN_USE[@]}"; do
-                CONTAINER=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
-                if [ -n "$CONTAINER" ]; then
-                    echo -e "  ${BLUE}docker rm -f $CONTAINER${NC}"
-                fi
+            echo -e "${YELLOW}Conflicting containers:${NC}"
+            printf '%s\n' "${CONFLICTING_CONTAINERS[@]}" | sort -u | while read container; do
+                echo "  • $container"
             done
+            echo ""
+            echo -e "${YELLOW}Manual fix required:${NC}"
+            echo "  1. Stop all containers:"
+            echo -e "     ${BLUE}./scripts/stop-stack.sh${NC}"
+            echo ""
+            echo "  2. Force remove specific containers:"
+            printf '%s\n' "${CONFLICTING_CONTAINERS[@]}" | sort -u | while read container; do
+                echo -e "     ${BLUE}docker rm -f $container${NC}"
+            done
+            echo ""
+            echo "  3. Re-run this script"
             exit 1
         fi
 
-        echo -e "${GREEN}✓ All ports available${NC}"
+        echo -e "${GREEN}✓ All Windows ports available${NC}"
         echo ""
     fi
 

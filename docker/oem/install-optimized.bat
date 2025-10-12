@@ -78,10 +78,61 @@ echo Found installer package: %OEM_ZIP%
 echo Package size:
 dir "%OEM_ZIP%" | find "bytebotd"
 
-REM Extract directly to C:\ (creates C:\bytebot\packages\...)
+REM ========================================
+REM   Download 7-Zip for Fast Extraction
+REM ========================================
+echo.
+echo Downloading 7-Zip for fast extraction...
+echo [%date% %time%] Downloading 7-Zip >> "%LOG_FILE%"
+
+set SEVEN_ZIP_URL=https://www.7-zip.org/a/7zr.exe
+set SEVEN_ZIP_DIR=%TEMP%\7zip
+set SEVEN_ZIP_EXE=%SEVEN_ZIP_DIR%\7z.exe
+
+if not exist "%SEVEN_ZIP_DIR%" mkdir "%SEVEN_ZIP_DIR%"
+
+if not exist "%SEVEN_ZIP_EXE%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%SEVEN_ZIP_URL%' -OutFile '%SEVEN_ZIP_EXE%' -UseBasicParsing -TimeoutSec 30" >> "%LOG_FILE%" 2>&1
+
+    if %ERRORLEVEL% EQU 0 (
+        echo 7-Zip downloaded successfully (~700KB)
+        echo [%date% %time%] 7-Zip downloaded >> "%LOG_FILE%"
+    ) else (
+        echo WARNING: Failed to download 7-Zip, will use slower extraction
+        echo [%date% %time%] 7-Zip download failed >> "%LOG_FILE%"
+        set SEVEN_ZIP_EXE=
+    )
+) else (
+    echo 7-Zip already available
+    echo [%date% %time%] 7-Zip already cached >> "%LOG_FILE%"
+)
+
+REM ========================================
+REM   Extract ZIP (7-Zip or Fallback)
+REM ========================================
+echo.
 echo Extracting to C:\...
-echo This may take 1-2 minutes...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%OEM_ZIP%' -DestinationPath 'C:\' -Force" >> "%LOG_FILE%" 2>&1
+echo [%date% %time%] Starting extraction >> "%LOG_FILE%"
+
+set EXTRACTION_START=%TIME%
+
+if defined SEVEN_ZIP_EXE (
+    if exist "%SEVEN_ZIP_EXE%" (
+        echo Using 7-Zip multithreaded extraction (10-20 seconds)...
+        echo [%date% %time%] Extracting with 7-Zip >> "%LOG_FILE%"
+        "%SEVEN_ZIP_EXE%" x -y -o"C:\" "%OEM_ZIP%" >> "%LOG_FILE%" 2>&1
+
+        if %ERRORLEVEL% NEQ 0 (
+            echo 7-Zip extraction failed, falling back to Expand-Archive...
+            echo [%date% %time%] 7-Zip failed, using Expand-Archive fallback >> "%LOG_FILE%"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%OEM_ZIP%' -DestinationPath 'C:\' -Force" >> "%LOG_FILE%" 2>&1
+        )
+    )
+) else (
+    echo Using Expand-Archive (1-2 minutes, slower fallback)...
+    echo [%date% %time%] Extracting with Expand-Archive >> "%LOG_FILE%"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%OEM_ZIP%' -DestinationPath 'C:\' -Force" >> "%LOG_FILE%" 2>&1
+)
 
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to extract installer package
@@ -90,6 +141,9 @@ if %ERRORLEVEL% NEQ 0 (
     pause
     exit /b 1
 )
+
+set EXTRACTION_END=%TIME%
+echo [%date% %time%] Extraction completed (started %EXTRACTION_START%, ended %EXTRACTION_END%) >> "%LOG_FILE%"
 
 echo Package extracted successfully!
 echo [%date% %time%] Package extracted successfully >> "%LOG_FILE%"

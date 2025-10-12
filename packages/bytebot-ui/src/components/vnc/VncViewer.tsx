@@ -34,7 +34,7 @@ export function VncViewer({ viewOnly = true }: VncViewerProps) {
             shared: true,
             wsProtocols: ["binary"],
           }}
-          // autoConnect={true}
+          autoConnect={true}
           key={viewOnly ? "view-only" : "interactive"}
           url={wsUrl}
           scaleViewport

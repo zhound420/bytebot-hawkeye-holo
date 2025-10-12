@@ -49,9 +49,10 @@ ENV VERSION=win11 \
 EXPOSE 8006 3389 9990
 
 # Health check (checks if bytebotd is responding)
-# Gives 60 seconds for Windows to boot and service to start
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD powershell -Command "try { \$response = Invoke-WebRequest -Uri http://localhost:9990/health -TimeoutSec 5 -UseBasicParsing; exit 0 } catch { exit 1 }"
+# Gives 5 minutes for Windows installation and service startup
+# Uses curl from host (not PowerShell inside Windows VM)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+    CMD curl -f http://localhost:9990/health || exit 1
 
 # Volume for persistent Windows installation
 VOLUME ["/storage"]

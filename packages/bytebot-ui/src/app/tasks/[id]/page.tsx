@@ -165,7 +165,7 @@ export default function TaskPage() {
                   </span>
                 )}
               </div>
-              <CVActivityIndicator />
+              <CVActivityIndicator directVisionMode={directVisionMode} />
             </div>
             <DesktopContainer
               className="max-h-[calc(100vh-12rem)]"

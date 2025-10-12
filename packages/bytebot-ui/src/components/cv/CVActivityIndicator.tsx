@@ -107,9 +107,10 @@ interface CVActivityIndicatorProps {
   className?: string;
   compact?: boolean;
   inline?: boolean; // New prop for inline chat display
+  directVisionMode?: boolean; // If true, show Direct Vision Mode UI instead of CV activity
 }
 
-export function CVActivityIndicator({ className, compact = false, inline = false }: CVActivityIndicatorProps) {
+export function CVActivityIndicator({ className, compact = false, inline = false, directVisionMode = false }: CVActivityIndicatorProps) {
   const [activity, setActivity] = useState<CVActivitySnapshot | null>(null);
   const [detectionData, setDetectionData] = useState<CVDetectionData | null>(null);
 
@@ -165,6 +166,29 @@ export function CVActivityIndicator({ className, compact = false, inline = false
       clearInterval(intervalId);
     };
   }, [inline]);
+
+  // If Direct Vision Mode is enabled, show special UI
+  if (directVisionMode) {
+    // Show compact Direct Vision Mode indicator
+    return (
+      <div className={cn(
+        "rounded-lg border border-purple-500/20 bg-purple-500/10 px-2 py-1.5 dark:border-purple-500/30 dark:bg-purple-500/20",
+        className
+      )}>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">
+            Direct Vision Mode
+          </span>
+          <span className="text-[10px] font-medium text-foreground">
+            🎯 Native Model Vision
+          </span>
+          <span className="text-[9px] text-muted-foreground">
+            Holo CV disabled
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   // Show if: active methods OR recent history OR device/model info available
   const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;

@@ -19,6 +19,7 @@ const USE_SOM_SCREENSHOTS = process.env.BYTEBOT_USE_SOM_SCREENSHOTS !== 'false';
  * @param screenshotBuffer - Original screenshot as base64 string or Buffer
  * @param holoClient - Holo client instance for detection
  * @param fallbackToOriginal - Return original if SOM generation fails (default: true)
+ * @param directVisionMode - If true, skip Holo detection (model uses native vision)
  * @returns Enhanced screenshot with numbered boxes, or original if disabled/failed
  *
  * @example
@@ -29,7 +30,22 @@ export async function enhanceScreenshotWithSOM(
   screenshotBuffer: Buffer | string,
   holoClient: HoloClientService,
   fallbackToOriginal: boolean = true,
+  directVisionMode: boolean = false,
 ): Promise<{ image: string; elementsDetected: number; somEnabled: boolean }> {
+  // If Direct Vision Mode enabled, skip Holo detection entirely
+  if (directVisionMode) {
+    logger.debug('SOM disabled (Direct Vision Mode - model uses native vision)');
+    const originalImage =
+      typeof screenshotBuffer === 'string'
+        ? screenshotBuffer
+        : screenshotBuffer.toString('base64');
+    return {
+      image: originalImage,
+      elementsDetected: 0,
+      somEnabled: false,
+    };
+  }
+
   // If SOM disabled globally, return original
   if (!USE_SOM_SCREENSHOTS) {
     logger.debug('SOM screenshots disabled (BYTEBOT_USE_SOM_SCREENSHOTS=false)');

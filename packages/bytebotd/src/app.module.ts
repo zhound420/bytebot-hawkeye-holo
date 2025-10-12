@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BytebotMcpModule } from './mcp';
 import { HeartbeatModule } from './heartbeat/heartbeat.module';
+import { LoggerModule } from './logger/logger.module';
 import * as fs from 'fs';
 
 // Build ServeStaticModule imports conditionally
@@ -31,6 +32,7 @@ staticModules.push({
     ConfigModule.forRoot({
       isGlobal: true, // Explicitly makes it globally available
     }),
+    LoggerModule,
     ServeStaticModule.forRoot(...staticModules),
     ComputerUseModule,
     InputTrackingModule,

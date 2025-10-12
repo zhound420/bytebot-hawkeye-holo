@@ -270,9 +270,12 @@ else
     exit 1
 fi
 
-STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres)
-if [[ "$COMPOSE_FILE" == "docker-compose.proxy.yml" ]]; then
-    STACK_SERVICES+=(bytebot-llm-proxy)
+STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres bytebot-llm-proxy)
+
+# Always include proxy overlay (unless already the primary compose file)
+COMPOSE_FILES=("-f" "$COMPOSE_FILE")
+if [[ "$COMPOSE_FILE" != "docker-compose.proxy.yml" ]]; then
+    COMPOSE_FILES+=("-f" "docker-compose.proxy.yml")
 fi
 
 # OS-specific checks
@@ -324,7 +327,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         # Start all services except Holo container
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
-        docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
+        docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${STACK_SERVICES[@]}"
 
     else
         echo -e "${YELLOW}⚠ Native Holo 1.5-7B not running${NC}"
@@ -375,7 +378,7 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo -e "${BLUE}Starting Docker stack (without Holo container)...${NC}"
         # --no-deps prevents starting dependent services (bytebot-holo)
         # Add --build flag to rebuild if code changed
-        docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
+        docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${STACK_SERVICES[@]}"
 
         # Native start handled above; continue to unified readiness checks
     fi
@@ -392,7 +395,7 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
 
     echo ""
     echo -e "${BLUE}Starting Holo container first (GPU/CPU Docker)${NC}"
-    docker compose -f "$COMPOSE_FILE" up -d --build bytebot-holo
+    docker compose "${COMPOSE_FILES[@]}" up -d --build bytebot-holo
 
     if wait_for_container_health "bytebot-holo" 480 5; then
         HOLO_PREWAIT=true
@@ -405,7 +408,7 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
 
     echo ""
     echo -e "${BLUE}Starting remaining Bytebot containers...${NC}"
-    docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "${STACK_SERVICES[@]}"
+    docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${STACK_SERVICES[@]}"
 fi
 
 # Wait for services to be ready

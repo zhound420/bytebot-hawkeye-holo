@@ -4,6 +4,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import * as express from 'express';
 import { json, urlencoded } from 'express';
 import { Logger } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 const logger = new Logger('Bootstrap');
 
@@ -12,6 +13,9 @@ async function bootstrap() {
     logger.log('Starting Bytebot Desktop Daemon...');
 
     const app = await NestFactory.create(AppModule);
+
+    // Use Winston logger for the entire application
+    app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 
     // Configure body parser with increased payload size limit (50MB)
     app.use(json({ limit: '50mb' }));

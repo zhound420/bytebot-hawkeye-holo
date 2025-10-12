@@ -649,7 +649,7 @@ else
 
         for port in "${WINDOWS_PORTS[@]}"; do
             CONTAINER=$(docker ps -a --filter "publish=$port" --format "{{.Names}}" 2>/dev/null | head -n 1)
-            if [ -n "$CONTAINER" ]; then
+            if [ -n "$CONTAINER" ] && [[ "$CONTAINER" != "bytebot-windows" ]]; then
                 PORTS_IN_USE+=($port)
                 CONFLICTING_CONTAINERS+=("$CONTAINER")
             fi

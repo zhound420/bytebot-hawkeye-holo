@@ -375,8 +375,8 @@ if [[ "$TARGET_OS" == "windows" ]]; then
             echo "Building pre-baked image now..."
             echo ""
 
-            # Build pre-baked image
-            bash "./scripts/build-windows-prebaked-image.sh"
+            # Build pre-baked image (skip test to prevent test-bytebot-windows creation)
+            bash "./scripts/build-windows-prebaked-image.sh" --skip-test
 
             if [ $? -ne 0 ]; then
                 echo -e "${RED}✗ Failed to build pre-baked image${NC}"

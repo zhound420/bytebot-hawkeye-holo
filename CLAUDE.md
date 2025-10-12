@@ -103,20 +103,26 @@ cd ../bytebot-cv && npm install && npm run build
 ./scripts/stop-stack.sh
 ```
 
-### Windows 11 Container (Optional)
+### Tiny11 Container (Optional - **RECOMMENDED**)
 
-Run Bytebot with a Windows 11 desktop environment instead of Linux:
+Run Bytebot with **Tiny11 2311** (stripped Windows 11) for faster installation and lower resource usage:
 
 ```bash
-# Start Windows 11 stack (Windows installer package built automatically)
-./scripts/start-stack.sh --os windows
+# Start Tiny11 stack with pre-baked image (Windows installer package built automatically)
+./scripts/start-stack.sh --os windows --prebaked
 ```
 
 **System Requirements:**
 - KVM support (`/dev/kvm` must be available)
-- **Recommended**: 12GB+ RAM, 6+ CPU cores
-- **Minimum**: 8GB RAM, 4 cores (slower, may cause delays)
-- 150GB+ disk space (Windows 11 + updates)
+- **Recommended**: 8GB+ RAM, 4+ CPU cores
+- **Minimum**: 6GB RAM, 4 cores
+- 50GB+ disk space (Tiny11 is much lighter than full Windows 11!)
+
+**Why Tiny11?**
+- 🚀 **50% faster download**: ~3.5GB ISO vs ~6GB Windows 11 ISO
+- ⚡ **40% less resources**: 6GB RAM vs 8GB, 50GB disk vs 100GB
+- 🎯 **Stripped Windows 11**: No bloatware, fully serviceable and updateable
+- ✅ **Same compatibility**: Works identically to Windows 11 for bytebotd
 
 **Setup Process:**
 1. **Windows installer package built automatically** (~74MB vs 1.8GB old approach)

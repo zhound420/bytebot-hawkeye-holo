@@ -102,6 +102,19 @@ echo ""
 # Install bytebotd dependencies
 cd "$TEMP_BUILD/bytebot/packages/bytebotd"
 echo "Installing bytebotd production dependencies..."
+
+# Install sharp with Windows-native binaries FIRST
+echo "  Installing sharp with Windows binaries (--platform=win32 --arch=x64)..."
+npm install --production --cpu=x64 --os=win32 --libc=glibc sharp
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗ sharp install failed${NC}"
+    exit 1
+fi
+echo -e "${GREEN}  ✓ Sharp installed with Windows binaries${NC}"
+
+# Install remaining dependencies
+echo "  Installing remaining dependencies..."
 npm install --production
 
 if [ $? -ne 0 ]; then

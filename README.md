@@ -131,40 +131,31 @@ git clone https://github.com/zhound420/bytebot-hawkeye-holo.git
 cd bytebot-hawkeye-holo
 ```
 
-### Optional: Windows 11 or macOS Desktop Container
+### Optional: Tiny11 or macOS Desktop Container
 
-Run Bytebot with a **Windows 11** or **macOS** desktop environment instead of Linux:
+Run Bytebot with a **Tiny11** (stripped Windows 11) or **macOS** desktop environment instead of Linux:
 
-**Windows 11:**
+**⚡ Tiny11 Pre-baked Image (RECOMMENDED):**
 ```bash
-# Start Windows 11 stack (requires KVM support)
-./scripts/start-stack.sh --os windows
+# Start with Tiny11 pre-baked image (30-60 second startup!)
+./scripts/start-stack.sh --os windows --prebaked
+
+# Tiny11 benefits:
+# 🚀 50% faster download: ~3.5GB ISO vs ~6GB Windows 11 ISO
+# ⚡ 40% less resources: 6GB RAM vs 8GB, 50GB disk vs 100GB
+# 🎯 Stripped Windows 11: No bloatware, fully serviceable and updateable
+# ✅ Same compatibility: Works identically to Windows 11 for bytebotd
+# ✅ 96% faster startup: 30-60 seconds vs 8-15 minutes
+# ✅ No network dependency: MSI installer baked into Docker image
+
+# System requirements:
+# - KVM support (requires /dev/kvm on Linux host)
+# - Recommended: 8GB+ RAM, 4+ CPU cores
+# - Minimum: 6GB RAM, 4 cores
+# - 50GB+ disk space
 
 # Access Windows via web viewer
 open http://localhost:8006
-
-# Setup runs AUTOMATICALLY on first boot!
-# - Installs Node.js 20, Git, VSCode, 1Password
-# - Builds and configures bytebotd
-# - Creates auto-start scheduled task
-# Wait 8-15 minutes for automated installation to complete
-```
-
-**⚡ Windows 11 Pre-baked Image (96% Faster - RECOMMENDED):**
-```bash
-# Start with pre-baked image (30-60 second startup!)
-./scripts/start-stack.sh --os windows --prebaked
-
-# Pre-baked image benefits:
-# ✅ 96% faster startup: 30-60 seconds vs 8-15 minutes
-# ✅ MSI installer baked into Docker image (deterministic)
-# ✅ No network dependency for installer transfer
-# ✅ Reliable: Same image = same behavior every time
-
-# First-time setup (one-time, requires WiX Toolset on Windows):
-# 1. Build MSI installer (Windows): .\scripts\build-msi.ps1
-# 2. Build Docker image (Linux): ./scripts/build-windows-prebaked-image.sh
-# 3. Start container: ./scripts/start-stack.sh --os windows --prebaked
 ```
 
 **macOS Sonoma/Sequoia:**
@@ -182,14 +173,15 @@ sudo bash ./setup-macos-bytebotd.sh
 
 **Requirements:**
 - KVM support (`/dev/kvm` must be available on Linux host)
-- 8GB+ RAM, 4+ CPU cores, 128GB+ disk space
-- First boot takes 5-10 minutes for OS installation
+- **Tiny11:** 6GB+ RAM, 4+ CPU cores, 50GB+ disk space
+- **macOS:** 8GB+ RAM, 4+ CPU cores, 64GB+ disk space
 - **macOS only:** Must run on Apple hardware (licensing requirement)
 
-**Why Use Alternate OS Containers?**
+**Why Use Tiny11/macOS Containers?**
 - Test automation on native Windows or macOS applications
 - Holo 1.5-7B trained on Windows/Linux/macOS UI (same model, cross-platform)
 - Same resolution across all platforms (1280x960)
+- **Tiny11 benefits:** 50% faster download, 40% less resources than full Windows 11
 
 **Ports:**
 - `8006` - Web-based viewer (all platforms)

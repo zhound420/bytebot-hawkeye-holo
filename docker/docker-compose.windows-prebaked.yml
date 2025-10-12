@@ -1,8 +1,9 @@
 version: '3.8'
 
 services:
-  # Windows 11 container with Bytebotd pre-installed via MSI
-  # Uses pre-baked image for 96% faster startup (30-60s vs 8-15 min)
+  # Tiny11 2311 container with Bytebotd pre-installed via PowerShell installer
+  # Uses stripped Windows 11 (Tiny11) for faster install and lower resource usage
+  # Pre-baked image provides 96% faster startup (30-60s vs 8-15 min)
   bytebot-windows:
     image: bytebot-windows-prebaked:latest
     container_name: bytebot-windows
@@ -16,11 +17,11 @@ services:
       - "3389:3389"  # RDP access
       - "9990:9990"  # Bytebotd API
     environment:
-      # Windows 11 configuration
-      - VERSION=win11
-      - RAM_SIZE=${WINDOWS_RAM_SIZE:-8G}
+      # Tiny11 2311 configuration (stripped Windows 11 from archive.org)
+      - VERSION=https://archive.org/download/tiny11-2311/tiny11%202311%20x64.iso
+      - RAM_SIZE=${WINDOWS_RAM_SIZE:-6G}
       - CPU_CORES=${WINDOWS_CPU_CORES:-4}
-      - DISK_SIZE=${WINDOWS_DISK_SIZE:-100G}
+      - DISK_SIZE=${WINDOWS_DISK_SIZE:-50G}
 
       # Time sync with host
       - ARGUMENTS=-rtc base=localtime
@@ -55,8 +56,8 @@ services:
 
     labels:
       - "bytebot.component=windows-desktop"
-      - "bytebot.version=prebaked"
-      - "bytebot.description=Windows 11 with pre-installed Bytebotd"
+      - "bytebot.version=prebaked-tiny11"
+      - "bytebot.description=Tiny11 2311 (stripped Windows 11) with pre-installed Bytebotd"
 
   # Holo 1.5-7B service for UI element detection
   bytebot-holo:

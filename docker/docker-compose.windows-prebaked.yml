@@ -35,7 +35,7 @@ services:
       # These are passed through to the Windows environment
       - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
-      - HOLO_URL=${HOLO_URL:-http://host.docker.internal:9989}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
       - BYTEBOT_SMART_FOCUS=${BYTEBOT_SMART_FOCUS:-true}
       - BYTEBOT_SMART_FOCUS_MODEL=${BYTEBOT_SMART_FOCUS_MODEL:-gpt-4o-mini}
       - BYTEBOT_OVERVIEW_GRID=${BYTEBOT_OVERVIEW_GRID:-200}

@@ -9,7 +9,7 @@ $ErrorActionPreference = "Continue"
 
 # Configuration
 $script:BytebotdUrl = "http://localhost:9990/health"
-$script:BytebotdPath = "C:\bytebot\packages\bytebotd"
+$script:BytebotdPath = "C:\Program Files\Bytebot\packages\bytebotd"
 $script:LogDir = "C:\Bytebot-Logs"
 $script:HeartbeatFile = "C:\ProgramData\Bytebot\heartbeat.txt"
 $script:TrayLogFile = "$script:LogDir\tray-monitor.log"
@@ -139,8 +139,8 @@ $contextMenu.Items.Add($menuItemRestart) | Out-Null
 $menuItemOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
 $menuItemOpenFolder.Text = "Open Installation Folder"
 $menuItemOpenFolder.Add_Click({
-    if (Test-Path "C:\bytebot") {
-        Start-Process explorer.exe -ArgumentList "C:\bytebot"
+    if (Test-Path "C:\Program Files\Bytebot") {
+        Start-Process explorer.exe -ArgumentList "C:\Program Files\Bytebot"
     }
 })
 $contextMenu.Items.Add($menuItemOpenFolder) | Out-Null
@@ -176,7 +176,7 @@ Bytebot Desktop Daemon Status
 Status: $script:LastStatus
 Endpoint: $script:BytebotdUrl
 Heartbeat File: $script:HeartbeatFile
-Installation: C:\bytebot
+Installation: C:\Program Files\Bytebot
 Logs: $script:LogDir
 Tray Log: $script:TrayLogFile
 

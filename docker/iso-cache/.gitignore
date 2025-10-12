@@ -1,0 +1,5 @@
+# Ignore all ISO files (large binaries)
+*.iso
+
+# Keep README
+!README.md

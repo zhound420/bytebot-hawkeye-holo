@@ -65,6 +65,10 @@ services:
     volumes:
       # Windows storage: standard Docker volume (BTRFS compatible via DISK_IO/DISK_CACHE)
       - windows_storage:/storage
+      # ISO cache: Tiny11 2311 ISO (~3.5GB) cached to avoid redownloading on fresh installs
+      # fresh-build.sh automatically enables this mount if ISO exists in iso-cache/
+      # To manually enable: uncomment line below and run ./scripts/download-tiny11-iso.sh
+      # - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
       # Auto-install script (runs on first boot, copied to C:\OEM)
       # IMPORTANT: Keep /oem small (~30KB scripts) to avoid install hangs
       - ./oem:/oem

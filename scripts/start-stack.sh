@@ -406,9 +406,30 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
         echo -e "${YELLOW}⚠ Holo container not healthy yet; continuing to start remaining services${NC}"
     fi
 
+    # Optimize Windows startup: start Windows early to parallelize installation with image builds
+    # This saves 5-10 minutes by running Windows installation during agent/UI image compilation
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        echo ""
+        echo -e "${BLUE}Starting Windows container early (parallelizes installation with image builds)...${NC}"
+        docker compose "${COMPOSE_FILES[@]}" up -d --no-deps bytebot-windows
+
+        if [[ "$USE_PREBAKED" == "true" ]]; then
+            echo -e "${YELLOW}Windows will boot (~30-60s) while other services build${NC}"
+        else
+            echo -e "${YELLOW}Windows will install (~8-15 min) while other services build${NC}"
+        fi
+    fi
+
     echo ""
     echo -e "${BLUE}Starting remaining Bytebot containers...${NC}"
-    docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${STACK_SERVICES[@]}"
+
+    # If Windows already started, exclude it from the service list
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        REMAINING_SERVICES=(bytebot-agent bytebot-ui postgres bytebot-llm-proxy)
+        docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${REMAINING_SERVICES[@]}"
+    else
+        docker compose "${COMPOSE_FILES[@]}" up -d --build --no-deps "${STACK_SERVICES[@]}"
+    fi
 fi
 
 # Wait for services to be ready

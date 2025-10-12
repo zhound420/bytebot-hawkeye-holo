@@ -125,27 +125,30 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) for faster installation a
 - ✅ **Same compatibility**: Works identically to Windows 11 for bytebotd
 
 **Setup Process:**
-1. **Windows installer package built automatically** (~74MB vs 1.8GB old approach)
+1. **Windows installer package built automatically** (~90MB with Windows sharp binaries)
    - Builds packages on Linux host (shared, bytebot-cv, bytebotd)
-   - Installs Windows-specific node_modules (sharp-win32, uiohook-napi win32 prebuilds)
-   - Creates ZIP package at `docker/windows-installer/bytebotd-windows-installer.zip`
-   - **Size:** ~74MB (96% smaller than old 1.8GB artifacts)
-2. Stack starts Windows 11 container (5-10 minutes for Windows installation)
-3. **Automated installation runs (`install.bat` via `/oem` mount):**
-   - Installs Chocolatey + Node.js 20 (skipped if already present)
-   - Copies installer ZIP from network share (`\\host.lan\Data\bytebotd-windows-installer.zip`, ~30-60 seconds)
-   - Extracts package to `C:\bytebot\packages\` (1-2 minutes)
-   - Rebuilds platform-specific native modules (sharp for Windows binaries)
-   - Creates scheduled task for auto-start with retry logic
-   - Starts bytebotd service immediately (health check: 30s timeout)
+   - Pre-installs Windows-native sharp binaries (@img/sharp-win32-x64)
+   - Installs Windows-specific node_modules (uiohook-napi win32 prebuilds)
+   - Creates ZIP package at `docker/windows-installer/bytebotd-prebaked.zip`
+   - **Size:** ~90MB (95% smaller than old 1.8GB artifacts)
+2. Stack starts Tiny11 container (5-10 minutes for Windows installation)
+3. **Automated installation runs (`install-prebaked.ps1` via `/oem` mount):**
+   - Downloads and extracts Node.js 20 portable (~2 minutes)
+   - Adds Node.js to system PATH (Machine + current process)
+   - Extracts installer package to `C:\Program Files\Bytebot\packages\` (~11 minutes)
+   - Verifies Windows sharp binaries (pre-installed, no rebuild needed)
+   - Creates scheduled task "Bytebotd Desktop Agent" with direct node.exe execution
+   - Starts bytebotd service with port conflict prevention
+   - Starts tray monitor automatically (green icon in system tray)
 4. Access Windows web viewer at `http://localhost:8006` to monitor progress
-5. **Total time: 8-15 minutes** (vs 12-28 minutes with old approach)
+5. **Total time: 15-20 minutes** on fresh start (mostly Windows boot + ZIP extraction)
 
 **Architecture Note:**
-- Small scripts (~44KB) in `/oem` mount → copied to `C:\OEM` by dockur/windows
-- **Pre-built Windows installer package** (~74MB) in `/shared` mount → accessible via `\\host.lan\Data` Samba share
-- ZIP contains Windows-native binaries (no Linux artifacts) → faster download & extraction
-- This separation prevents "Adding OEM folder to image" hangs during Windows installation
+- Small scripts (~8KB) in `/oem` mount → copied to `C:\OEM` by dockur/windows
+- **Pre-built Windows installer package** (~90MB) copied from `/oem` during installation
+- ZIP contains Windows-native binaries including sharp (@img/sharp-win32-x64)
+- Helper scripts (tray monitor, diagnostics) in packages/bytebotd/ directory
+- This architecture enables truly fresh start with zero manual intervention
 
 **Port Conflict Protection:**
 - fresh-build.sh now uses Docker's port filter (`docker ps --filter "publish=$port"`) instead of `lsof`
@@ -173,14 +176,57 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) for faster installation a
 - **Network speed**: Initial Windows ISO download (~6GB) depends on connection
 
 **Troubleshooting:**
-- **Slow startup**: Normal on slower systems, wait up to 30s for health check
-- **Check logs**: `C:\Bytebot-Logs\bytebotd-*.log` (view via tray icon)
-- **Run diagnostic**: Right-click Windows VM → Run `C:\OEM\diagnose.ps1`
-- **Tray icon**: Green = running, Yellow = starting, Red = stopped
+- **Slow startup**: Normal on slower systems, wait up to 2 minutes for health check
+- **Check logs**: `C:\Bytebot-Logs\install-prebaked.log` and `bytebotd-*.log` (view via tray icon)
+- **Run diagnostic**: Right-click tray icon → View Logs, or run `C:\Program Files\Bytebot\packages\bytebotd\diagnose.ps1`
+- **Tray icon**: Green = healthy, Yellow = starting, Red = stopped, Missing = scripts not copied
 - **Resource issues**: Increase RAM/CPUs in `docker/.env` if experiencing slowness
-- **Rebuild installer**: Run `rm -rf docker/windows-installer && ./scripts/build-windows-installer.sh`
-- **Sharp module errors**: Install.bat auto-rebuilds sharp for Windows, but if issues persist check `C:\bytebot\packages\bytebotd\node_modules\sharp\`
+- **Rebuild installer**: `rm -rf docker/windows-installer/bytebotd-prebaked.zip && ./scripts/build-windows-prebaked-package.sh`
+- **Sharp module errors**: Pre-installed Windows binaries at `node_modules/@img/sharp-win32-x64/`, no rebuild needed
+- **Node.js not in PATH**: Installer auto-adds to system PATH, check `[Environment]::GetEnvironmentVariable("Path", "Machine")`
+- **Port conflicts**: Installer stops existing tasks before starting, check `schtasks /query /tn "Bytebotd Desktop Agent"`
 - **Time drift**: Container uses `ARGUMENTS=-rtc base=localtime` to sync with host clock
+- **Fresh start verification**: Delete volume (`docker volume rm docker_bytebot-windows-storage`) then restart stack
+
+**Recent Windows Fixes (Complete Fresh Start Installation):**
+
+The following issues were fixed to enable truly hands-off fresh start installation:
+
+1. **Tray Monitor Scripts Not Found** (`build-windows-prebaked-package.sh`)
+   - **Problem**: Helper scripts copied to wrong directory (`bytebot/` instead of `bytebot/packages/bytebotd/`)
+   - **Fix**: Updated script copy paths to match installer expectations
+   - **Result**: Tray monitor starts automatically, shows green icon in system tray
+
+2. **PowerShell .Count Property Error** (`install-prebaked.ps1`)
+   - **Problem**: `Get-Process` returns single object when 1 process found, `.Count` property doesn't exist
+   - **Fix**: Wrapped with `@()` to force array type: `$NodeProcesses = @(Get-Process -Name "node" -ErrorAction SilentlyContinue)`
+   - **Result**: No more "The property 'Count' cannot be found" errors
+
+3. **Port Conflict on Fresh Start** (`install-prebaked.ps1`)
+   - **Problem**: Scheduled task from previous run holds port 9990, causing EADDRINUSE error
+   - **Fix**: Added task cleanup before starting: `Get-ScheduledTask | Stop-ScheduledTask -ErrorAction SilentlyContinue`
+   - **Result**: Clean port 9990 binding on every fresh start
+
+4. **Node.js Not in PATH** (`install-prebaked.ps1`)
+   - **Problem**: Node.js not available for docker user, scheduled task fails
+   - **Fix**: Auto-add to system PATH (Machine + current process environment)
+   - **Result**: `node.exe` available globally, scheduled task executes successfully
+
+5. **Sharp Module Windows Binaries** (`build-windows-prebaked-package.sh`)
+   - **Problem**: Linux sharp binaries installed, "Could not load sharp module using win32-x64 runtime" error
+   - **Fix**: Pre-install `@img/sharp-win32-x64` during package build with `--force` flag
+   - **Result**: No rebuild needed, bytebotd starts immediately with correct sharp binaries
+
+**Testing Results:**
+- ✅ Fresh installation tested with deleted volume
+- ✅ Health check passes on first attempt (http://localhost:9990/health)
+- ✅ Scheduled task creates and starts successfully
+- ✅ Node.js available in PATH for all users
+- ✅ Sharp module loads correctly without rebuild
+- ✅ Tray monitor starts automatically
+- ✅ Total time: ~15 minutes (mostly Windows boot + ZIP extraction)
+
+**Commit:** `43dc7eb` - "fix(windows): complete fresh start installation with tray monitor"
 
 **BTRFS Filesystem - Native Compatibility:**
 - ✅ **Windows containers now work directly on BTRFS** (no workaround needed!)
@@ -209,25 +255,27 @@ environment:
 
 **Windows Installer Package (Automatic):**
 
-The `build-windows-installer.sh` script creates a portable ZIP package with Windows-native binaries:
+The `build-windows-prebaked-package.sh` script creates a portable ZIP package with Windows-native binaries:
 
 1. **Builds packages**: Compiles shared, bytebot-cv, bytebotd on Linux host
-2. **Installs Windows dependencies**: Runs `npm install` with Windows-specific native modules
-3. **Creates ZIP package**: Packages everything into `bytebotd-windows-installer.zip` (~74MB)
-4. **Cached on subsequent runs**: Installer is only regenerated when missing
+2. **Installs Windows dependencies**: Pre-installs sharp (@img/sharp-win32-x64) + other Windows-specific modules
+3. **Copies helper scripts**: Tray monitor, diagnostics to packages/bytebotd/ directory
+4. **Creates ZIP package**: Packages everything into `bytebotd-prebaked.zip` (~90MB)
+5. **Cached on subsequent runs**: Installer regenerated only when missing or script changes
 
-Location: `docker/windows-installer/bytebotd-windows-installer.zip` (~74MB)
+Location: `docker/windows-installer/bytebotd-prebaked.zip` (~90MB)
 
-The script runs automatically during `./scripts/start-stack.sh --os windows` but can be run manually:
+The script runs automatically during `./scripts/start-stack.sh --os windows --prebaked` but can be run manually:
 ```bash
-./scripts/build-windows-installer.sh
+./scripts/build-windows-prebaked-package.sh
 ```
 
 **Benefits over old approach:**
-- **96% smaller**: 74MB vs 1.8GB artifacts
-- **Faster transfer**: 30-60 seconds vs 5-15 minutes
-- **Windows-native binaries**: No need to rebuild all modules
-- **Simpler**: No symlink resolution, no workspace copying
+- **95% smaller**: 90MB vs 1.8GB artifacts
+- **No rebuilds**: Windows sharp binaries pre-installed
+- **Tray monitor included**: Automatic system tray status icon
+- **Simpler**: Direct ZIP extraction, no symlink resolution
+- **Fresh start ready**: Passes all health checks on first boot
 
 **Ports:**
 - `8006` - Web-based VNC viewer

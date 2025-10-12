@@ -104,8 +104,8 @@ cd "$TEMP_BUILD/bytebot/packages/bytebotd"
 echo "Installing bytebotd production dependencies..."
 
 # Install sharp with Windows-native binaries FIRST
-echo "  Installing sharp with Windows binaries (--platform=win32 --arch=x64)..."
-npm install --production --cpu=x64 --os=win32 --libc=glibc sharp
+echo "  Installing sharp base package and Windows platform binaries..."
+npm install --production --force sharp @img/sharp-win32-x64
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}✗ sharp install failed${NC}"
@@ -115,7 +115,7 @@ echo -e "${GREEN}  ✓ Sharp installed with Windows binaries${NC}"
 
 # Install remaining dependencies
 echo "  Installing remaining dependencies..."
-npm install --production
+npm install --production --force
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}✗ npm install failed${NC}"
@@ -146,17 +146,17 @@ echo -e "${BLUE}Step 5: Copying helper scripts...${NC}"
 cp "$REPO_ROOT/docker/oem/install-prebaked.ps1" "$TEMP_BUILD/bytebot/" 2>/dev/null || \
     echo -e "${YELLOW}⚠ install-prebaked.ps1 not found (will be created)${NC}"
 
-# Copy helper scripts
+# Copy helper scripts to bytebotd directory
 if [ -f "$REPO_ROOT/docker/oem/start-bytebotd.bat" ]; then
-    cp "$REPO_ROOT/docker/oem/start-bytebotd.bat" "$TEMP_BUILD/bytebot/"
+    cp "$REPO_ROOT/docker/oem/start-bytebotd.bat" "$TEMP_BUILD/bytebot/packages/bytebotd/"
 fi
 
 if [ -f "$REPO_ROOT/docker/oem/bytebotd-tray.ps1" ]; then
-    cp "$REPO_ROOT/docker/oem/bytebotd-tray.ps1" "$TEMP_BUILD/bytebot/"
+    cp "$REPO_ROOT/docker/oem/bytebotd-tray.ps1" "$TEMP_BUILD/bytebot/packages/bytebotd/"
 fi
 
 if [ -f "$REPO_ROOT/docker/oem/diagnose.ps1" ]; then
-    cp "$REPO_ROOT/docker/oem/diagnose.ps1" "$TEMP_BUILD/bytebot/"
+    cp "$REPO_ROOT/docker/oem/diagnose.ps1" "$TEMP_BUILD/bytebot/packages/bytebotd/"
 fi
 
 echo -e "${GREEN}✓ Helper scripts copied${NC}"

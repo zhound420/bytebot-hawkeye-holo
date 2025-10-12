@@ -145,7 +145,7 @@ services:
     environment:
       - NODE_ENV=production
       - BYTEBOT_AGENT_BASE_URL=http://bytebot-agent:9991
-      - BYTEBOT_DESKTOP_VNC_URL=http://bytebot-windows:8006
+      - BYTEBOT_DESKTOP_VNC_URL=http://bytebot-windows:8006/websockify
       - NEXT_PUBLIC_API_URL=http://localhost:9991
       - NEXT_PUBLIC_BYTEBOTD_URL=http://localhost:9990
       - NEXT_PUBLIC_PROGRESS_WS_PORT=8081

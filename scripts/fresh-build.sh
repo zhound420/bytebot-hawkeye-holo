@@ -580,8 +580,16 @@ else
         fi
         echo ""
 
+        # Build remaining services (exclude Holo and Windows which are already started)
+        REMAINING_SERVICES=()
+        for service in "${STACK_SERVICES[@]}"; do
+            if [[ "$service" != "bytebot-holo" ]] && [[ "$service" != "$DESKTOP_SERVICE" ]]; then
+                REMAINING_SERVICES+=("$service")
+            fi
+        done
+
         echo -e "${BLUE}Building remaining services (parallelized with Windows installation)...${NC}"
-        docker compose -f $COMPOSE_FILE build --no-cache bytebot-agent bytebot-ui postgres bytebot-llm-proxy
+        docker compose -f $COMPOSE_FILE build --no-cache "${REMAINING_SERVICES[@]}"
         echo ""
     else
         echo -e "${BLUE}Building all services with --no-cache (truly fresh, may take longer)...${NC}"
@@ -675,7 +683,7 @@ else
     echo -e "${BLUE}Starting services...${NC}"
     # If Windows stack, Holo and Windows are already running - start only remaining services
     if [[ "$TARGET_OS" == "windows" ]]; then
-        docker compose -f $COMPOSE_FILE up -d --no-deps bytebot-agent bytebot-ui postgres bytebot-llm-proxy
+        docker compose -f $COMPOSE_FILE up -d --no-deps "${REMAINING_SERVICES[@]}"
     else
         docker compose -f $COMPOSE_FILE up -d
     fi

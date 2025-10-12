@@ -174,6 +174,13 @@ export const MODEL_CAPABILITIES: ModelCapabilityConfig = {
         description: 'Qwen3 VL via OpenRouter (full path)',
         cvSuccessRate: 0.4,
       },
+      {
+        name: 'qwen3-vl-30b-a3b-instruct',
+        provider: 'openrouter',
+        description: 'Qwen3 VL 30B - Mid-size vision model',
+        cvSuccessRate: 0.45,
+        notes: '30B parameter vision model, smaller than 235B variant',
+      },
       // Other VL models with known limitations
       {
         name: 'llava',

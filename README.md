@@ -135,41 +135,52 @@ cd bytebot-hawkeye-holo
 
 Run Bytebot with a **Tiny11** (stripped Windows 11) or **macOS** desktop environment instead of Linux:
 
-**⚡ Tiny11 Pre-baked Image (RECOMMENDED):**
+**🎯 Interactive Mode (Easiest - NEW!):**
 ```bash
-# Start with Tiny11 pre-baked image (30-60 second startup!)
-./scripts/start-stack.sh --os windows --prebaked
+# Simply run start-stack.sh without any flags
+./scripts/start-stack.sh
 
-# Tiny11 benefits:
-# 🚀 50% faster download: ~3.5GB ISO vs ~6GB Windows 11 ISO
-# ⚡ 40% less resources: 6GB RAM vs 8GB, 50GB disk vs 100GB
-# 🎯 Stripped Windows 11: No bloatware, fully serviceable and updateable
-# ✅ Same compatibility: Works identically to Windows 11 for bytebotd
-# ✅ 96% faster startup: 30-60 seconds vs 8-15 minutes
-# ✅ No network dependency: MSI installer baked into Docker image
+# You'll see an interactive menu:
+# ════════════════════════════════════════════════
+#    Target OS Selection
+# ════════════════════════════════════════════════
+# Which OS stack would you like to start?
+#   1) Linux (desktop container - default)
+#   2) Windows 11 (requires KVM)
+#   3) macOS (requires KVM, Apple hardware)
+#
+# If you select Windows (option 2), you'll be asked:
+#   Use pre-baked image? [Y/n]
+#     • Pre-baked: 30-60 seconds startup (96% faster)
+#     • Runtime:   8-15 minutes startup
 
-# System requirements:
-# - KVM support (requires /dev/kvm on Linux host)
-# - Recommended: 8GB+ RAM, 4+ CPU cores
-# - Minimum: 6GB RAM, 4 cores
-# - 50GB+ disk space
-
-# Access Windows via web viewer
-open http://localhost:8006
+# Access via web viewer
+open http://localhost:8006  # Windows or macOS
 ```
 
-**macOS Sonoma/Sequoia:**
+**⚡ Or use direct flags (for automation/scripts):**
 ```bash
-# Start macOS stack (requires KVM + Apple hardware)
-./scripts/start-stack.sh --os macos
+# Tiny11 Pre-baked Image (RECOMMENDED)
+./scripts/start-stack.sh --os windows --prebaked
 
-# Access macOS via web viewer or VNC
-open http://localhost:8006
+# Tiny11 Runtime Installation
+./scripts/start-stack.sh --os windows
+
+# macOS Sonoma/Sequoia
+./scripts/start-stack.sh --os macos
 
 # Inside macOS Terminal, run setup script as root
 cd /shared
 sudo bash ./setup-macos-bytebotd.sh
 ```
+
+**Tiny11 Benefits:**
+- 🚀 50% faster download: ~3.5GB ISO vs ~6GB Windows 11 ISO
+- ⚡ 40% less resources: 6GB RAM vs 8GB, 50GB disk vs 100GB
+- 🎯 Stripped Windows 11: No bloatware, fully serviceable and updateable
+- ✅ Same compatibility: Works identically to Windows 11 for bytebotd
+- ✅ 96% faster startup: 30-60 seconds vs 8-15 minutes (pre-baked)
+- ✅ No network dependency: MSI installer baked into Docker image (pre-baked)
 
 **Requirements:**
 - KVM support (`/dev/kvm` must be available on Linux host)
@@ -215,8 +226,16 @@ The setup script automatically detects your hardware and configures optimal perf
 # One-time setup (installs Holo 1.5-7B and dependencies)
 ./scripts/setup-holo.sh
 
-# Start the full stack
+# Start the full stack (Interactive Mode - Recommended for first-time users)
 ./scripts/start-stack.sh
+# → You'll be prompted to select:
+#    1) Target OS (Linux/Windows/macOS)
+#    2) Windows installation method (if Windows selected)
+
+# Or use flags for automation/CI (skips all prompts)
+./scripts/start-stack.sh --os linux              # Explicit Linux
+./scripts/start-stack.sh --os windows --prebaked # Windows pre-baked image
+./scripts/start-stack.sh --os macos              # macOS container
 ```
 
 **What happens automatically:**
@@ -249,6 +268,27 @@ The start script will:
 ```bash
 ./scripts/stop-stack.sh
 ```
+
+### 💡 Interactive vs Flag-Based Mode
+
+Both modes work identically - choose based on your workflow:
+
+| Mode | Command | Best For |
+|------|---------|----------|
+| **Interactive** 🎯 | `./scripts/start-stack.sh` | First-time users, exploring options, trying different OS |
+| **Flag-Based** ⚡ | `./scripts/start-stack.sh --os windows --prebaked` | Automation, CI/CD pipelines, scripting |
+
+**Interactive Mode Features:**
+- Guided OS selection menu (Linux/Windows/macOS)
+- Automatic Windows pre-baked image prompt
+- Default values (press Enter for Linux)
+- Same friendly experience as fresh-build.sh
+
+**Flag-Based Mode Features:**
+- Skips all prompts for non-interactive environments
+- Explicit OS and installation method specification
+- Ideal for scripts and automation pipelines
+- Backward compatible with existing workflows
 
 ### Troubleshooting Setup
 

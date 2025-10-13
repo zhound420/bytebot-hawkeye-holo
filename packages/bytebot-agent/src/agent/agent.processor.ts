@@ -1,6 +1,7 @@
 import { TasksService } from '../tasks/tasks.service';
 import { MessagesService } from '../messages/messages.service';
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import type { OnModuleDestroy } from '@nestjs/common/interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
 import { expandFunctionalQuery, scoreSemanticMatch, levenshteinSimilarity } from './semantic-mapping';
@@ -1155,7 +1156,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         `Sending ${messages.length} messages to LLM for processing`,
       );
 
-      const model = task.model as unknown as BytebotAgentModel;
+      // Reuse model variable from line 1041 (already in scope)
 
       // Set current model name for tier-based CV enforcement
       this.currentModelName = model.name;

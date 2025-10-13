@@ -62,6 +62,9 @@ model Task {
   // Direct Vision Mode: Bypass Holo/CV tools, use only native computer use tools
   // Gives vision models (Claude Opus 4, GPT-4o) direct control via screenshot + grid clicking
   directVisionMode Boolean      @default(false)
+  // Concurrency Support: Task locking to enable multi-worker processing
+  lockedBy         String?      // Worker ID that holds the lock
+  lockedAt         DateTime?    // When the lock was acquired
   messages         Message[]
   summaries        Summary[]
   files            File[]

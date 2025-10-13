@@ -14,6 +14,10 @@ async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule);
 
+    // Enable graceful shutdown hooks
+    // This allows onModuleDestroy to be called when the app receives SIGTERM/SIGINT
+    app.enableShutdownHooks();
+
     // Configure body parser with increased payload size limit (50MB)
     app.use(json({ limit: '50mb' }));
     app.use(urlencoded({ limit: '50mb', extended: true }));
@@ -25,6 +29,7 @@ async function bootstrap() {
     });
 
     await app.listen(process.env.PORT ?? 9991);
+    console.log('bytebot-agent listening on port', process.env.PORT ?? 9991);
   } catch (error) {
     console.error('Error starting application:', error);
   }

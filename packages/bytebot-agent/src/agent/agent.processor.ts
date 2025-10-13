@@ -1,6 +1,6 @@
 import { TasksService } from '../tasks/tasks.service';
 import { MessagesService } from '../messages/messages.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { expandFunctionalQuery, scoreSemanticMatch, levenshteinSimilarity } from './semantic-mapping';
@@ -75,6 +75,11 @@ import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 import { isSOMEnabled } from './som-enhancement.util';
+import {
+  estimateTotalTokens,
+  estimateContentBlockTokens,
+  canAddMessage,
+} from './token-estimator.util';
 
 type CachedDetectedElement = {
   element: DetectedElement;
@@ -147,7 +152,7 @@ type CacheUsageTracking = {
 const FORCE_DIRECT_VISION_MODE = process.env.BYTEBOT_FORCE_DIRECT_VISION_MODE === 'true';
 
 @Injectable()
-export class AgentProcessor {
+export class AgentProcessor implements OnModuleDestroy {
   private readonly logger = new Logger(AgentProcessor.name);
   private currentTaskId: string | null = null;
   private isProcessing = false;
@@ -1004,6 +1009,10 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         this.logger.log(
           `Task processing completed for task ID: ${taskId} with status: ${task.status}`,
         );
+
+        // Release lock when task completes
+        await this.tasksService.releaseLock(taskId);
+
         this.isProcessing = false;
         this.currentTaskId = null;
         this.currentModelName = null; // Clear model name on task completion
@@ -1027,27 +1036,84 @@ Focus on words that would appear in UI element descriptions. Be specific and use
       const latestSummary = await this.summariesService.findLatest(taskId);
       const unsummarizedMessages =
         await this.messagesService.findUnsummarized(taskId);
-      const messages = [
-        ...(latestSummary
-          ? [
-              {
-                id: '',
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                taskId,
-                summaryId: null,
-                role: Role.USER,
-                content: [
-                  {
-                    type: MessageContentType.Text,
-                    text: latestSummary.content,
-                  },
-                ],
-              },
-            ]
-          : []),
-        ...unsummarizedMessages,
-      ];
+
+      // Proactive Context Window Check: Estimate tokens BEFORE constructing messages
+      const model = task.model as unknown as BytebotAgentModel;
+      const contextWindow = model.contextWindow || 200000;
+      const unsummarizedTokens = estimateTotalTokens(unsummarizedMessages);
+      const shouldProactivelySummarize =
+        unsummarizedTokens >= contextWindow * 0.70; // Trigger at 70% instead of 75%
+
+      this.logger.debug(
+        `Context window usage: ${unsummarizedTokens}/${contextWindow} tokens (${Math.round((unsummarizedTokens / contextWindow) * 100)}%)`,
+      );
+
+      let messages: Message[];
+
+      if (shouldProactivelySummarize && unsummarizedMessages.length > 5) {
+        this.logger.warn(
+          `Proactive summarization triggered: ${unsummarizedTokens} tokens (${Math.round((unsummarizedTokens / contextWindow) * 100)}% of context window)`,
+        );
+        await this.performSummarization(
+          taskId,
+          model,
+          unsummarizedMessages,
+        );
+        // After summarization, refresh messages
+        const newLatestSummary = await this.summariesService.findLatest(taskId);
+        const newUnsummarizedMessages =
+          await this.messagesService.findUnsummarized(taskId);
+
+        messages = [
+          ...(newLatestSummary
+            ? [
+                {
+                  id: '',
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  taskId,
+                  summaryId: null,
+                  role: Role.USER,
+                  content: [
+                    {
+                      type: MessageContentType.Text,
+                      text: newLatestSummary.content,
+                    },
+                  ],
+                } as Message,
+              ]
+            : []),
+          ...newUnsummarizedMessages,
+        ];
+
+        // Continue with iteration using summarized messages
+        this.logger.log(
+          `Context window optimized: ${messages.length} messages after summarization`,
+        );
+      } else {
+        // Normal flow: use unsummarized messages
+        messages = [
+          ...(latestSummary
+            ? [
+                {
+                  id: '',
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  taskId,
+                  summaryId: null,
+                  role: Role.USER,
+                  content: [
+                    {
+                      type: MessageContentType.Text,
+                      text: latestSummary.content,
+                    },
+                  ],
+                } as Message,
+              ]
+            : []),
+          ...unsummarizedMessages,
+        ];
+      }
 
       // Stuck detection: track iteration count and inject intervention if needed
       const iterationCount = (this.taskIterationCount.get(taskId) || 0) + 1;
@@ -1188,73 +1254,17 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         taskId,
       });
 
-      // Calculate if we need to summarize based on token usage
-      const contextWindow = model.contextWindow || 200000; // Default to 200k if not specified
+      // Reactive summarization (fallback if proactive didn't trigger)
+      // This is now less likely to fire since we proactively summarize at 70%
       const contextThreshold = contextWindow * 0.75;
-      const shouldSummarize =
+      const shouldReactivelySummarize =
         agentResponse.tokenUsage.totalTokens >= contextThreshold;
 
-      if (shouldSummarize) {
-        try {
-          // After we've successfully generated a response, we can summarize the unsummarized messages
-          const summaryResponse = await service.generateMessage(
-            SUMMARIZATION_SYSTEM_PROMPT,
-            [
-              ...messages,
-              {
-                id: '',
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                taskId,
-                summaryId: null,
-                role: Role.USER,
-                content: [
-                  {
-                    type: MessageContentType.Text,
-                    text: 'Respond with a summary of the messages above. Do not include any additional information.',
-                  },
-                ],
-              },
-            ],
-            model.name,
-            model, // Pass model metadata for vision capability detection
-            false,
-            this.abortController.signal,
-          );
-
-          const summaryContentBlocks = summaryResponse.contentBlocks;
-
-          this.logger.debug(
-            `Received ${summaryContentBlocks.length} summary content blocks from LLM`,
-          );
-          const summaryContent = summaryContentBlocks
-            .filter(
-              (block: MessageContentBlock) =>
-                block.type === MessageContentType.Text,
-            )
-            .map((block: TextContentBlock) => block.text)
-            .join('\n');
-
-          const summary = await this.summariesService.create({
-            content: summaryContent,
-            taskId,
-          });
-
-          await this.messagesService.attachSummary(taskId, summary.id, [
-            ...messages.map((message) => {
-              return message.id;
-            }),
-          ]);
-
-          this.logger.log(
-            `Generated summary for task ${taskId} due to token usage (${agentResponse.tokenUsage.totalTokens}/${contextWindow})`,
-          );
-        } catch (error: any) {
-          this.logger.error(
-            `Error summarizing messages for task ID: ${taskId}`,
-            error.stack,
-          );
-        }
+      if (shouldReactivelySummarize) {
+        this.logger.warn(
+          `Reactive summarization triggered: ${agentResponse.tokenUsage.totalTokens}/${contextWindow} tokens (${Math.round((agentResponse.tokenUsage.totalTokens / contextWindow) * 100)}%)`,
+        );
+        await this.performSummarization(taskId, model, messages);
       }
 
       this.logger.debug(
@@ -1535,6 +1545,9 @@ ${loopResult.suggestion}
         await this.tasksService.update(taskId, {
           status: TaskStatus.FAILED,
         });
+        // Release lock on error
+        await this.tasksService.releaseLock(taskId);
+
         this.isProcessing = false;
         this.currentTaskId = null;
 
@@ -3156,6 +3169,78 @@ ${loopResult.suggestion}
     }
   }
 
+  /**
+   * Perform summarization of messages to reduce context window usage
+   * Extracted as a reusable method for both proactive and reactive summarization
+   */
+  private async performSummarization(
+    taskId: string,
+    model: BytebotAgentModel,
+    messages: Message[],
+  ): Promise<void> {
+    try {
+      const service = this.services[model.provider];
+      if (!service) {
+        this.logger.warn(`Cannot summarize: service ${model.provider} not available`);
+        return;
+      }
+
+      this.logger.debug(`Generating summary for ${messages.length} messages`);
+
+      const summaryResponse = await service.generateMessage(
+        SUMMARIZATION_SYSTEM_PROMPT,
+        [
+          ...messages,
+          {
+            id: '',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            taskId,
+            summaryId: null,
+            role: Role.USER,
+            content: [
+              {
+                type: MessageContentType.Text,
+                text: 'Respond with a summary of the messages above. Do not include any additional information.',
+              },
+            ],
+          } as Message,
+        ],
+        model.name,
+        model,
+        false,
+        this.abortController?.signal,
+      );
+
+      const summaryContentBlocks = summaryResponse.contentBlocks;
+      const summaryContent = summaryContentBlocks
+        .filter(
+          (block: MessageContentBlock) =>
+            block.type === MessageContentType.Text,
+        )
+        .map((block: TextContentBlock) => block.text)
+        .join('\n');
+
+      const summary = await this.summariesService.create({
+        content: summaryContent,
+        taskId,
+      });
+
+      await this.messagesService.attachSummary(taskId, summary.id, [
+        ...messages.map((message) => message.id),
+      ]);
+
+      this.logger.log(
+        `Generated summary for task ${taskId} (${messages.length} messages → ${summaryContent.length} characters)`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Error summarizing messages for task ID: ${taskId}`,
+        error.stack,
+      );
+    }
+  }
+
   async stopProcessing(): Promise<void> {
     if (!this.isProcessing) {
       return;
@@ -3173,5 +3258,55 @@ ${loopResult.suggestion}
     this.currentModel = null; // Clear model reference
     this.pendingScreenshotObservation = false;
     this.elementCache.clear();
+  }
+
+  /**
+   * Graceful Shutdown: Called when NestJS application is shutting down
+   * Handles SIGTERM, SIGINT, and other shutdown signals
+   * Ensures tasks are properly saved before process exits
+   */
+  async onModuleDestroy(): Promise<void> {
+    this.logger.warn('AgentProcessor shutting down gracefully...');
+
+    try {
+      // If a task is currently being processed, mark it as PENDING for recovery
+      if (this.currentTaskId && this.isProcessing) {
+        this.logger.warn(
+          `Graceful shutdown: Saving current task ${this.currentTaskId} as PENDING for recovery`,
+        );
+
+        // Stop processing and abort any in-flight operations
+        await this.stopProcessing();
+
+        // Mark task as PENDING so it can be recovered on next startup
+        await this.tasksService.update(this.currentTaskId, {
+          status: TaskStatus.PENDING,
+          executedAt: null, // Clear execution timestamp for clean restart
+        });
+
+        this.logger.log(
+          `Task ${this.currentTaskId} saved successfully for recovery`,
+        );
+      }
+
+      // Release all locks held by this worker (for concurrency support)
+      const releasedCount =
+        await this.tasksService.releaseAllLocksForThisWorker();
+      if (releasedCount > 0) {
+        this.logger.log(
+          `Released ${releasedCount} task lock(s) held by this worker`,
+        );
+      }
+
+      // Save visual description cache (may contain learned patterns)
+      this.saveVisualDescriptionCache();
+
+      this.logger.log('Graceful shutdown complete');
+    } catch (error) {
+      this.logger.error(
+        `Error during graceful shutdown: ${error.message}`,
+        error.stack,
+      );
+    }
   }
 }

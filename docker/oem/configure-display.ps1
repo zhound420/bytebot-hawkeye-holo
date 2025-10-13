@@ -102,7 +102,7 @@ try {
     $CurrentDPI = Get-ItemProperty -Path $DesktopKey -Name "LogPixels" -ErrorAction SilentlyContinue
     if ($CurrentDPI) {
         $DPIPercent = [math]::Round(($CurrentDPI.LogPixels / 96) * 100)
-        Write-Log "  Current DPI: $($CurrentDPI.LogPixels) ($DPIPercent% scaling)"
+        Write-Log "  Current DPI: $($CurrentDPI.LogPixels) ($DPIPercent`% scaling)"
     }
 
     # Get video controller information

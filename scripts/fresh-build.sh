@@ -346,45 +346,64 @@ if [[ "$TARGET_OS" == "windows" ]] && [[ "$REMOVE_VOLUMES" == "false" ]]; then
 fi
 echo ""
 
-# Tiny11 ISO cache detection and management (independent of volume removal choice)
+# Windows ISO cache detection and management (Tiny11 or Nano11)
 if [[ "$TARGET_OS" == "windows" ]]; then
     ISO_CACHE_DIR="docker/iso-cache"
-    ISO_FILENAME="tiny11-2311-x64.iso"
-    ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
 
-    if [ -f "$ISO_PATH" ]; then
+    # Detect which ISO variant is cached (if any)
+    ISO_VARIANT=""
+    ISO_PATH=""
+    ISO_FILENAME=""
+
+    if [ -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso" ]; then
+        ISO_VARIANT="Tiny11 2311"
+        ISO_FILENAME="tiny11-2311-x64.iso"
+        ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
+    elif [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
+        ISO_VARIANT="Nano11 25H2"
+        ISO_FILENAME="nano11-25h2.iso"
+        ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
+    fi
+
+    if [ -n "$ISO_VARIANT" ]; then
         ISO_SIZE=$(du -sh "$ISO_PATH" | cut -f1)
         echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}   Tiny11 ISO Cache Detected${NC}"
+        echo -e "${GREEN}   Windows ISO Cache Detected${NC}"
         echo -e "${GREEN}════════════════════════════════════════════════${NC}"
         echo ""
-        echo "Found cached Tiny11 2311 ISO: $ISO_SIZE"
+        echo "Found cached $ISO_VARIANT ISO: $ISO_SIZE"
         echo ""
         echo "Benefits of using cached ISO:"
-        echo -e "  ${GREEN}• No 3.5GB redownload${NC} (saves 5-10 minutes)"
+        echo -e "  ${GREEN}• No redownload${NC} (saves 5-10 minutes)"
         echo -e "  ${GREEN}• Instant Windows install start${NC} (no download wait)"
         echo -e "  ${GREEN}• Persists across fresh installs${NC} (separate from Windows volume)"
         echo ""
         echo "Options:"
         echo -e "  ${GREEN}• Use cached ISO (default):${NC} Fast install start ✅"
-        echo -e "  ${YELLOW}• Redownload ISO:${NC}           Force fresh download (5-10 min)"
-        echo -e "  ${RED}• Remove ISO cache:${NC}        Delete cached ISO (free 3.5GB disk)"
+        echo -e "  ${YELLOW}• Redownload ISO:${NC}           Choose Tiny11/Nano11 variant"
+        echo -e "  ${RED}• Remove ISO cache:${NC}        Delete cached ISO (free disk space)"
         echo ""
-        read -p "Use cached Tiny11 ISO? [Y/n/r/d] (Y=use, n=don't use, r=redownload, d=delete) " -n 1 -r ISO_CHOICE
+        read -p "Use cached $ISO_VARIANT ISO? [Y/n/r/d] (Y=use, n=don't use, r=redownload, d=delete) " -n 1 -r ISO_CHOICE
         echo ""
         echo ""
 
         case $ISO_CHOICE in
             [Rr])
-                echo -e "${YELLOW}Redownloading Tiny11 ISO...${NC}"
+                echo -e "${YELLOW}Redownloading Windows ISO...${NC}"
                 rm -f "$ISO_PATH"
-                if [ -f "scripts/download-tiny11-iso.sh" ]; then
-                    ./scripts/download-tiny11-iso.sh
+                if [ -f "scripts/download-windows-iso.sh" ]; then
+                    ./scripts/download-windows-iso.sh
+                    # Re-detect which ISO was downloaded
+                    if [ -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso" ]; then
+                        ISO_FILENAME="tiny11-2311-x64.iso"
+                    elif [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
+                        ISO_FILENAME="nano11-25h2.iso"
+                    fi
+                    USE_CACHED_ISO=true
                 else
                     echo -e "${RED}ERROR: Download script not found${NC}"
                     exit 1
                 fi
-                USE_CACHED_ISO=true
                 ;;
             [Dd])
                 echo -e "${YELLOW}Removing ISO cache...${NC}"
@@ -404,23 +423,29 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo ""
     else
         echo -e "${BLUE}════════════════════════════════════════════════${NC}"
-        echo -e "${BLUE}   No Tiny11 ISO Cache Found${NC}"
+        echo -e "${BLUE}   No Windows ISO Cache Found${NC}"
         echo -e "${BLUE}════════════════════════════════════════════════${NC}"
         echo ""
-        echo "Tiny11 2311 ISO not cached (~3.5GB download required)"
+        echo "No Tiny11 or Nano11 ISO cached (~2-4GB download required)"
         echo ""
         echo "Options:"
-        echo -e "  ${YELLOW}• Download now (recommended):${NC} Cache for future installs (5-10 min)"
+        echo -e "  ${YELLOW}• Download now (recommended):${NC} Choose Tiny11/Nano11, cache for future installs"
         echo -e "  ${BLUE}• Skip:${NC}                       dockur/windows will download during boot"
         echo ""
-        read -p "Download and cache Tiny11 ISO now? [Y/n] " -n 1 -r
+        read -p "Download and cache Windows ISO now? [Y/n] " -n 1 -r
         echo ""
         echo ""
 
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            echo -e "${BLUE}Downloading Tiny11 ISO to cache...${NC}"
-            if [ -f "scripts/download-tiny11-iso.sh" ]; then
-                ./scripts/download-tiny11-iso.sh
+            echo -e "${BLUE}Downloading Windows ISO to cache...${NC}"
+            if [ -f "scripts/download-windows-iso.sh" ]; then
+                ./scripts/download-windows-iso.sh
+                # Detect which ISO was downloaded
+                if [ -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso" ]; then
+                    ISO_FILENAME="tiny11-2311-x64.iso"
+                elif [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
+                    ISO_FILENAME="nano11-25h2.iso"
+                fi
                 USE_CACHED_ISO=true
             else
                 echo -e "${RED}ERROR: Download script not found${NC}"
@@ -627,10 +652,10 @@ else
 fi
 
 # Enable ISO cache mount if requested (Windows only)
-if [[ "$TARGET_OS" == "windows" ]] && [[ "${USE_CACHED_ISO:-false}" == "true" ]]; then
-    echo -e "${BLUE}Enabling cached Tiny11 ISO mount...${NC}"
-    # Uncomment the ISO mount line in the compose file
-    sed -i 's|^      # - \./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro|      - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro|' "$COMPOSE_FILE"
+if [[ "$TARGET_OS" == "windows" ]] && [[ "${USE_CACHED_ISO:-false}" == "true" ]] && [[ -n "${ISO_FILENAME:-}" ]]; then
+    echo -e "${BLUE}Enabling cached Windows ISO mount ($ISO_FILENAME)...${NC}"
+    # Uncomment and update the ISO mount line in the compose file with actual filename
+    sed -i "s|^      # - \./iso-cache/.*\.iso:/custom.iso:ro|      - ./iso-cache/$ISO_FILENAME:/custom.iso:ro|" "$COMPOSE_FILE"
     echo -e "${GREEN}✓ ISO cache enabled (saves 5-10 min download)${NC}"
     echo ""
 fi

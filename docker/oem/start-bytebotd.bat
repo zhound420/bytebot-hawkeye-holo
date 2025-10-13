@@ -15,9 +15,9 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM Check if bytebotd exists
-if not exist "C:\bytebot\packages\bytebotd\dist\main.js" (
+if not exist "C:\Program Files\Bytebot\packages\bytebotd\dist\main.js" (
     echo ERROR: bytebotd not found
-    echo main.js not found at C:\bytebot\packages\bytebotd\dist\main.js
+    echo main.js not found at C:\Program Files\Bytebot\packages\bytebotd\dist\main.js
     echo.
     echo Please ensure packages are built on host:
     echo   cd packages/shared ^&^& npm run build
@@ -34,7 +34,7 @@ taskkill /F /IM node.exe >nul 2>&1
 
 REM Start bytebotd
 echo Starting bytebotd service...
-cd C:\bytebot\packages\bytebotd
+cd /d "C:\Program Files\Bytebot\packages\bytebotd"
 start "Bytebot Desktop Daemon" node dist\main.js
 
 echo.

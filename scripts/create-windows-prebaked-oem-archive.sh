@@ -45,20 +45,27 @@ if [ ! -f "$OEM_DIR/7za.exe" ]; then
     echo -e "${RED}ERROR: 7za.exe not found${NC}"
     exit 1
 fi
+if [ ! -f "$OEM_DIR/configure-display.ps1" ]; then
+    echo -e "${RED}ERROR: configure-display.ps1 not found${NC}"
+    exit 1
+fi
 echo -e "${GREEN}✓ Source files found${NC}"
 echo "  - install.bat (CMD wrapper)"
 echo "  - install-prebaked.ps1 (PowerShell installer)"
+echo "  - configure-display.ps1 (display settings)"
 echo "  - 7za.exe (7-Zip standalone executable)"
 
 # Step 2: Check file sizes
 echo -e "${BLUE}Step 2: Checking file sizes...${NC}"
 CMD_SIZE=$(wc -c < "$OEM_DIR/install.bat")
 PS1_SIZE=$(wc -c < "$OEM_DIR/install-prebaked.ps1")
+DISPLAY_PS1_SIZE=$(wc -c < "$OEM_DIR/configure-display.ps1")
 SEVENZIP_SIZE=$(wc -c < "$OEM_DIR/7za.exe")
 
 echo -e "${GREEN}✓ Files ready${NC}"
 echo "  install.bat: $CMD_SIZE bytes (under 8191 char limit)"
 echo "  install-prebaked.ps1: $PS1_SIZE bytes"
+echo "  configure-display.ps1: $DISPLAY_PS1_SIZE bytes"
 echo "  7za.exe: $SEVENZIP_SIZE bytes"
 
 # Step 3: Create tar.gz archive
@@ -75,7 +82,7 @@ fi
 # Files are added relative to OEM dir (no path prefix)
 # dockur/windows will automatically execute install.bat from /oem after installation
 # 7za.exe provides fast ZIP extraction (~1-2 min vs ~10-15 min with Expand-Archive)
-tar --format=ustar -czf oem-files.tar.gz install.bat install-prebaked.ps1 7za.exe
+tar --format=ustar -czf oem-files.tar.gz install.bat install-prebaked.ps1 configure-display.ps1 7za.exe
 
 if [ ! -f "oem-files.tar.gz" ]; then
     echo -e "${RED}ERROR: Failed to create archive${NC}"
@@ -96,18 +103,20 @@ cd "$TEMP_DIR"
 tar -xzf "$OUTPUT_ARCHIVE"
 
 # Verify extracted files
-if [ ! -f "install.bat" ] || [ ! -f "install-prebaked.ps1" ] || [ ! -f "7za.exe" ]; then
+if [ ! -f "install.bat" ] || [ ! -f "install-prebaked.ps1" ] || [ ! -f "configure-display.ps1" ] || [ ! -f "7za.exe" ]; then
     echo -e "${RED}ERROR: Files missing from extracted archive!${NC}"
     exit 1
 fi
 
 EXTRACTED_CMD_ENCODING=$(file install.bat)
 EXTRACTED_PS1_ENCODING=$(file install-prebaked.ps1)
+EXTRACTED_DISPLAY_PS1_ENCODING=$(file configure-display.ps1)
 EXTRACTED_7Z_SIZE=$(wc -c < 7za.exe)
 
-echo -e "${GREEN}✓ Archive verified - all 3 files extracted successfully${NC}"
+echo -e "${GREEN}✓ Archive verified - all 4 files extracted successfully${NC}"
 echo "  install.bat: $(echo $EXTRACTED_CMD_ENCODING | grep -o 'CRLF\|ASCII')"
 echo "  install-prebaked.ps1: $(echo $EXTRACTED_PS1_ENCODING | grep -o 'CRLF\|ASCII')"
+echo "  configure-display.ps1: $(echo $EXTRACTED_DISPLAY_PS1_ENCODING | grep -o 'CRLF\|ASCII')"
 echo "  7za.exe: $EXTRACTED_7Z_SIZE bytes (standalone 7-Zip executable)"
 echo "  dockur/windows will auto-execute install.bat during Windows setup"
 

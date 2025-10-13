@@ -808,10 +808,8 @@ fi
 echo ""
 
 # Determine service list based on compose file
-STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres)
-if [[ "$COMPOSE_FILE" == *"proxy"* ]]; then
-    STACK_SERVICES+=(bytebot-llm-proxy)
-fi
+# Proxy is now always required for Hawkeye framework
+STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres bytebot-llm-proxy)
 
 # Check if we should include Holo service (not for native Apple Silicon setup)
 INCLUDE_HOLO=true

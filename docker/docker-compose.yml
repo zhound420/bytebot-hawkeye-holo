@@ -94,8 +94,35 @@ services:
         condition: service_started
       bytebot-holo:
         condition: service_healthy
+      bytebot-llm-proxy:
+        condition: service_healthy
     networks:
       - bytebot-network
+
+  bytebot-llm-proxy:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-llm-proxy/Dockerfile
+    container_name: bytebot-llm-proxy
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      # Mount the config to avoid needing image rebuilds for model list changes
+      - ../packages/bytebot-llm-proxy/litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    networks:
+      - bytebot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   bytebot-ui:
     build:

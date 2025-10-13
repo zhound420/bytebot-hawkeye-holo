@@ -343,8 +343,11 @@ if [[ "$TARGET_OS" == "windows" ]] && [[ "$REMOVE_VOLUMES" == "false" ]]; then
         fi
         echo ""
     fi
+fi
+echo ""
 
-    # Tiny11 ISO cache detection and management
+# Tiny11 ISO cache detection and management (independent of volume removal choice)
+if [[ "$TARGET_OS" == "windows" ]]; then
     ISO_CACHE_DIR="docker/iso-cache"
     ISO_FILENAME="tiny11-2311-x64.iso"
     ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"

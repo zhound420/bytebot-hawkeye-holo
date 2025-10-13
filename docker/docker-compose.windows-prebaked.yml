@@ -22,6 +22,7 @@ services:
       - RAM_SIZE=${WINDOWS_RAM_SIZE:-6G}
       - CPU_CORES=${WINDOWS_CPU_CORES:-4}
       - DISK_SIZE=${WINDOWS_DISK_SIZE:-50G}
+      - RESOLUTION=${WINDOWS_RESOLUTION:-1920x1080}
 
       # Time sync with host + Custom port forwarding for bytebotd (9990)
       # QEMU hostfwd syntax: tcp::host_port-:guest_port

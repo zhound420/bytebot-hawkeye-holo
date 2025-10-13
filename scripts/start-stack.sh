@@ -230,6 +230,92 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo -e "${BLUE}Installer will be available as \\\\host.lan\\Data\\bytebotd-windows-installer.zip in Windows container${NC}"
         echo ""
     fi
+
+    # Tiny11 ISO cache detection and management (independent of volume removal choice)
+    ISO_CACHE_DIR="$PROJECT_ROOT/docker/iso-cache"
+    ISO_FILENAME="tiny11-2311-x64.iso"
+    ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
+
+    if [ -f "$ISO_PATH" ]; then
+        ISO_SIZE=$(du -sh "$ISO_PATH" | cut -f1)
+        echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}   Tiny11 ISO Cache Detected${NC}"
+        echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Found cached Tiny11 2311 ISO: $ISO_SIZE"
+        echo ""
+        echo "Benefits of using cached ISO:"
+        echo -e "  ${GREEN}• No 3.5GB redownload${NC} (saves 5-10 minutes)"
+        echo -e "  ${GREEN}• Instant Windows install start${NC} (no download wait)"
+        echo -e "  ${GREEN}• Persists across fresh installs${NC} (separate from Windows volume)"
+        echo ""
+        echo "Options:"
+        echo -e "  ${GREEN}• Use cached ISO (default):${NC} Fast install start ✅"
+        echo -e "  ${YELLOW}• Redownload ISO:${NC}           Force fresh download (5-10 min)"
+        echo -e "  ${RED}• Remove ISO cache:${NC}        Delete cached ISO (free 3.5GB disk)"
+        echo ""
+        read -p "Use cached Tiny11 ISO? [Y/n/r/d] (Y=use, n=don't use, r=redownload, d=delete) " -n 1 -r ISO_CHOICE
+        echo ""
+        echo ""
+
+        case $ISO_CHOICE in
+            [Rr])
+                echo -e "${YELLOW}Redownloading Tiny11 ISO...${NC}"
+                rm -f "$ISO_PATH"
+                if [ -f "$PROJECT_ROOT/scripts/download-tiny11-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-tiny11-iso.sh"
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                USE_CACHED_ISO=true
+                ;;
+            [Dd])
+                echo -e "${YELLOW}Removing ISO cache...${NC}"
+                rm -f "$ISO_PATH"
+                echo -e "${GREEN}✓ ISO cache removed (freed $ISO_SIZE)${NC}"
+                USE_CACHED_ISO=false
+                ;;
+            [Nn])
+                echo -e "${YELLOW}✓ Will download ISO from archive.org (may take 5-10 min)${NC}"
+                USE_CACHED_ISO=false
+                ;;
+            *)
+                echo -e "${GREEN}✓ Using cached ISO (saves 5-10 min download)${NC}"
+                USE_CACHED_ISO=true
+                ;;
+        esac
+        echo ""
+    else
+        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+        echo -e "${BLUE}   No Tiny11 ISO Cache Found${NC}"
+        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "Tiny11 2311 ISO not cached (~3.5GB download required)"
+        echo ""
+        echo "Options:"
+        echo -e "  ${YELLOW}• Download now (recommended):${NC} Cache for future installs (5-10 min)"
+        echo -e "  ${BLUE}• Skip:${NC}                       dockur/windows will download during boot"
+        echo ""
+        read -p "Download and cache Tiny11 ISO now? [Y/n] " -n 1 -r
+        echo ""
+        echo ""
+
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            echo -e "${BLUE}Downloading Tiny11 ISO to cache...${NC}"
+            if [ -f "$PROJECT_ROOT/scripts/download-tiny11-iso.sh" ]; then
+                bash "$PROJECT_ROOT/scripts/download-tiny11-iso.sh"
+                USE_CACHED_ISO=true
+            else
+                echo -e "${RED}ERROR: Download script not found${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${YELLOW}✓ Skipping ISO download - dockur/windows will download during boot${NC}"
+            USE_CACHED_ISO=false
+        fi
+        echo ""
+    fi
 fi
 
 # Change to docker directory
@@ -268,6 +354,15 @@ else
     echo "Copy and configure the environment file:"
     echo -e "  ${BLUE}cp docker/.env.example docker/.env${NC}"
     exit 1
+fi
+
+# Enable ISO cache mount if requested (Windows only)
+if [[ "$TARGET_OS" == "windows" ]] && [[ "${USE_CACHED_ISO:-false}" == "true" ]]; then
+    echo -e "${BLUE}Enabling cached Tiny11 ISO mount...${NC}"
+    # Uncomment the ISO mount line in the compose file
+    sed -i 's|^      # - \./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro|      - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro|' "$COMPOSE_FILE"
+    echo -e "${GREEN}✓ ISO cache enabled (saves 5-10 min download)${NC}"
+    echo ""
 fi
 
 STACK_SERVICES=($DESKTOP_SERVICE bytebot-agent bytebot-ui postgres bytebot-llm-proxy)

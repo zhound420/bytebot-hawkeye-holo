@@ -285,50 +285,61 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo ""
     fi
 
-    # Windows ISO cache detection and management (Tiny11 or Nano11)
+    # Windows ISO cache detection and management (supports multiple variants)
     ISO_CACHE_DIR="$PROJECT_ROOT/docker/iso-cache"
 
-    # Detect which ISO variant is cached (if any)
-    ISO_VARIANT=""
-    ISO_PATH=""
-    ISO_FILENAME=""
+    # Detect ALL cached ISOs (both Tiny11 and Nano11)
+    TINY11_CACHED=false
+    NANO11_CACHED=false
+    TINY11_SIZE=""
+    NANO11_SIZE=""
 
     if [ -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso" ]; then
-        ISO_VARIANT="Tiny11 2311"
-        ISO_FILENAME="tiny11-2311-x64.iso"
-        ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
-    elif [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
-        ISO_VARIANT="Nano11 25H2"
-        ISO_FILENAME="nano11-25h2.iso"
-        ISO_PATH="$ISO_CACHE_DIR/$ISO_FILENAME"
+        TINY11_CACHED=true
+        TINY11_SIZE=$(du -sh "$ISO_CACHE_DIR/tiny11-2311-x64.iso" | cut -f1)
     fi
 
-    if [ -n "$ISO_VARIANT" ]; then
-        ISO_SIZE=$(du -sh "$ISO_PATH" | cut -f1)
-        echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}   Windows ISO Cache Detected${NC}"
-        echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+    if [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
+        NANO11_CACHED=true
+        NANO11_SIZE=$(du -sh "$ISO_CACHE_DIR/nano11-25h2.iso" | cut -f1)
+    fi
+
+    # Show interactive variant selection menu
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}   Windows ISO Variant Selection${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "Which Windows ISO variant would you like to use?"
+    echo ""
+
+    # Build menu options dynamically based on what's cached
+    if [[ "$TINY11_CACHED" == "true" ]] && [[ "$NANO11_CACHED" == "true" ]]; then
+        # Both cached - offer both, redownload, or skip
+        echo -e "${GREEN}1) Tiny11 2311 (${TINY11_SIZE} cached)${NC}"
+        echo "   ✅ Serviceable and updateable"
+        echo "   ✅ Windows Defender, Windows Update, Audio"
+        echo "   ✅ Suitable for production/daily use"
         echo ""
-        echo "Found cached $ISO_VARIANT ISO: $ISO_SIZE"
+        echo -e "${YELLOW}2) Nano11 25H2 (${NANO11_SIZE} cached)${NC}"
+        echo "   ⚠️  Minimal footprint, testing/VMs only"
+        echo "   ⚠️  NOT serviceable, no Windows Update, no Audio"
         echo ""
-        echo "Benefits of using cached ISO:"
-        echo -e "  ${GREEN}• No redownload${NC} (saves 5-10 minutes)"
-        echo -e "  ${GREEN}• Instant Windows install start${NC} (no download wait)"
-        echo -e "  ${GREEN}• Persists across fresh installs${NC} (separate from Windows volume)"
+        echo -e "${BLUE}3) Redownload/replace existing ISO${NC}"
         echo ""
-        echo "Options:"
-        echo -e "  ${GREEN}• Use cached ISO (default):${NC} Fast install start ✅"
-        echo -e "  ${YELLOW}• Redownload ISO:${NC}           Choose Tiny11/Nano11 variant"
-        echo -e "  ${RED}• Remove ISO cache:${NC}        Delete cached ISO (free disk space)"
+        echo -e "${BLUE}4) Skip (download during boot)${NC}"
         echo ""
-        read -p "Use cached $ISO_VARIANT ISO? [Y/n/r/d] (Y=use, n=don't use, r=redownload, d=delete) " -n 1 -r ISO_CHOICE
+        read -p "Select option [1-4] (default: 1): " -n 1 -r ISO_CHOICE
         echo ""
         echo ""
 
         case $ISO_CHOICE in
-            [Rr])
-                echo -e "${YELLOW}Redownloading Windows ISO...${NC}"
-                rm -f "$ISO_PATH"
+            2)
+                ISO_FILENAME="nano11-25h2.iso"
+                USE_CACHED_ISO=true
+                echo -e "${YELLOW}✓ Using cached Nano11 25H2 (minimal variant)${NC}"
+                ;;
+            3)
+                echo -e "${YELLOW}Choose variant to redownload:${NC}"
                 if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
                     bash "$PROJECT_ROOT/scripts/download-windows-iso.sh"
                     # Re-detect which ISO was downloaded
@@ -343,58 +354,191 @@ if [[ "$TARGET_OS" == "windows" ]]; then
                     exit 1
                 fi
                 ;;
-            [Dd])
-                echo -e "${YELLOW}Removing ISO cache...${NC}"
-                rm -f "$ISO_PATH"
-                echo -e "${GREEN}✓ ISO cache removed (freed $ISO_SIZE)${NC}"
+            4)
+                echo -e "${YELLOW}✓ Skipping cached ISO - dockur/windows will download during boot${NC}"
                 USE_CACHED_ISO=false
                 ;;
-            [Nn])
-                echo -e "${YELLOW}✓ Will download ISO from archive.org (may take 5-10 min)${NC}"
-                USE_CACHED_ISO=false
+            1|"")
+                ISO_FILENAME="tiny11-2311-x64.iso"
+                USE_CACHED_ISO=true
+                echo -e "${GREEN}✓ Using cached Tiny11 2311 (recommended)${NC}"
                 ;;
             *)
-                echo -e "${GREEN}✓ Using cached ISO (saves 5-10 min download)${NC}"
+                echo -e "${YELLOW}Invalid choice, defaulting to Tiny11${NC}"
+                ISO_FILENAME="tiny11-2311-x64.iso"
                 USE_CACHED_ISO=true
                 ;;
         esac
+
+    elif [[ "$TINY11_CACHED" == "true" ]]; then
+        # Only Tiny11 cached - offer Tiny11, download Nano11, redownload, or skip
+        echo -e "${GREEN}1) Tiny11 2311 (${TINY11_SIZE} cached)${NC}"
+        echo "   ✅ Serviceable and updateable"
         echo ""
-    else
-        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
-        echo -e "${BLUE}   No Windows ISO Cache Found${NC}"
-        echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}2) Nano11 25H2 (download ~2.3GB)${NC}"
+        echo "   ⚠️  Minimal variant, testing only"
         echo ""
-        echo "No Tiny11 or Nano11 ISO cached (~2-4GB download required)"
+        echo -e "${BLUE}3) Redownload Tiny11${NC}"
         echo ""
-        echo "Options:"
-        echo -e "  ${YELLOW}• Download now (recommended):${NC} Choose Tiny11/Nano11, cache for future installs"
-        echo -e "  ${BLUE}• Skip:${NC}                       dockur/windows will download during boot"
+        echo -e "${BLUE}4) Skip (download during boot)${NC}"
         echo ""
-        read -p "Download and cache Windows ISO now? [Y/n] " -n 1 -r
+        read -p "Select option [1-4] (default: 1): " -n 1 -r ISO_CHOICE
         echo ""
         echo ""
 
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            echo -e "${BLUE}Downloading Windows ISO to cache...${NC}"
-            if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
-                bash "$PROJECT_ROOT/scripts/download-windows-iso.sh"
-                # Detect which ISO was downloaded
-                if [ -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso" ]; then
-                    ISO_FILENAME="tiny11-2311-x64.iso"
-                elif [ -f "$ISO_CACHE_DIR/nano11-25h2.iso" ]; then
+        case $ISO_CHOICE in
+            2)
+                echo -e "${BLUE}Downloading Nano11 25H2...${NC}"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant nano11
                     ISO_FILENAME="nano11-25h2.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
                 fi
+                ;;
+            3)
+                echo -e "${YELLOW}Redownloading Tiny11...${NC}"
+                rm -f "$ISO_CACHE_DIR/tiny11-2311-x64.iso"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant tiny11
+                    ISO_FILENAME="tiny11-2311-x64.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+            4)
+                echo -e "${YELLOW}✓ Skipping cached ISO - dockur/windows will download during boot${NC}"
+                USE_CACHED_ISO=false
+                ;;
+            1|"")
+                ISO_FILENAME="tiny11-2311-x64.iso"
                 USE_CACHED_ISO=true
-            else
-                echo -e "${RED}ERROR: Download script not found${NC}"
-                exit 1
-            fi
-        else
-            echo -e "${YELLOW}✓ Skipping ISO download - dockur/windows will download during boot${NC}"
-            USE_CACHED_ISO=false
-        fi
+                echo -e "${GREEN}✓ Using cached Tiny11 2311${NC}"
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid choice, defaulting to cached Tiny11${NC}"
+                ISO_FILENAME="tiny11-2311-x64.iso"
+                USE_CACHED_ISO=true
+                ;;
+        esac
+
+    elif [[ "$NANO11_CACHED" == "true" ]]; then
+        # Only Nano11 cached - offer Nano11, download Tiny11, redownload, or skip
+        echo -e "${YELLOW}1) Nano11 25H2 (${NANO11_SIZE} cached)${NC}"
+        echo "   ⚠️  Minimal variant, testing only"
         echo ""
+        echo -e "${GREEN}2) Tiny11 2311 (download ~3.5GB)${NC}"
+        echo "   ✅ Recommended for general use"
+        echo ""
+        echo -e "${BLUE}3) Redownload Nano11${NC}"
+        echo ""
+        echo -e "${BLUE}4) Skip (download during boot)${NC}"
+        echo ""
+        read -p "Select option [1-4] (default: 1): " -n 1 -r ISO_CHOICE
+        echo ""
+        echo ""
+
+        case $ISO_CHOICE in
+            2)
+                echo -e "${BLUE}Downloading Tiny11 2311...${NC}"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant tiny11
+                    ISO_FILENAME="tiny11-2311-x64.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+            3)
+                echo -e "${YELLOW}Redownloading Nano11...${NC}"
+                rm -f "$ISO_CACHE_DIR/nano11-25h2.iso"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant nano11
+                    ISO_FILENAME="nano11-25h2.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+            4)
+                echo -e "${YELLOW}✓ Skipping cached ISO - dockur/windows will download during boot${NC}"
+                USE_CACHED_ISO=false
+                ;;
+            1|"")
+                ISO_FILENAME="nano11-25h2.iso"
+                USE_CACHED_ISO=true
+                echo -e "${YELLOW}✓ Using cached Nano11 25H2${NC}"
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid choice, defaulting to cached Nano11${NC}"
+                ISO_FILENAME="nano11-25h2.iso"
+                USE_CACHED_ISO=true
+                ;;
+        esac
+
+    else
+        # No ISOs cached - offer download or skip
+        echo -e "${GREEN}1) Tiny11 2311 (download ~3.5GB)${NC}"
+        echo "   ✅ Recommended for general use"
+        echo "   ✅ Serviceable, updateable, production-ready"
+        echo ""
+        echo -e "${YELLOW}2) Nano11 25H2 (download ~2.3GB)${NC}"
+        echo "   ⚠️  Minimal variant, testing/VMs only"
+        echo "   ⚠️  NOT serviceable, no Windows Update"
+        echo ""
+        echo -e "${BLUE}3) Skip (download during boot)${NC}"
+        echo ""
+        read -p "Select option [1-3] (default: 1): " -n 1 -r ISO_CHOICE
+        echo ""
+        echo ""
+
+        case $ISO_CHOICE in
+            2)
+                echo -e "${BLUE}Downloading Nano11 25H2...${NC}"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant nano11
+                    ISO_FILENAME="nano11-25h2.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+            3)
+                echo -e "${YELLOW}✓ Skipping ISO download - dockur/windows will download during boot${NC}"
+                USE_CACHED_ISO=false
+                ;;
+            1|"")
+                echo -e "${BLUE}Downloading Tiny11 2311...${NC}"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant tiny11
+                    ISO_FILENAME="tiny11-2311-x64.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid choice, downloading Tiny11 (recommended)${NC}"
+                if [ -f "$PROJECT_ROOT/scripts/download-windows-iso.sh" ]; then
+                    bash "$PROJECT_ROOT/scripts/download-windows-iso.sh" --variant tiny11
+                    ISO_FILENAME="tiny11-2311-x64.iso"
+                    USE_CACHED_ISO=true
+                else
+                    echo -e "${RED}ERROR: Download script not found${NC}"
+                    exit 1
+                fi
+                ;;
+        esac
     fi
+    echo ""
 fi
 
 # Change to docker directory

@@ -27,6 +27,25 @@ NANO11_FILENAME="nano11-25h2.iso"
 NANO11_SIZE="~2.3GB"
 NANO11_DOWNLOAD_TIME="3-10 minutes"
 
+# Parse command-line arguments
+VARIANT_SPECIFIED=false
+SPECIFIED_VARIANT=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --variant)
+            VARIANT_SPECIFIED=true
+            SPECIFIED_VARIANT="$2"
+            shift 2
+            ;;
+        *)
+            echo -e "${RED}Unknown argument: $1${NC}"
+            echo "Usage: $0 [--variant tiny11|nano11]"
+            exit 1
+            ;;
+    esac
+done
+
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   Windows ISO Downloader${NC}"
 echo -e "${BLUE}================================================${NC}"
@@ -35,113 +54,173 @@ echo ""
 # Create cache directory if it doesn't exist
 mkdir -p "$CACHE_DIR"
 
-# Check if any ISO already exists
-EXISTING_ISO=""
+# Detect what's already cached (for informational purposes)
+TINY11_CACHED=false
+NANO11_CACHED=false
+
 if [ -f "$CACHE_DIR/$TINY11_FILENAME" ]; then
-    EXISTING_ISO="Tiny11"
-    EXISTING_PATH="$CACHE_DIR/$TINY11_FILENAME"
-    EXISTING_SIZE=$(du -sh "$EXISTING_PATH" | cut -f1)
-elif [ -f "$CACHE_DIR/$NANO11_FILENAME" ]; then
-    EXISTING_ISO="Nano11"
-    EXISTING_PATH="$CACHE_DIR/$NANO11_FILENAME"
-    EXISTING_SIZE=$(du -sh "$EXISTING_PATH" | cut -f1)
+    TINY11_CACHED=true
+    TINY11_CACHED_SIZE=$(du -sh "$CACHE_DIR/$TINY11_FILENAME" | cut -f1)
 fi
 
-if [ -n "$EXISTING_ISO" ]; then
-    echo -e "${GREEN}✓ $EXISTING_ISO ISO already cached${NC}"
-    echo "  Location: $EXISTING_PATH"
-    echo "  Size: $EXISTING_SIZE"
-    echo ""
-
-    read -p "Redownload? [y/N] " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${GREEN}Using existing ISO${NC}"
-        exit 0
-    fi
-
-    echo -e "${YELLOW}Removing existing ISO...${NC}"
-    rm -f "$EXISTING_PATH"
+if [ -f "$CACHE_DIR/$NANO11_FILENAME" ]; then
+    NANO11_CACHED=true
+    NANO11_CACHED_SIZE=$(du -sh "$CACHE_DIR/$NANO11_FILENAME" | cut -f1)
 fi
 
-# Prompt user to choose ISO variant
-echo -e "${BLUE}════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}   Select Windows ISO Variant${NC}"
-echo -e "${BLUE}════════════════════════════════════════════════${NC}"
-echo ""
-echo "Which Windows ISO would you like to download?"
-echo ""
-echo -e "${GREEN}1) Tiny11 2311 (Recommended for general use)${NC}"
-echo "   • Size: $TINY11_SIZE"
-echo "   • Download time: $TINY11_DOWNLOAD_TIME"
-echo "   • Features:"
-echo "     ✅ Serviceable and updateable"
-echo "     ✅ Windows Defender included"
-echo "     ✅ Windows Update works"
-echo "     ✅ Audio and most drivers"
-echo "     ✅ Suitable for production/daily use"
-echo ""
-echo -e "${YELLOW}2) Nano11 25H2 (Minimal - testing/VMs only)${NC}"
-echo "   • Size: $NANO11_SIZE (34% smaller!)"
-echo "   • Download time: $NANO11_DOWNLOAD_TIME"
-echo "   • Features:"
-echo "     ✅ Extremely minimal footprint"
-echo "     ✅ Faster download and installation"
-echo "     ⚠️  NOT serviceable (cannot add features/drivers)"
-echo "     ⚠️  No Windows Update (no security patches)"
-echo "     ⚠️  No Windows Defender"
-echo "     ⚠️  No Audio service (sound may not work)"
-echo "     ⚠️  Minimal drivers (VGA, Net, Storage only)"
-echo "     ✅ Best for: Quick testbeds, development VMs, embedded systems"
-echo ""
-read -p "Select variant [1-2] (default: 1): " -n 1 -r ISO_CHOICE
-echo ""
-echo ""
-
-# Determine selected ISO
-case $ISO_CHOICE in
-    2)
-        ISO_NAME="Nano11"
-        ISO_URL="$NANO11_URL"
-        ISO_FILENAME="$NANO11_FILENAME"
-        ISO_SIZE="$NANO11_SIZE"
-        ISO_DOWNLOAD_TIME="$NANO11_DOWNLOAD_TIME"
-        echo -e "${YELLOW}✓ Nano11 25H2 selected (minimal variant)${NC}"
-        echo ""
-        echo -e "${RED}⚠️  IMPORTANT: Nano11 Limitations${NC}"
-        echo "   • Cannot add Windows features or drivers after installation"
-        echo "   • No Windows Update - will not receive security patches"
-        echo "   • No Audio service - sound may not work"
-        echo "   • Only use for testing, development, or embedded VMs"
-        echo ""
-        read -p "Continue with Nano11? [y/N] " -n 1 -r NANO11_CONFIRM
-        echo ""
-        if [[ ! $NANO11_CONFIRM =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Defaulting to Tiny11 (safer choice)${NC}"
+# Handle variant selection (either from --variant flag or interactive prompt)
+if [[ "$VARIANT_SPECIFIED" == "true" ]]; then
+    # Variant specified via flag - use it directly
+    case "$SPECIFIED_VARIANT" in
+        tiny11)
             ISO_NAME="Tiny11"
             ISO_URL="$TINY11_URL"
             ISO_FILENAME="$TINY11_FILENAME"
             ISO_SIZE="$TINY11_SIZE"
             ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
-        fi
-        ;;
-    1|"")
-        ISO_NAME="Tiny11"
-        ISO_URL="$TINY11_URL"
-        ISO_FILENAME="$TINY11_FILENAME"
-        ISO_SIZE="$TINY11_SIZE"
-        ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
-        echo -e "${GREEN}✓ Tiny11 2311 selected (recommended)${NC}"
-        ;;
-    *)
-        echo -e "${YELLOW}Invalid choice, defaulting to Tiny11${NC}"
-        ISO_NAME="Tiny11"
-        ISO_URL="$TINY11_URL"
-        ISO_FILENAME="$TINY11_FILENAME"
-        ISO_SIZE="$TINY11_SIZE"
-        ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
-        ;;
-esac
+
+            if [[ "$TINY11_CACHED" == "true" ]]; then
+                echo -e "${YELLOW}Note: Tiny11 already cached (${TINY11_CACHED_SIZE})${NC}"
+                echo -e "${YELLOW}Will redownload to ensure latest version${NC}"
+                echo ""
+                rm -f "$CACHE_DIR/$TINY11_FILENAME"
+            fi
+            echo -e "${GREEN}✓ Tiny11 2311 selected${NC}"
+            ;;
+        nano11)
+            ISO_NAME="Nano11"
+            ISO_URL="$NANO11_URL"
+            ISO_FILENAME="$NANO11_FILENAME"
+            ISO_SIZE="$NANO11_SIZE"
+            ISO_DOWNLOAD_TIME="$NANO11_DOWNLOAD_TIME"
+
+            if [[ "$NANO11_CACHED" == "true" ]]; then
+                echo -e "${YELLOW}Note: Nano11 already cached (${NANO11_CACHED_SIZE})${NC}"
+                echo -e "${YELLOW}Will redownload to ensure latest version${NC}"
+                echo ""
+                rm -f "$CACHE_DIR/$NANO11_FILENAME"
+            fi
+            echo -e "${YELLOW}✓ Nano11 25H2 selected (minimal variant)${NC}"
+            ;;
+        *)
+            echo -e "${RED}ERROR: Invalid variant '$SPECIFIED_VARIANT'${NC}"
+            echo "Valid variants: tiny11, nano11"
+            exit 1
+            ;;
+    esac
+else
+    # Interactive variant selection
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}   Select Windows ISO Variant${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "Which Windows ISO would you like to download?"
+    echo ""
+
+    # Show cached status if any ISOs are cached
+    if [[ "$TINY11_CACHED" == "true" ]] || [[ "$NANO11_CACHED" == "true" ]]; then
+        echo -e "${BLUE}Currently cached:${NC}"
+        [[ "$TINY11_CACHED" == "true" ]] && echo "  • Tiny11 2311 (${TINY11_CACHED_SIZE})"
+        [[ "$NANO11_CACHED" == "true" ]] && echo "  • Nano11 25H2 (${NANO11_CACHED_SIZE})"
+        echo ""
+    fi
+
+    echo -e "${GREEN}1) Tiny11 2311 (Recommended for general use)${NC}"
+    echo "   • Size: $TINY11_SIZE"
+    echo "   • Download time: $TINY11_DOWNLOAD_TIME"
+    echo "   • Features:"
+    echo "     ✅ Serviceable and updateable"
+    echo "     ✅ Windows Defender included"
+    echo "     ✅ Windows Update works"
+    echo "     ✅ Audio and most drivers"
+    echo "     ✅ Suitable for production/daily use"
+    echo ""
+    echo -e "${YELLOW}2) Nano11 25H2 (Minimal - testing/VMs only)${NC}"
+    echo "   • Size: $NANO11_SIZE (34% smaller!)"
+    echo "   • Download time: $NANO11_DOWNLOAD_TIME"
+    echo "   • Features:"
+    echo "     ✅ Extremely minimal footprint"
+    echo "     ✅ Faster download and installation"
+    echo "     ⚠️  NOT serviceable (cannot add features/drivers)"
+    echo "     ⚠️  No Windows Update (no security patches)"
+    echo "     ⚠️  No Windows Defender"
+    echo "     ⚠️  No Audio service (sound may not work)"
+    echo "     ⚠️  Minimal drivers (VGA, Net, Storage only)"
+    echo "     ✅ Best for: Quick testbeds, development VMs, embedded systems"
+    echo ""
+    read -p "Select variant [1-2] (default: 1): " -n 1 -r ISO_CHOICE
+    echo ""
+    echo ""
+
+    # Determine selected ISO
+    case $ISO_CHOICE in
+        2)
+            ISO_NAME="Nano11"
+            ISO_URL="$NANO11_URL"
+            ISO_FILENAME="$NANO11_FILENAME"
+            ISO_SIZE="$NANO11_SIZE"
+            ISO_DOWNLOAD_TIME="$NANO11_DOWNLOAD_TIME"
+            echo -e "${YELLOW}✓ Nano11 25H2 selected (minimal variant)${NC}"
+            echo ""
+            echo -e "${RED}⚠️  IMPORTANT: Nano11 Limitations${NC}"
+            echo "   • Cannot add Windows features or drivers after installation"
+            echo "   • No Windows Update - will not receive security patches"
+            echo "   • No Audio service - sound may not work"
+            echo "   • Only use for testing, development, or embedded VMs"
+            echo ""
+            read -p "Continue with Nano11? [y/N] " -n 1 -r NANO11_CONFIRM
+            echo ""
+            if [[ ! $NANO11_CONFIRM =~ ^[Yy]$ ]]; then
+                echo -e "${YELLOW}Defaulting to Tiny11 (safer choice)${NC}"
+                ISO_NAME="Tiny11"
+                ISO_URL="$TINY11_URL"
+                ISO_FILENAME="$TINY11_FILENAME"
+                ISO_SIZE="$TINY11_SIZE"
+                ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
+            fi
+
+            # Check if selected variant is already cached
+            if [[ "$ISO_NAME" == "Nano11" ]] && [[ "$NANO11_CACHED" == "true" ]]; then
+                echo -e "${YELLOW}Note: Nano11 already cached (${NANO11_CACHED_SIZE})${NC}"
+                echo -e "${YELLOW}Will redownload to ensure latest version${NC}"
+                echo ""
+                rm -f "$CACHE_DIR/$NANO11_FILENAME"
+            fi
+            ;;
+        1|"")
+            ISO_NAME="Tiny11"
+            ISO_URL="$TINY11_URL"
+            ISO_FILENAME="$TINY11_FILENAME"
+            ISO_SIZE="$TINY11_SIZE"
+            ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
+            echo -e "${GREEN}✓ Tiny11 2311 selected (recommended)${NC}"
+
+            # Check if selected variant is already cached
+            if [[ "$TINY11_CACHED" == "true" ]]; then
+                echo -e "${YELLOW}Note: Tiny11 already cached (${TINY11_CACHED_SIZE})${NC}"
+                echo -e "${YELLOW}Will redownload to ensure latest version${NC}"
+                echo ""
+                rm -f "$CACHE_DIR/$TINY11_FILENAME"
+            fi
+            ;;
+        *)
+            echo -e "${YELLOW}Invalid choice, defaulting to Tiny11${NC}"
+            ISO_NAME="Tiny11"
+            ISO_URL="$TINY11_URL"
+            ISO_FILENAME="$TINY11_FILENAME"
+            ISO_SIZE="$TINY11_SIZE"
+            ISO_DOWNLOAD_TIME="$TINY11_DOWNLOAD_TIME"
+
+            # Check if selected variant is already cached
+            if [[ "$TINY11_CACHED" == "true" ]]; then
+                echo -e "${YELLOW}Note: Tiny11 already cached (${TINY11_CACHED_SIZE})${NC}"
+                echo -e "${YELLOW}Will redownload to ensure latest version${NC}"
+                echo ""
+                rm -f "$CACHE_DIR/$TINY11_FILENAME"
+            fi
+            ;;
+    esac
+fi
 
 ISO_PATH="$CACHE_DIR/$ISO_FILENAME"
 

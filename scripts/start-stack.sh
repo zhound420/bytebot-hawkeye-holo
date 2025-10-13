@@ -596,6 +596,13 @@ if [[ "$COMPOSE_FILE" != "docker-compose.proxy.yml" ]]; then
     COMPOSE_FILES+=("-f" "docker-compose.proxy.yml")
 fi
 
+# Set correct desktop URL for Windows/macOS (prevents proxy.yml from using wrong default)
+if [[ "$TARGET_OS" == "windows" ]]; then
+    export BYTEBOT_DESKTOP_BASE_URL="http://bytebot-windows:9990"
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    export BYTEBOT_DESKTOP_BASE_URL="http://bytebot-macos:9990"
+fi
+
 # OS-specific checks
 if [[ "$TARGET_OS" == "windows" ]]; then
     echo -e "${YELLOW}Note: Windows container requires KVM support${NC}"

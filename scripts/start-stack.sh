@@ -124,10 +124,12 @@ TARGET_OS="linux"  # Default to Linux
 USE_PREBAKED=false  # Use pre-baked Windows image
 
 # Parse command-line arguments
+TARGET_OS_FROM_FLAG=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --os)
             TARGET_OS="$2"
+            TARGET_OS_FROM_FLAG=true
             shift 2
             ;;
         --prebaked)
@@ -141,6 +143,58 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Interactive OS selection if not specified via flag
+if [[ "$TARGET_OS_FROM_FLAG" == "false" ]]; then
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}   Target OS Selection${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "Which OS stack would you like to start?"
+    echo "  1) Linux (desktop container - default)"
+    echo "  2) Windows 11 (requires KVM)"
+    echo "  3) macOS (requires KVM, Apple hardware)"
+    echo ""
+    read -p "Select option [1-3] (default: 1): " -n 1 -r OS_CHOICE
+    echo ""
+
+    case $OS_CHOICE in
+        2)
+            TARGET_OS="windows"
+            echo -e "${YELLOW}✓ Windows 11 selected${NC}"
+            ;;
+        3)
+            TARGET_OS="macos"
+            echo -e "${YELLOW}✓ macOS selected${NC}"
+            ;;
+        1|"")
+            TARGET_OS="linux"
+            echo -e "${GREEN}✓ Linux selected${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}Invalid choice, defaulting to Linux${NC}"
+            TARGET_OS="linux"
+            ;;
+    esac
+    echo ""
+
+    # If Windows selected, ask about pre-baked image
+    if [[ "$TARGET_OS" == "windows" ]]; then
+        echo -e "${BLUE}Use pre-baked Windows image?${NC}"
+        echo "  • Pre-baked: 30-60 seconds startup (96% faster)"
+        echo "  • Runtime:   8-15 minutes startup"
+        read -p "Use pre-baked image? [Y/n] " -n 1 -r PREBAKED_CHOICE
+        echo ""
+        if [[ ! $PREBAKED_CHOICE =~ ^[Nn]$ ]]; then
+            USE_PREBAKED=true
+            echo -e "${GREEN}✓ Using pre-baked image${NC}"
+        else
+            echo -e "${YELLOW}✓ Using runtime installation${NC}"
+        fi
+        echo ""
+    fi
+fi
 
 # Validate TARGET_OS
 if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" && "$TARGET_OS" != "macos" ]]; then

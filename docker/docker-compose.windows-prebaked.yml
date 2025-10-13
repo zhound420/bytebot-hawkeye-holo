@@ -123,6 +123,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bytebotdb}
       - BYTEBOTD_URL=http://bytebot-windows:9990
       - HOLO_URL=http://bytebot-holo:9989
+      - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -161,6 +162,29 @@ services:
     restart: unless-stopped
     labels:
       - "bytebot.component=ui"
+
+  # LiteLLM Proxy for multi-provider model routing
+  bytebot-llm-proxy:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-llm-proxy/Dockerfile
+    container_name: bytebot-llm-proxy
+    ports:
+      - "4000:4000"
+    volumes:
+      # Mount config to avoid needing image rebuilds for model list changes
+      - ../packages/bytebot-llm-proxy/litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=llm-proxy"
+      - "bytebot.description=LiteLLM proxy for multi-provider routing"
 
 volumes:
   bytebot-windows-storage:

@@ -23,8 +23,9 @@ services:
       - CPU_CORES=${WINDOWS_CPU_CORES:-4}
       - DISK_SIZE=${WINDOWS_DISK_SIZE:-50G}
 
-      # Time sync with host
-      - ARGUMENTS=-rtc base=localtime
+      # Time sync with host + Custom port forwarding for bytebotd (9990)
+      # QEMU hostfwd syntax: tcp::host_port-:guest_port
+      - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp::9990-:9990
 
       # BTRFS compatibility (avoids O_DIRECT requirement)
       # Allows Windows containers to work on BTRFS without ext4 loop device
@@ -121,7 +122,7 @@ services:
       - "9991:9991"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bytebotdb}
-      - BYTEBOTD_URL=http://bytebot-windows:9990
+      - BYTEBOT_DESKTOP_BASE_URL=http://bytebot-windows:9990
       - HOLO_URL=http://bytebot-holo:9989
       - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

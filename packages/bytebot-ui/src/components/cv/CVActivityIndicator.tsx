@@ -21,6 +21,9 @@ interface CVActivitySnapshot {
   };
   holoDevice?: string;  // cuda, mps, cpu
   holoModel?: string;   // "Holo 1.5-7B (Qwen2.5-VL base)"
+  holoPerformanceProfile?: string; // "SPEED", "BALANCED", "QUALITY"
+  holoQuantization?: string; // "Q4_K_M", "Q8_0"
+  holoProcessingTimeMs?: number; // Last processing time
   gpuName?: string; // GPU device name (e.g., "NVIDIA GeForce RTX 4090")
   gpuMemoryTotalMB?: number; // Total GPU memory in MB
   gpuMemoryUsedMB?: number; // Used GPU memory in MB
@@ -101,6 +104,21 @@ const getDeviceBadge = (device?: string): { icon: string; label: string; color: 
     return { icon: "💻", label: "CPU", color: "text-blue-500" };
   }
   return { icon: "💻", label: "Native", color: "text-blue-500" };
+};
+
+// Helper function to get performance profile badge
+const getPerformanceProfileBadge = (profile?: string): { icon: string; label: string; color: string } | null => {
+  if (!profile) return null;
+
+  const profileUpper = profile.toUpperCase();
+  if (profileUpper === "SPEED") {
+    return { icon: "🚀", label: "SPEED", color: "text-blue-600 dark:text-blue-400" };
+  } else if (profileUpper === "BALANCED") {
+    return { icon: "⚖️", label: "BALANCED", color: "text-purple-600 dark:text-purple-400" };
+  } else if (profileUpper === "QUALITY") {
+    return { icon: "🎯", label: "QUALITY", color: "text-orange-600 dark:text-orange-400" };
+  }
+  return null;
 };
 
 interface CVActivityIndicatorProps {
@@ -220,6 +238,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     const hasHolo = activity?.activeMethods?.includes("holo-1.5-7b") ||
                      activity?.holoModel;
     const deviceBadge = getDeviceBadge(activity?.holoDevice);
+    const profileBadge = getPerformanceProfileBadge(activity?.holoPerformanceProfile);
 
     return (
       <div className={cn("rounded-lg border border-border bg-card/50 dark:bg-card/30 px-3 py-2 backdrop-blur-sm", className)}>
@@ -239,9 +258,16 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               ))}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-foreground">
-                {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-foreground">
+                  {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
+                </span>
+                {profileBadge && (
+                  <span className={cn("text-[9px] font-semibold flex items-center gap-0.5", profileBadge.color)} title={`Holo ${profileBadge.label} mode`}>
+                    <span>{profileBadge.icon}</span>
+                  </span>
+                )}
+              </div>
               {activity?.gpuName && (
                 <span className="text-[9px] text-muted-foreground">
                   {activity.gpuName}
@@ -277,6 +303,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
                 <div key={method} className="flex items-center gap-2 text-xs">
                   <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
                   <span className="font-medium">{displayName}</span>
+                  <span className="text-red-500 dark:text-red-400 text-[9px]" title="Live processing">🔴</span>
                   {elapsed > 0 && (
                     <span className="text-muted-foreground ml-auto">{elapsed}s</span>
                   )}

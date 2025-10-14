@@ -3102,7 +3102,7 @@ ${loopResult.suggestion}
             content: [
               {
                 type: MessageContentType.Text,
-                text: `🔍 **Internal Holo 1.5-7B Activity**\n\nDetected ${elementCount} UI elements during internal processing\n\n_This detection was performed automatically for caching/optimization and did not use \`computer_detect_elements\`. To interact with these elements, use \`computer_detect_elements\` followed by \`computer_click_element\`._`
+                text: `🔍 **Holo 1.5-7B Pre-Detection**\n\nAutomatically detected ${elementCount} UI ${elementCount === 1 ? 'element' : 'elements'} for faster future interactions\n\n💡 _These elements are cached and ready to use. Call \`computer_detect_elements\` to access them, then \`computer_click_element\` to interact._`
               }
             ],
             role: Role.ASSISTANT,

@@ -67,6 +67,9 @@ export interface CVActivitySnapshot {
   };
   holoDevice?: string; // Device type for Holo 1.5-7B (cuda, mps, cpu)
   holoModel?: string; // Model name (e.g., "Holo 1.5-7B (Qwen2.5-VL base)")
+  holoPerformanceProfile?: string; // Performance profile (SPEED, BALANCED, QUALITY)
+  holoQuantization?: string; // Quantization (Q4_K_M, Q8_0)
+  holoProcessingTimeMs?: number; // Last processing time in milliseconds
   gpuName?: string; // GPU device name (e.g., "NVIDIA GeForce RTX 4090")
   gpuMemoryTotalMB?: number; // Total GPU memory in MB
   gpuMemoryUsedMB?: number; // Used GPU memory in MB
@@ -224,6 +227,34 @@ export class CVActivityIndicatorService extends EventEmitter {
     // Get GPU info if available (Holo 1.5-7B client)
     const gpuInfo = this.holoClient?.getGPUInfo();
 
+    // Get performance profile and quantization from Holo client or recent metadata
+    let holoPerformanceProfile: string | undefined;
+    let holoQuantization: string | undefined;
+    let holoProcessingTimeMs: number | undefined;
+
+    // Check active Holo methods first
+    for (const activity of this.activeMethods.values()) {
+      if (activity.method === 'holo-1.5-7b') {
+        holoPerformanceProfile = activity.metadata?.performance_profile || activity.metadata?.performanceProfile;
+        holoQuantization = activity.metadata?.quantization;
+        holoProcessingTimeMs = activity.metadata?.processing_time_ms || activity.metadata?.processingTimeMs;
+        break;
+      }
+    }
+
+    // Fallback to recent history
+    if (!holoPerformanceProfile || !holoQuantization) {
+      const recentHolo = this.methodHistory
+        .slice(-10)
+        .reverse()
+        .find(h => h.method === 'holo-1.5-7b' && h.metadata);
+      if (recentHolo) {
+        holoPerformanceProfile = holoPerformanceProfile || recentHolo.metadata?.performance_profile || recentHolo.metadata?.performanceProfile || 'BALANCED';
+        holoQuantization = holoQuantization || recentHolo.metadata?.quantization || 'Q4_K_M';
+        holoProcessingTimeMs = holoProcessingTimeMs || recentHolo.metadata?.processing_time_ms || recentHolo.metadata?.processingTimeMs || recentHolo.duration;
+      }
+    }
+
     return {
       activeMethods,
       totalActiveCount: activeMethods.length,
@@ -235,6 +266,9 @@ export class CVActivityIndicatorService extends EventEmitter {
       },
       holoDevice,
       holoModel,
+      holoPerformanceProfile,
+      holoQuantization,
+      holoProcessingTimeMs,
       gpuName: gpuInfo?.gpu_name ?? undefined,
       gpuMemoryTotalMB: gpuInfo?.memory_total_mb ?? undefined,
       gpuMemoryUsedMB: gpuInfo?.memory_used_mb ?? undefined,

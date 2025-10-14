@@ -125,6 +125,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bytebotdb}
       - BYTEBOT_DESKTOP_BASE_URL=http://bytebot-windows:9990
       - HOLO_URL=http://bytebot-holo:9989
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}

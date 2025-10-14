@@ -1383,12 +1383,22 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
               mustClearObservationThisReply = true;
               observationBlockedInReply = false;
 
-              // Automatically enrich screenshots with OmniParser detection in the background
-              // Only for vision models - non-vision models don't use visual element detection
-              // This runs async and doesn't block the iteration
-              this.enrichScreenshotWithOmniParser().catch(err => {
-                this.logger.warn(`Background OmniParser enrichment failed: ${err.message}`);
-              });
+              // Skip auto-enrichment in Direct Vision Mode
+              // In Direct Vision Mode, the model has full control without CV assistance
+              // Check if task is in Direct Vision Mode by looking ahead in the task object
+              const currentTask = await this.tasksService.findById(taskId);
+              const effectiveDirectVisionMode = FORCE_DIRECT_VISION_MODE || currentTask?.directVisionMode || false;
+
+              if (!effectiveDirectVisionMode) {
+                // Automatically enrich screenshots with Holo detection in the background
+                // Only for CV-first mode - Direct Vision Mode bypasses all CV tools
+                // This runs async and doesn't block the iteration
+                this.enrichScreenshotWithOmniParser().catch(err => {
+                  this.logger.warn(`Background Holo enrichment failed: ${err.message}`);
+                });
+              } else {
+                this.logger.debug('Direct Vision Mode: Skipping auto-enrichment (model has full control without CV assistance)');
+              }
             }
           }
         }

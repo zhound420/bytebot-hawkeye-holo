@@ -837,8 +837,18 @@ else
 
         # Pre-startup cleanup: Remove any Windows containers still holding ports
         # This must run BEFORE starting new containers to avoid network endpoint conflicts
-        echo -e "${BLUE}Pre-startup port cleanup (removing lingering containers)...${NC}"
+        echo -e "${BLUE}Pre-startup cleanup (removing lingering containers)...${NC}"
 
+        # Step 1: Check for and remove bytebot-windows container by NAME
+        # (Port filters don't catch "Created" state containers, so check by name first)
+        if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-windows" 2>/dev/null; then
+            echo -e "${YELLOW}Existing bytebot-windows container found - removing...${NC}"
+            docker compose -f $COMPOSE_FILE down bytebot-windows 2>/dev/null || true
+            docker rm -f bytebot-windows 2>/dev/null || true
+            echo -e "${GREEN}✓ Removed bytebot-windows container${NC}"
+        fi
+
+        # Step 2: Port-based cleanup (catches other orphaned containers)
         WINDOWS_PORTS=(3389 8006 9990 8081)
         FINAL_CLEANUP_COUNT=0
         CONTAINERS_TO_REMOVE=()

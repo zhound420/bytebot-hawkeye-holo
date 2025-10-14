@@ -596,11 +596,13 @@ if [[ "$COMPOSE_FILE" != "docker-compose.proxy.yml" ]]; then
     COMPOSE_FILES+=("-f" "docker-compose.proxy.yml")
 fi
 
-# Set correct desktop URL for Windows/macOS (prevents proxy.yml from using wrong default)
+# Set correct desktop URLs for Windows/macOS (prevents proxy.yml from using wrong defaults)
 if [[ "$TARGET_OS" == "windows" ]]; then
     export BYTEBOT_DESKTOP_BASE_URL="http://bytebot-windows:9990"
+    export BYTEBOT_DESKTOP_VNC_URL="http://bytebot-windows:8006/websockify"
 elif [[ "$TARGET_OS" == "macos" ]]; then
     export BYTEBOT_DESKTOP_BASE_URL="http://bytebot-macos:9990"
+    export BYTEBOT_DESKTOP_VNC_URL="http://bytebot-macos:8006/websockify"
 fi
 
 # OS-specific checks

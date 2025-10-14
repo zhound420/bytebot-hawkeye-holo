@@ -835,37 +835,9 @@ else
         docker compose -f $COMPOSE_FILE build --no-cache bytebot-holo
         echo ""
 
-        echo -e "${BLUE}Starting Holo + Windows containers early...${NC}"
-        docker compose -f $COMPOSE_FILE up -d --no-deps bytebot-holo bytebot-windows
-
-        if [[ "$USE_PREBAKED" == "true" ]]; then
-            echo -e "${YELLOW}Windows will boot (~30-60s) while remaining services build${NC}"
-        else
-            echo -e "${YELLOW}Windows will install (~8-15 min) while remaining services build${NC}"
-        fi
-        echo ""
-
-        # Build remaining services (exclude Holo and Windows which are already started)
-        REMAINING_SERVICES=()
-        for service in "${STACK_SERVICES[@]}"; do
-            if [[ "$service" != "bytebot-holo" ]] && [[ "$service" != "$DESKTOP_SERVICE" ]]; then
-                REMAINING_SERVICES+=("$service")
-            fi
-        done
-
-        echo -e "${BLUE}Building remaining services (parallelized with Windows installation)...${NC}"
-        docker compose -f $COMPOSE_FILE build --no-cache "${REMAINING_SERVICES[@]}"
-        echo ""
-    else
-        echo -e "${BLUE}Building all services with --no-cache (truly fresh, may take longer)...${NC}"
-        docker compose -f $COMPOSE_FILE build --no-cache
-        echo ""
-    fi
-
-    # Final cleanup pass: Remove any Windows containers still holding ports
-    # This catches containers that survived previous cleanup attempts (e.g., locked during installation)
-    if [[ "$TARGET_OS" == "windows" ]]; then
-        echo -e "${BLUE}Final port cleanup check (removing lingering containers)...${NC}"
+        # Pre-startup cleanup: Remove any Windows containers still holding ports
+        # This must run BEFORE starting new containers to avoid network endpoint conflicts
+        echo -e "${BLUE}Pre-startup port cleanup (removing lingering containers)...${NC}"
 
         WINDOWS_PORTS=(3389 8006 9990 8081)
         FINAL_CLEANUP_COUNT=0
@@ -942,6 +914,32 @@ else
         fi
 
         echo -e "${GREEN}✓ All Windows ports available${NC}"
+        echo ""
+
+        echo -e "${BLUE}Starting Holo + Windows containers early...${NC}"
+        docker compose -f $COMPOSE_FILE up -d --no-deps bytebot-holo bytebot-windows
+
+        if [[ "$USE_PREBAKED" == "true" ]]; then
+            echo -e "${YELLOW}Windows will boot (~30-60s) while remaining services build${NC}"
+        else
+            echo -e "${YELLOW}Windows will install (~8-15 min) while remaining services build${NC}"
+        fi
+        echo ""
+
+        # Build remaining services (exclude Holo and Windows which are already started)
+        REMAINING_SERVICES=()
+        for service in "${STACK_SERVICES[@]}"; do
+            if [[ "$service" != "bytebot-holo" ]] && [[ "$service" != "$DESKTOP_SERVICE" ]]; then
+                REMAINING_SERVICES+=("$service")
+            fi
+        done
+
+        echo -e "${BLUE}Building remaining services (parallelized with Windows installation)...${NC}"
+        docker compose -f $COMPOSE_FILE build --no-cache "${REMAINING_SERVICES[@]}"
+        echo ""
+    else
+        echo -e "${BLUE}Building all services with --no-cache (truly fresh, may take longer)...${NC}"
+        docker compose -f $COMPOSE_FILE build --no-cache
         echo ""
     fi
 

@@ -11,6 +11,12 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
+  - model_name: claude-4.1
+    litellm_params:
+      model: anthropic/claude-4.1
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
   - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
@@ -63,23 +69,69 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: true
-  # GPT-5 models removed - these don't exist yet and break LiteLLM validation
-  # - model_name: gpt-5-thinking
-  #   litellm_params:
-  #     model: openai/gpt-5
-  #     api_key: os.environ/OPENAI_API_KEY
-  # - model_name: gpt-5-main
-  #   litellm_params:
-  #     model: openai/gpt-5-chat-latest
-  #     api_key: os.environ/OPENAI_API_KEY
-  # - model_name: gpt-5-mini
-  #   litellm_params:
-  #     model: openai/gpt-5-mini
-  #     api_key: os.environ/OPENAI_API_KEY
-  # - model_name: gpt-5-nano
-  #   litellm_params:
-  #     model: openai/gpt-5-nano
-  #     api_key: os.environ/OPENAI_API_KEY
+  # GPT-5 models - may fail gracefully if not yet released
+  - model_name: gpt-5-thinking
+    litellm_params:
+      model: openai/gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: gpt-5-main
+    litellm_params:
+      model: openai/gpt-5-chat-latest
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: openai/gpt-5-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gpt-5-nano
+    litellm_params:
+      model: openai/gpt-5-nano
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  # OpenAI o-series reasoning models
+  - model_name: o3
+    litellm_params:
+      model: openai/o3
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o3-pro
+    litellm_params:
+      model: openai/o3-pro
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o1-2024
+    litellm_params:
+      model: openai/o1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: o1-preview-2024
+    litellm_params:
+      model: openai/o1-preview
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  # OpenAI Codex models
+  - model_name: codex-davinci-002
+    litellm_params:
+      model: openai/code-davinci-002
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: codex-cushman-001
+    litellm_params:
+      model: openai/code-cushman-001
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: false
   - model_name: gemini-vertex-pro
     litellm_params:
       model: vertex_ai/gemini-1.5-pro
@@ -103,6 +155,18 @@ model_list:
   - model_name: gemini-1.5-flash
     litellm_params:
       model: gemini/gemini-1.5-flash-latest
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro-preview
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
     model_info:
       supports_vision: true
@@ -205,6 +269,98 @@ model_list:
   - model_name: openrouter-gemini-1.5-pro
     litellm_params:
       model: openrouter/google/gemini-1.5-pro-latest
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  # Meta Llama 4 series (2025)
+  - model_name: openrouter-llama-4-maverick
+    litellm_params:
+      model: openrouter/meta-llama/llama-4-maverick
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-llama-4-scout
+    litellm_params:
+      model: openrouter/meta-llama/llama-4-scout
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  # DeepSeek V3 series
+  - model_name: openrouter-deepseek-chat-v3.1
+    litellm_params:
+      model: openrouter/deepseek/deepseek-chat-v3.1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-deepseek-reasoner-v3.1
+    litellm_params:
+      model: openrouter/deepseek/deepseek-reasoner-v3.1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-deepseek-prover-v2
+    litellm_params:
+      model: openrouter/deepseek/deepseek-prover-v2
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  # Qwen 3 series
+  - model_name: openrouter-qwen3-coder-480b
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder-480b-a35b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-qwen3-max
+    litellm_params:
+      model: openrouter/qwen/qwen3-max
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  # Mistral 3.1 series
+  - model_name: openrouter-mistral-small-3.1
+    litellm_params:
+      model: openrouter/mistralai/mistral-small-3.1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  # xAI Grok
+  - model_name: openrouter-grok-1
+    litellm_params:
+      model: openrouter/xai/grok-1
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  # Moonshot Kimi VL
+  - model_name: openrouter-kimi-vl-a3b
+    litellm_params:
+      model: openrouter/moonshot/kimi-vl-a3b-thinking
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  # Zhipu GLM 4.5
+  - model_name: openrouter-glm-4.5
+    litellm_params:
+      model: openrouter/zhipu/glm-4.5
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: openrouter-glm-4.5-air
+    litellm_params:
+      model: openrouter/zhipu/glm-4.5-air
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
+  # Google Gemini 2.5 via OpenRouter
+  - model_name: openrouter-gemini-2.5-pro
+    litellm_params:
+      model: openrouter/google/gemini-2.5-pro-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: openrouter-gemini-2.5-flash
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true

@@ -186,60 +186,43 @@ export class HoloClientService {
   }
 
   /**
-   * Select optimal performance profile based on model tier and task complexity
+   * Select optimal Holo performance profile based on UI complexity
    *
-   * Different model tiers have different reasoning capabilities - profiles should match:
-   * - Tier 1 (strong reasoning): Can handle more elements, benefits from 'balanced' profile
-   * - Tier 2 (medium reasoning): Good balance with 'speed' profile
-   * - Tier 3 (limited reasoning): Simpler is better, 'speed' with reduced max_detections
+   * Holo 1.5-7B profiles control detection thoroughness vs speed tradeoffs:
+   * - 'speed': Fast detection (20 elements, 256 tokens, ~2-3s) - simple UIs
+   * - 'balanced': Moderate coverage (40 elements, 512 tokens, ~4-6s) - default for most UIs
+   * - 'quality': Maximum coverage (100 elements, 1024 tokens, ~10-16s) - complex UIs
    *
-   * @param tier - Model tier (tier1/tier2/tier3)
-   * @param taskComplexity - Optional task complexity hint ('simple'/'complex')
+   * NOTE: Profile selection should be based on UI complexity, NOT on VLM reasoning capability.
+   * Holo 1.5-7B detection quality is independent of which VLM consumes the results.
+   *
+   * @param uiComplexity - UI complexity hint ('simple'/'moderate'/'complex')
    * @returns Recommended performance profile
    */
-  selectProfileForTier(
-    tier: ModelTier,
-    taskComplexity?: 'simple' | 'complex',
+  selectProfileForUI(
+    uiComplexity: 'simple' | 'moderate' | 'complex' = 'moderate',
   ): 'speed' | 'balanced' | 'quality' {
-    // Tier 1: Strong reasoning models can handle more elements
-    if (tier === 'tier1') {
-      if (taskComplexity === 'complex') {
-        return 'quality'; // Max coverage for complex tasks
-      }
-      return 'balanced'; // Good balance of speed + coverage
+    switch (uiComplexity) {
+      case 'simple':
+        return 'speed'; // Fast detection for simple UIs (e.g., login screens, dialogs)
+      case 'complex':
+        return 'quality'; // Thorough detection for dense UIs (e.g., IDEs, dashboards)
+      case 'moderate':
+      default:
+        return 'balanced'; // Good default for most applications
     }
-
-    // Tier 2: Medium reasoning works well with speed profile
-    if (tier === 'tier2') {
-      if (taskComplexity === 'complex') {
-        return 'balanced'; // More coverage for complex tasks
-      }
-      return 'speed'; // Fast for simple tasks
-    }
-
-    // Tier 3: Limited reasoning - keep it simple and fast
-    return 'speed'; // Always speed for tier3 (simpler is better)
   }
 
   /**
-   * Get tier-specific max detections limit
+   * Get max detections for a given profile
    *
-   * Tier 3 models benefit from fewer elements (less overwhelming)
-   *
-   * @param tier - Model tier
    * @param profile - Performance profile
-   * @returns Recommended max detections
+   * @returns Max detections limit
    */
-  getTierMaxDetections(
-    tier: ModelTier,
+  getMaxDetectionsForProfile(
     profile: 'speed' | 'balanced' | 'quality',
   ): number {
-    // Tier 3: Reduce element count for simpler reasoning
-    if (tier === 'tier3') {
-      return profile === 'speed' ? 10 : profile === 'balanced' ? 15 : 20;
-    }
-
-    // Tier 1 & 2: Use standard profile limits
+    // Standard profile limits from Holo configuration
     return profile === 'speed' ? 20 : profile === 'balanced' ? 40 : 100;
   }
 
@@ -400,41 +383,48 @@ export class HoloClientService {
   }
 
   /**
-   * Parse screenshot with tier-aware optimizations
+   * Parse screenshot with tier-aware optimizations (DEPRECATED)
    *
-   * Automatically selects optimal performance profile and max detections
-   * based on model tier capabilities.
+   * @deprecated Use parseScreenshot() with explicit performanceProfile instead.
+   * Holo profile should be based on UI complexity, not VLM reasoning tier.
+   *
+   * Example migration:
+   * ```typescript
+   * // Old approach (coupled to VLM tier)
+   * const result = await holoClient.parseScreenshotWithTier(buffer, 'tier1');
+   *
+   * // New approach (based on UI complexity)
+   * const result = await holoClient.parseScreenshot(buffer, {
+   *   performanceProfile: 'balanced' // or 'speed'/'quality' based on UI
+   * });
+   * ```
    *
    * @param imageBuffer - Screenshot image buffer
-   * @param tier - Model tier (tier1/tier2/tier3)
-   * @param options - Parsing options (profile/maxDetections overridden if not specified)
-   * @returns Detected UI elements with tier-optimized settings
+   * @param tier - Model tier (ignored, use performanceProfile in options instead)
+   * @param options - Parsing options
+   * @returns Detected UI elements
    */
   async parseScreenshotWithTier(
     imageBuffer: Buffer,
     tier: ModelTier,
     options: HoloOptions = {},
   ): Promise<HoloResponse> {
-    // Auto-select profile if not explicitly provided
+    this.logger.warn(
+      'parseScreenshotWithTier() is deprecated. Use parseScreenshot() with explicit performanceProfile.',
+    );
+
+    // Default to balanced profile if not specified
     if (!options.performanceProfile) {
-      options.performanceProfile = this.selectProfileForTier(tier);
-      this.logger.debug(
-        `Tier-aware profile selection: ${tier} → ${options.performanceProfile}`,
-      );
+      options.performanceProfile = 'balanced';
     }
 
-    // Auto-select max detections if not explicitly provided
+    // Default to standard max detections if not specified
     if (!options.maxDetections) {
-      options.maxDetections = this.getTierMaxDetections(
-        tier,
+      options.maxDetections = this.getMaxDetectionsForProfile(
         options.performanceProfile,
       );
-      this.logger.debug(
-        `Tier-aware max detections: ${tier} → ${options.maxDetections}`,
-      );
     }
 
-    // Use standard parseScreenshot with tier-optimized options
     return this.parseScreenshot(imageBuffer, options);
   }
 

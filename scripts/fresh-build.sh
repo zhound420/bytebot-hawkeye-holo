@@ -965,7 +965,7 @@ sleep 8
 echo ""
 echo -e "${BLUE}Service Health Check:${NC}"
 
-services=("bytebot-ui:9992" "bytebot-agent:9991" "bytebot-desktop:9990")
+services=("bytebot-ui:9992" "bytebot-agent:9991" "$DESKTOP_SERVICE:9990")
 if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
     services+=("OmniParser:9989")
 fi
@@ -997,7 +997,17 @@ echo ""
 echo "Services:"
 echo "  • UI:        http://localhost:9992"
 echo "  • Agent:     http://localhost:9991"
-echo "  • Desktop:   http://localhost:9990"
+if [[ "$TARGET_OS" == "windows" ]]; then
+    echo "  • Windows:   http://localhost:8006 (web viewer)"
+    echo "               rdp://localhost:3389 (RDP)"
+    echo "               http://localhost:9990 (bytebotd - after setup)"
+elif [[ "$TARGET_OS" == "macos" ]]; then
+    echo "  • macOS:     http://localhost:8006 (web viewer)"
+    echo "               vnc://localhost:5900 (VNC)"
+    echo "               http://localhost:9990 (bytebotd - after setup)"
+else
+    echo "  • Desktop:   http://localhost:9990"
+fi
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
     echo "  • OmniParser: http://localhost:9989 (native with MPS GPU)"
 else

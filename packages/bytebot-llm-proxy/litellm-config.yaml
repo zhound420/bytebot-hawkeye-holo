@@ -292,22 +292,12 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
-  - model_name: openrouter-deepseek-reasoner-v3.1
-    litellm_params:
-      model: openrouter/deepseek/deepseek-reasoner-v3.1
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: false
-  - model_name: openrouter-deepseek-prover-v2
-    litellm_params:
-      model: openrouter/deepseek/deepseek-prover-v2
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: false
+  # Note: deepseek-reasoner-v3.1 does not exist on OpenRouter
+  # Use openrouter-deepseek-r1 instead (defined earlier in this file)
   # Qwen 3 series
-  - model_name: openrouter-qwen3-coder-480b
+  - model_name: openrouter-qwen3-coder
     litellm_params:
-      model: openrouter/qwen/qwen3-coder-480b-a35b-instruct
+      model: openrouter/qwen/qwen3-coder
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
@@ -324,10 +314,10 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
-  # xAI Grok
-  - model_name: openrouter-grok-1
+  # xAI Grok 4
+  - model_name: openrouter-grok-4
     litellm_params:
-      model: openrouter/xai/grok-1
+      model: openrouter/x-ai/grok-4
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
@@ -338,16 +328,10 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
-  # Zhipu GLM 4.5
-  - model_name: openrouter-glm-4.5
+  # Zhipu GLM 4.6 (upgraded from 4.5)
+  - model_name: openrouter-glm-4.6
     litellm_params:
-      model: openrouter/zhipu/glm-4.5
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: false
-  - model_name: openrouter-glm-4.5-air
-    litellm_params:
-      model: openrouter/zhipu/glm-4.5-air
+      model: openrouter/z-ai/glm-4.6
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false

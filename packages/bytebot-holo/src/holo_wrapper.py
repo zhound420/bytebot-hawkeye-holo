@@ -18,7 +18,7 @@ except ImportError:
         "Install with: pip install llama-cpp-python"
     )
 
-from .config import settings, PERFORMANCE_PROFILES
+from .config import settings, PERFORMANCE_PROFILES, ADAPTIVE_CONFIDENCE_THRESHOLDS, CONFIDENCE_ZONES
 
 
 class Holo15:
@@ -1159,10 +1159,11 @@ class Holo15:
                 if self.retry_backoff:
                     time.sleep(self.retry_backoff * (attempt + 1))
 
-        # ALWAYS run legacy mode for supplementary coverage (thoroughness over speed)
-        # This gives us diverse single-element queries that complement structured detection
-        if settings.allow_legacy_fallback:
-            print(f"→ Running legacy mode for supplementary coverage ({len(detection_prompts)} prompts)")
+        # Phase 2: Run legacy mode as TRUE FALLBACK (only if structured parsing failed)
+        # After Phase 1 prompt consolidation (4→1 comprehensive prompt), structured mode succeeds in most cases.
+        # Legacy mode now acts as a safety net for edge cases where JSON parsing fails completely.
+        if settings.allow_legacy_fallback and not structured_success:
+            print(f"→ Structured parsing failed - falling back to legacy mode ({len(detection_prompts)} prompts)")
             legacy_detections, legacy_outputs = self._legacy_multi_detection(
                 image,
                 detection_prompts,
@@ -1173,14 +1174,16 @@ class Holo15:
             raw_outputs.extend(legacy_outputs)
 
             if legacy_detections:
-                print(f"✓ Legacy mode found {len(legacy_detections)} additional element(s)")
+                print(f"✓ Legacy fallback found {len(legacy_detections)} element(s)")
                 # Deduplicate before adding
                 before_dedup = len(detections) + len(legacy_detections)
                 detections.extend(legacy_detections)
                 detections = self._deduplicate_detections(detections)
                 print(f"✓ After deduplication: {len(detections)} unique elements (was {before_dedup})")
             else:
-                print(f"⚠ Legacy mode found 0 additional elements")
+                print(f"⚠ Legacy fallback found 0 elements - detection completely failed")
+        elif settings.allow_legacy_fallback and structured_success:
+            print(f"→ Structured parsing succeeded ({len(detections)} elements) - skipping legacy fallback")
 
         if detections:
             detections.sort(key=lambda item: float(item.get("confidence", settings.default_confidence)), reverse=True)
@@ -1190,6 +1193,68 @@ class Holo15:
                 detection["element_id"] = index
 
         return detections, raw_outputs
+
+    def _apply_adaptive_confidence_filtering(
+        self,
+        detections: List[Dict[str, Any]],
+        use_adaptive: bool = True,
+        fallback_threshold: float = 0.3,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """
+        Apply element-type aware confidence filtering (Phase 2 optimization).
+
+        Holo 1.5-7B's GRPO training produces calibrated confidence scores.
+        Different element types have different detection reliability:
+        - Buttons/icons: High reliability (well-defined visual patterns)
+        - Text/links: Lower reliability (context-dependent, abundant)
+
+        Args:
+            detections: List of detected elements
+            use_adaptive: Whether to use element-type aware thresholds
+            fallback_threshold: Single threshold if adaptive mode disabled
+
+        Returns:
+            Tuple of (filtered detections, stats dict with zone counts)
+        """
+        if not detections:
+            return [], {"high": 0, "medium": 0, "low": 0, "very_low": 0, "filtered": 0}
+
+        filtered: List[Dict[str, Any]] = []
+        stats = {"high": 0, "medium": 0, "low": 0, "very_low": 0, "filtered": 0}
+
+        for detection in detections:
+            confidence = float(detection.get("confidence", settings.default_confidence))
+            element_type = detection.get("type", "clickable").lower()
+
+            # Determine confidence zone (high/medium/low/very_low)
+            zone = "very_low"
+            for zone_name in ["high", "medium", "low"]:
+                if confidence >= CONFIDENCE_ZONES[zone_name]["min"]:
+                    zone = zone_name
+                    break
+
+            stats[zone] += 1
+
+            # Apply filtering threshold
+            if use_adaptive:
+                # Element-type specific threshold
+                threshold = ADAPTIVE_CONFIDENCE_THRESHOLDS.get(
+                    element_type,
+                    ADAPTIVE_CONFIDENCE_THRESHOLDS["default"]
+                )
+            else:
+                # Uniform threshold
+                threshold = fallback_threshold
+
+            if confidence >= threshold:
+                # Add metadata about confidence zone for downstream validation
+                detection["confidence_zone"] = zone
+                detection["confidence"] = round(confidence, 4)
+                filtered.append(detection)
+            else:
+                stats["filtered"] += 1
+
+        return filtered, stats
 
     def generate_som_image(
         self,
@@ -1331,14 +1396,26 @@ class Holo15:
             )
             raw_model_outputs.extend(outputs)
 
+        # Phase 2: Apply adaptive confidence filtering (element-type aware)
         if detections and confidence_floor is not None:
-            filtered: List[Dict[str, Any]] = []
-            for detection in detections:
-                confidence = float(detection.get("confidence", settings.default_confidence))
-                if confidence >= confidence_floor:
-                    detection["confidence"] = round(confidence, 4)
-                    filtered.append(detection)
-            detections = filtered
+            # Check if profile enables adaptive thresholding
+            use_adaptive = profile.get("use_adaptive_thresholds", False)
+
+            detections, confidence_stats = self._apply_adaptive_confidence_filtering(
+                detections,
+                use_adaptive=use_adaptive,
+                fallback_threshold=confidence_floor,
+            )
+
+            # Log confidence distribution for visibility
+            if confidence_stats["high"] + confidence_stats["medium"] + confidence_stats["low"] > 0:
+                total_before = sum(confidence_stats.values())
+                mode_label = "adaptive (type-aware)" if use_adaptive else "fixed"
+                print(f"  Confidence filtering ({mode_label}):")
+                print(f"    High (≥0.70): {confidence_stats['high']}, Medium (≥0.40): {confidence_stats['medium']}, "
+                      f"Low (≥0.20): {confidence_stats['low']}, Very low (<0.20): {confidence_stats['very_low']}")
+                print(f"    Filtered out: {confidence_stats['filtered']}/{total_before} ({confidence_stats['filtered']/total_before*100:.1f}%)")
+                print(f"    Retained: {len(detections)}/{total_before} ({len(detections)/total_before*100:.1f}%)")
 
         if detections:
             for index, detection in enumerate(detections):

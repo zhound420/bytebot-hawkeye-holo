@@ -105,6 +105,42 @@ export const MODEL_CAPABILITIES: ModelCapabilityConfig = {
         description: 'GPT-4o via OpenRouter',
         cvSuccessRate: 0.93,
       },
+      // OpenAI o3 series (reasoning models)
+      {
+        name: 'openai/o3-mini',
+        provider: 'openrouter',
+        description: 'OpenAI o3-mini - Reasoning model, similar to o3',
+        cvSuccessRate: 0.90,
+        notes: 'Tested: Tier 1 CV-first workflow, successful Holo integration',
+      },
+      // DeepSeek reasoning models
+      {
+        name: 'deepseek-r1',
+        provider: 'openrouter',
+        description: 'DeepSeek R1 - Advanced reasoning model',
+        cvSuccessRate: 0.88,
+        notes: 'Reasoning-focused model, expected strong tool use',
+      },
+      {
+        name: 'openrouter/deepseek/deepseek-r1',
+        provider: 'openrouter',
+        description: 'DeepSeek R1 via OpenRouter (full path)',
+        cvSuccessRate: 0.88,
+      },
+      // GLM series (Chinese flagship models)
+      {
+        name: 'glm-4.6',
+        provider: 'openrouter',
+        description: 'GLM-4.6 - Chinese flagship multimodal model',
+        cvSuccessRate: 0.87,
+        notes: 'Zhipu AI flagship model, strong reasoning capabilities',
+      },
+      {
+        name: 'openrouter/z-ai/glm-4.6',
+        provider: 'openrouter',
+        description: 'GLM-4.6 via OpenRouter (full path)',
+        cvSuccessRate: 0.87,
+      },
     ],
   },
 
@@ -235,6 +271,8 @@ export const MODEL_CAPABILITIES: ModelCapabilityConfig = {
       'claude-3-5-sonnet',
       'gpt-5',
       'o3',
+      'deepseek-r1',  // DeepSeek reasoning models
+      'glm-4',        // GLM-4 series (Chinese flagship)
     ],
     tier2: ['gpt-4o-mini', 'gemini', 'claude-3-haiku', 'gpt-4'],
     tier3: ['qwen3-vl', 'llava', 'cogvlm'],

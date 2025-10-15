@@ -76,6 +76,7 @@ import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 import { isSOMEnabled } from './som-enhancement.util';
+import { formatSOMAsText, formatSOMSummary } from './som-text-formatter';
 import {
   estimateTotalTokens,
   estimateContentBlockTokens,
@@ -2068,25 +2069,53 @@ ${loopResult.suggestion}
       text: `\n<details>\n<summary>📊 Raw Detection Data (JSON)</summary>\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n</details>`,
     });
 
-    // Add SOM-annotated screenshot if available
+    // Add SOM (Set-of-Mark) guidance - different formats for vision vs non-vision models
     const screenshotBuffer = await this.captureScreenshotBuffer();
     const screenshotHash = this.computeScreenshotHash(screenshotBuffer);
     const somData = this.somCache.get(screenshotHash);
 
     if (somData && Date.now() - somData.timestamp < this.SOM_CACHE_TTL_MS && isSOMEnabled()) {
-      this.logger.log(`📍 Including SOM-annotated screenshot with ${somData.elementMapping.size} numbered elements`);
-      content.push({
-        type: MessageContentType.Image,
-        source: {
-          data: somData.somImage,
-          media_type: 'image/png',
-          type: 'base64',
-        },
-      });
-      content.push({
-        type: MessageContentType.Text,
-        text: `\n**📍 Visual Guide:** The screenshot above shows detected elements with numbered boxes [0], [1], [2], etc. You can reference elements by their visible number for easier identification.`,
-      });
+      const isVisionModel = this.currentModel && supportsVision(this.currentModel);
+
+      if (isVisionModel) {
+        // Vision models: Send SOM-annotated screenshot with numbered boxes
+        this.logger.log(`📍 Including SOM-annotated screenshot for vision model (${somData.elementMapping.size} numbered elements)`);
+        content.push({
+          type: MessageContentType.Image,
+          source: {
+            data: somData.somImage,
+            media_type: 'image/png',
+            type: 'base64',
+          },
+        });
+        content.push({
+          type: MessageContentType.Text,
+          text: `\n**📍 Visual Guide:** The screenshot above shows detected elements with numbered boxes [0], [1], [2], etc. You can reference elements by their visible number for easier identification.\n\n💡 To click an element, use: \`computer_click_element({ element_id: "N" })\` where N is the visible number (e.g., "0", "1", "2").`,
+        });
+      } else {
+        // Non-vision models: Send structured text list of numbered elements
+        this.logger.log(`📍 Including SOM element list for non-vision model (${somData.elementMapping.size} numbered elements)`);
+
+        // Convert element mapping to element list using IDs from detection.elements
+        const elementById = new Map(detection.elements.map(el => [el.id, el]));
+        const somElements: DetectedElement[] = [];
+
+        // Build element list from mapping (maintaining number order)
+        const sortedEntries = Array.from(somData.elementMapping.entries()).sort((a, b) => a[0] - b[0]);
+        for (const [, elementId] of sortedEntries) {
+          const element = elementById.get(elementId);
+          if (element) {
+            somElements.push(element);
+          }
+        }
+
+        // Format as structured text
+        const somText = formatSOMAsText(somData.elementMapping, somElements);
+        content.push({
+          type: MessageContentType.Text,
+          text: `\n${somText}`,
+        });
+      }
     }
 
     return {

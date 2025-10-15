@@ -22,6 +22,7 @@ interface ChatContainerProps {
   isLoadingMoreMessages: boolean;
   hasMoreMessages: boolean;
   loadMoreMessages: () => Promise<void>;
+  directVisionMode?: boolean;
 }
 
 export function ChatContainer({
@@ -38,6 +39,7 @@ export function ChatContainer({
   isLoadingMoreMessages,
   hasMoreMessages,
   loadMoreMessages,
+  directVisionMode,
 }: ChatContainerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -106,7 +108,7 @@ export function ChatContainer({
                 <>
                   {/* Live CV Activity Telemetry */}
                   <div className="bg-bytebot-bronze-light-3 dark:bg-bytebot-bronze-dark-3 border-bytebot-bronze-light-7 dark:border-bytebot-bronze-dark-7 border-x px-4 py-2">
-                    <CVActivityIndicator inline className="w-full" />
+                    <CVActivityIndicator inline directVisionMode={directVisionMode} className="w-full" />
                   </div>
 
                   <div className="bg-bytebot-bronze-light-3 dark:bg-bytebot-bronze-dark-3 border-bytebot-bronze-light-7 dark:border-bytebot-bronze-dark-7 flex items-center justify-start gap-4 border-x px-4 py-3">

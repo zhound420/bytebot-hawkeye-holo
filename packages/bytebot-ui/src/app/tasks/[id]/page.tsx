@@ -261,6 +261,7 @@ export default function TaskPage() {
                 isLoadingMoreMessages={isLoadingMoreMessages}
                 hasMoreMessages={hasMoreMessages}
                 loadMoreMessages={loadMoreMessages}
+                directVisionMode={directVisionMode}
               />
             </div>
           </div>

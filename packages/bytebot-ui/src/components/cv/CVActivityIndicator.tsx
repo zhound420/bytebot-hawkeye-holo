@@ -299,13 +299,40 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               const color = methodColors[method] || "bg-gray-500";
               const elapsed = detail?.startTime ? Math.round((Date.now() - detail.startTime) / 100) / 10 : 0;
 
+              // Enhanced Holo info display
+              const isHolo = method === 'holo-1.5-7b';
+              const holoTask = isHolo ? detail?.metadata?.task_description : null;
+              const holoProfile = isHolo ? detail?.metadata?.performance_profile?.toUpperCase() || detail?.metadata?.performanceProfile?.toUpperCase() : null;
+              const holoQuantization = isHolo ? detail?.metadata?.quantization : null;
+              const holoDetectionStatus = isHolo ? detail?.metadata?.detection_status : null;
+
               return (
-                <div key={method} className="flex items-center gap-2 text-xs">
-                  <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
-                  <span className="font-medium">{displayName}</span>
-                  <span className="text-red-500 dark:text-red-400 text-[9px]" title="Live processing">🔴</span>
-                  {elapsed > 0 && (
-                    <span className="text-muted-foreground ml-auto">{elapsed}s</span>
+                <div key={method} className="flex flex-col gap-0.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
+                    <span className="font-medium">{displayName}</span>
+                    {isHolo && holoProfile && (
+                      <span className="text-[9px] text-muted-foreground">({holoProfile})</span>
+                    )}
+                    {isHolo && holoQuantization && (
+                      <span className="text-[9px] text-muted-foreground">{holoQuantization}</span>
+                    )}
+                    <span className="text-red-500 dark:text-red-400 text-[9px]" title="Live processing">🔴</span>
+                    {elapsed > 0 && (
+                      <span className="text-muted-foreground ml-auto">{elapsed}s</span>
+                    )}
+                  </div>
+                  {/* Show Holo task description */}
+                  {isHolo && holoTask && (
+                    <span className="text-[10px] text-muted-foreground italic ml-4">
+                      {holoTask}
+                    </span>
+                  )}
+                  {/* Show detection status after processing */}
+                  {isHolo && holoDetectionStatus && elapsed > 0.5 && (
+                    <span className="text-[10px] text-green-600 dark:text-green-400 ml-4">
+                      {holoDetectionStatus}
+                    </span>
                   )}
                 </div>
               );

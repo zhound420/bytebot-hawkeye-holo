@@ -167,11 +167,12 @@ export function getTierSpecificCVInstructions(
 
 /**
  * Get tier-specific UI interaction method section
- * Adapts the detailed Method 1/2/3 instructions based on model tier
+ * Adapts the detailed Method 1/2/3 instructions based on model tier and vision capability
  */
 export function getTierSpecificUIMethodsSection(
   tier: ModelTier,
   maxCvAttempts: number,
+  supportsVision: boolean,
 ): string {
   // Tier 1: Strong Reasoning & Tool Use - CV-first emphasis
   if (tier === 'tier1') {
@@ -255,9 +256,12 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 - ✅ Automatic coordinate accuracy across screen sizes
 - ✅ Built-in retry and error recovery
 
-**📍 SOM Visual Grounding (Set-of-Mark) - POWERFUL SIMPLIFICATION:**
+**📍 SOM Grounding (Set-of-Mark) - POWERFUL SIMPLIFICATION:**
 
-When \`computer_detect_elements\` completes, it may return a **SOM-annotated screenshot** with numbered boxes overlaid on each detected element.
+When \`computer_detect_elements\` completes, it may return numbered element references to simplify clicking.
+
+${supportsVision ? `**VISION MODEL - Numbered Boxes:**
+You'll receive a **SOM-annotated screenshot** with numbered boxes [0], [1], [2] overlaid on each detected element.
 
 **LEVERAGE YOUR STRONG REASONING:**
 - Instead of tracking full element IDs like "holo_abc123", simply reference the **visible number**
@@ -274,7 +278,32 @@ When \`computer_detect_elements\` completes, it may return a **SOM-annotated scr
   1. computer_detect_elements({ description: "button" })
      → Returns SOM screenshot showing [0] Install, [1] Cancel, [2] Help
   2. Analyze the screenshot visually to identify target
-  3. computer_click_element({ element_id: "0" })  // Direct number reference
+  3. computer_click_element({ element_id: "0" })  // Direct number reference` : `**NON-VISION MODEL - Numbered Text List:**
+You'll receive a **structured text list** with numbered elements like:
+
+\`\`\`
+📍 Detected Elements (SOM):
+[0] Install button (button) - coordinates: (352, 128)
+[1] Cancel button (button) - coordinates: (452, 128)
+[2] Help link (link) - coordinates: (552, 128)
+\`\`\`
+
+**LEVERAGE YOUR STRONG REASONING:**
+- Instead of tracking full element IDs like "holo_abc123", simply reference the **number in brackets**
+- ✅ computer_click_element({ element_id: "0" }) → Clicks element [0]
+- ✅ computer_click_element({ element_id: "element 1" }) → Clicks element [1]
+
+**Strategic Advantages for Tier 1 Models:**
+1. **Reduced Memory Load**: No need to memorize opaque IDs
+2. **Clear Mapping**: Each number maps to a specific element description
+3. **Disambiguation**: "Element 0" vs "Element 1" is clearer than similar text descriptions
+4. **Error Recovery**: If wrong element clicked, easy to identify the correct number from list
+
+**Workflow with SOM:**
+  1. computer_detect_elements({ description: "button" })
+     → Returns numbered list: [0] Install, [1] Cancel, [2] Help
+  2. Identify target from the list descriptions
+  3. computer_click_element({ element_id: "0" })  // Direct number reference`}
 
 **When SOM Unavailable:**
 - Fall back to using full element IDs from the detection response
@@ -326,9 +355,12 @@ Holo knows common software:
 - ✅ YOUR MODEL: Good reasoning capabilities, works well for most elements
 - ⚠️ May need guidance (keyboard shortcuts) for complex/ambiguous UI interactions
 
-**📍 SOM Visual Grounding - SIMPLIFIED CLICKING:**
+**📍 SOM Grounding - SIMPLIFIED CLICKING:**
 
-When available, detection may return a screenshot with numbered boxes [0], [1], [2] showing each element.
+When available, detection may return numbered element references to simplify clicking.
+
+${supportsVision ? `**VISION MODEL - Numbered Boxes:**
+Detection may return a screenshot with numbered boxes [0], [1], [2] overlaid on each element.
 
 **Simpler Workflow:**
 - Instead of element IDs, use visible numbers: computer_click_element({ element_id: "5" })
@@ -338,7 +370,25 @@ When available, detection may return a screenshot with numbered boxes [0], [1], 
 **Example:**
   computer_detect_elements({ description: "button" })
   → Screenshot shows: [0] Install, [1] Cancel, [2] Help
-  computer_click_element({ element_id: "0" })  // Click Install
+  computer_click_element({ element_id: "0" })  // Click Install` : `**NON-VISION MODEL - Numbered Text List:**
+Detection may return a structured text list with numbered elements:
+
+\`\`\`
+📍 Detected Elements (SOM):
+[0] Install button (button)
+[1] Cancel button (button)
+[2] Help link (link)
+\`\`\`
+
+**Simpler Workflow:**
+- Instead of element IDs, use numbers from the list: computer_click_element({ element_id: "0" })
+- Easier to track which element is which
+- Reduces confusion with multiple similar elements
+
+**Example:**
+  computer_detect_elements({ description: "button" })
+  → Returns list: [0] Install, [1] Cancel, [2] Help
+  computer_click_element({ element_id: "0" })  // Click Install`}
 
 Use element numbers when available; fall back to IDs if not.
 
@@ -401,14 +451,30 @@ Use SIMPLE functional descriptions:
 
 **📍 SOM Numbers (If Available):**
 
-Sometimes detection returns numbered boxes [0], [1], [2] on the screenshot.
+Sometimes detection returns numbered element references.
+
+${supportsVision ? `**VISION MODEL - Numbered Boxes:**
+Detection may show numbered boxes [0], [1], [2] on the screenshot.
 
 **USE THE NUMBERS (Simpler):**
 - computer_click_element({ element_id: "0" }) clicks element [0]
 - Easier than remembering long IDs
 - Just count the boxes on the screenshot
 
-**Example:** If screenshot shows [0] Install, use "0" to click it.
+**Example:** If screenshot shows [0] Install, use "0" to click it.` : `**NON-VISION MODEL - Numbered Text List:**
+Detection may show a numbered list in text:
+
+\`\`\`
+[0] Install button
+[1] Cancel button
+\`\`\`
+
+**USE THE NUMBERS (Simpler):**
+- computer_click_element({ element_id: "0" }) clicks element [0]
+- Easier than remembering long IDs
+- Just read the number from the list
+
+**Example:** If list shows [0] Install, use "0" to click it.`}
 
 #### Method 3: Grid-Based (FALLBACK) ⚠️
 Use when both Method 1 and Method 2 have failed, or when CV detection is stuck in loops.`;
@@ -428,7 +494,7 @@ export function buildTierSpecificAgentSystemPrompt(
   supportsVision: boolean,
 ): string {
   const cvInstructions = getTierSpecificCVInstructions(tier, maxCvAttempts);
-  const uiMethodsSection = getTierSpecificUIMethodsSection(tier, maxCvAttempts);
+  const uiMethodsSection = getTierSpecificUIMethodsSection(tier, maxCvAttempts, supportsVision);
 
   return `
 You are **Bytebot**, a meticulous AI engineer operating a dynamic-resolution workstation.

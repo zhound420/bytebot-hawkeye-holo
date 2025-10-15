@@ -187,12 +187,21 @@ export class EnhancedVisualDetectorService {
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     // Track Holo 1.5-7B activity with device info
     const detectionMode = options.holoTask ? 'single-shot' : 'multi-element';
+    const taskDescription = options.holoTask
+      ? `Searching: "${options.holoTask}"`
+      : 'Scanning all UI elements';
+    const performanceProfile = options.holoPerformanceProfile || 'balanced';
+
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
       mode: detectionMode,
       task: options.holoTask || 'multi-element scan',
+      task_description: taskDescription,
       captions: options.holoCaptions ?? true,
       confidence_threshold: options.holoConfidence ?? 0.3,
       device: 'loading',  // Will be updated after response
+      performance_profile: performanceProfile,
+      performanceProfile: performanceProfile,  // Alias for UI compatibility
+      quantization: 'Q4_K_M',  // Default quantization
     });
 
     try {
@@ -229,6 +238,16 @@ export class EnhancedVisualDetectorService {
         profile: response.profile,
         maxDetections: response.max_detections,
         minConfidence: response.min_confidence,
+        // Enhanced descriptive fields for UI
+        performance_profile: response.profile || options.holoPerformanceProfile || 'balanced',
+        performanceProfile: response.profile || options.holoPerformanceProfile || 'balanced',  // Alias
+        processing_time_ms: response.processing_time_ms,
+        processingTimeMs: response.processing_time_ms,  // Alias
+        quantization: 'Q4_K_M',  // Default quantization
+        detection_status: response.count > 0
+          ? `Found ${response.count} element${response.count !== 1 ? 's' : ''}`
+          : 'No elements found',
+        task_description: taskDescription,  // Preserve task description for UI
       });
 
       // Convert to DetectedElement format

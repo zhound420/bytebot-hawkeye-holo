@@ -2,7 +2,7 @@
 Type=Application
 Name=Setup Desktop Icons
 Comment=Ensure desktop icons are properly configured
-Exec=/bin/bash -c "for f in /home/user/Desktop/*.desktop; do [ -f \"$f\" ] && chmod +x \"$f\" && gio set \"$f\" metadata::trusted true 2>/dev/null || true; done"
+Exec=/bin/bash /home/user/.config/autostart/setup-desktop.sh
 Terminal=false
 StartupNotify=false
 Hidden=false

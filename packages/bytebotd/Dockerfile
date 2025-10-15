@@ -304,7 +304,9 @@ RUN chown -R root:root /bytebot/packages/bytebotd/root && \
     find /bytebot/packages/bytebotd/root -type f -exec chmod 644 {} + && \
     find /bytebot/packages/bytebotd/root -type d -exec chmod 755 {} + && \
     find /bytebot/packages/bytebotd/root -type f -executable -exec chmod +x {} + && \
-    cp -a /bytebot/packages/bytebotd/root/. /
+    cp -a /bytebot/packages/bytebotd/root/. / && \
+    # Ensure autostart script is executable
+    chmod +x /home/user/.config/autostart/setup-desktop.sh 2>/dev/null || true
 
 RUN chmod +x /usr/local/bin/bytebot-bluez-stub
 

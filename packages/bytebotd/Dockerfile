@@ -21,7 +21,9 @@ RUN ln -sf /usr/local/bin/node /usr/bin/node && \
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
 # -----------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
+# Force IPv4 to avoid IPv6 connectivity issues
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 && \
+    apt-get update && apt-get install -y \
     # Essential build tools
     dpkg-dev \
     # X11 / VNC
@@ -58,6 +60,7 @@ RUN mkdir -p /run/dbus && \
 # 3. Additional software installation
 # -----------------------------------------------------------------------------
 # Install Firefox and additional software
+# IPv4 config already set in previous RUN command
 RUN apt-get update && apt-get install -y \
     # Install necessary packages
     software-properties-common apt-transport-https wget gnupg \
@@ -128,6 +131,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi
 
 # Install Visual Studio Code
+# IPv4 config already set in previous RUN command
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
         apt-get update && apt-get install -y wget gpg apt-transport-https software-properties-common && \
@@ -157,6 +161,7 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
 # 5. Application setup (bytebotd)
 # -----------------------------------------------------------------------------
 # Install dependencies required to build libnut-core and uiohook-napi
+# IPv4 config already set in previous RUN command
 RUN apt-get update && \
     apt-get install -y \
         cmake \
@@ -178,6 +183,7 @@ COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
 
+# IPv4 config already set in previous RUN command
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \

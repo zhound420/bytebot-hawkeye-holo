@@ -318,6 +318,10 @@ RUN mkdir -p /home/user/Desktop && \
     cp /usr/share/applications/code.desktop /home/user/Desktop/code.desktop && \
     cp /usr/share/applications/terminal.desktop /home/user/Desktop/terminal.desktop && \
     chmod +x /home/user/Desktop/*.desktop && \
+    for f in /home/user/Desktop/*.desktop; do \
+        echo "" >> "$f" && \
+        echo "X-XFCE-Trusted=true" >> "$f"; \
+    done && \
     chown -R user:user /home/user/Desktop
 
 ENV BYTEBOT_GRID_OVERLAY=true \

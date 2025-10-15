@@ -258,7 +258,9 @@ export class HoloClientService {
 
       if (response.ok) {
         const data = await response.json();
-        this.isHealthy = data.status === 'healthy' && data.models_loaded;
+        // Accept service as healthy even if models not loaded yet (lazy loading)
+        // Models will load on first API request
+        this.isHealthy = data.status === 'healthy';
 
         // Fetch model status and GPU info if healthy
         if (this.isHealthy) {

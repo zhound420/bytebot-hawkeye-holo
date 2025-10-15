@@ -112,10 +112,9 @@ Try asking:
 </Steps>
 
 <Note>
-  The Compose files default to the AWS public ECR mirror for Postgres
-  (`public.ecr.aws/docker/library/postgres:16-alpine`) so they work without a
-  Docker Hub login. Set `BYTEBOT_POSTGRES_IMAGE` if you prefer another
-  registry tag.
+  The Compose files use Docker Hub for all base images
+  (`postgres:16-alpine`, `node:20-alpine`) for reliability and global CDN
+  distribution. Set `BYTEBOT_POSTGRES_IMAGE` if you prefer a different registry.
 </Note>
 
 <Note>

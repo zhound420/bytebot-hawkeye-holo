@@ -3,12 +3,32 @@
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
+interface HoloMethodMetadata {
+  task_description?: string;
+  performance_profile?: string;
+  performanceProfile?: string;
+  quantization?: string;
+  detection_status?: string;
+  device?: string;
+  elementCount?: number;
+  processingTime?: number;
+  ocrDetected?: boolean;
+  iconDetected?: boolean;
+  interactableCount?: number;
+  profile?: string;
+  maxDetections?: number;
+  minConfidence?: number;
+  processing_time_ms?: number;
+  processingTimeMs?: number;
+  [key: string]: unknown; // Allow additional properties
+}
+
 interface CVMethodActivity {
   method: string;
   active: boolean;
   startTime?: number;
   duration?: number;
-  metadata?: Record<string, any>;
+  metadata?: HoloMethodMetadata;
 }
 
 interface CVActivitySnapshot {

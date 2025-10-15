@@ -91,7 +91,7 @@ services:
       start_period: 180s  # Increased from 120s to allow more time for Windows startup
 
   postgres:
-    image: ${BYTEBOT_POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}
+    image: ${BYTEBOT_POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: bytebot-postgres
     restart: unless-stopped
     ports:

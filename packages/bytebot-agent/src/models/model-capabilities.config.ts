@@ -275,6 +275,21 @@ export const MODEL_CAPABILITIES: ModelCapabilityConfig = {
         description: 'Gemini 2.5 Flash via OpenRouter',
         cvSuccessRate: 0.88,
       },
+      // Gemini 2.5 Computer Use Preview
+      {
+        name: 'gemini-2.5-computer-use-preview',
+        provider: 'google',
+        description: 'Gemini 2.5 Computer Use (Preview) - Direct Google API',
+        cvSuccessRate: 0.90,
+        notes: 'Preview model for computer use, browser automation, parallel function calls',
+      },
+      {
+        name: 'openrouter-gemini-2.5-computer-use-preview',
+        provider: 'openrouter',
+        description: 'Gemini 2.5 Computer Use (Preview) via OpenRouter',
+        cvSuccessRate: 0.90,
+        notes: 'May not be available on OpenRouter yet - fallback to direct Google if needed',
+      },
       // Meta Llama 4 Maverick (flagship)
       {
         name: 'llama-4-maverick',

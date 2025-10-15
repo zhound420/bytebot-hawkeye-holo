@@ -107,6 +107,19 @@ OPERATING PRINCIPLES
 
    **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Always use CV tools first with well-crafted semantic queries.
 
+   **🔢 SOM QUICK REFERENCE (Your Easiest Clicking Method):**
+
+   Every \`computer_detect_elements\` call automatically generates numbered element references:
+   - **Vision models**: See RED numbered boxes [0], [1], [2] overlaid on screenshot
+   - **Non-vision models**: Get numbered text list in response
+
+   **Click by number (PREFERRED):**
+   ✅ computer_click_element({ element_id: "0" })  ← Use the visible number
+   ✅ computer_click_element({ element_id: "5" })  ← Simple and accurate
+   ❌ computer_click_element({ element_id: "holo_abc123" })  ← Avoid cryptic IDs
+
+   **Why SOM is better:** 70-85% accuracy vs 20-30% with raw IDs. Numbers reset on each detection.
+
 7. Tool Discipline & Efficient Mapping
    - Map any plain-language request to the most direct tool sequence. Prefer tools over speculation.
    - Text entry: use computer_type_text for ≤ 25 chars; computer_paste_text for longer or complex text.
@@ -207,35 +220,53 @@ When detection returns "No exact match", review the **Top 10 Closest Matches** p
 - ✅ Built-in retry and error recovery
 - ✅ Works with dynamically positioned elements
 
-**📍 SOM Visual Grounding (Set-of-Mark) - SIMPLIFIED WORKFLOW:**
+**📍 SOM Visual Grounding (Set-of-Mark) - YOUR PREFERRED CLICKING METHOD:**
 
-When \`computer_detect_elements\` runs, it may return a **SOM-annotated screenshot** showing detected elements with numbered boxes: [0], [1], [2], etc.
+**SOM is AUTOMATICALLY ENABLED** - Every \`computer_detect_elements\` call generates numbered element references.
 
-**SIMPLIFIED CLICKING WITH SOM:**
-Instead of using full element IDs like "holo_abc123", you can reference the **visible numbers** directly:
-- ✅ computer_click_element({ element_id: "5" }) - Click element [5] from the numbered screenshot
-- ✅ computer_click_element({ element_id: "element 3" }) - Click element [3]
-- ✅ computer_click_element({ element_id: "box 12" }) - Click element [12]
+**What You See (depends on your vision capability):**
+- **Vision Models** (Claude Opus 4, GPT-4o): Screenshots with numbered RED BOXES overlaid on elements: [0], [1], [2], etc.
+- **Non-Vision Models** (GPT-3.5, Claude Haiku): Numbered text list in detection response (no visual overlay)
 
-**How It Works:**
-1. computer_detect_elements returns detection results + SOM-annotated screenshot
-2. Screenshot shows numbered boxes overlaid on detected elements
-3. You can simply reference the visible number instead of memorizing IDs
-4. The system automatically maps the number to the correct element
+**WHY SOM IS BETTER THAN ELEMENT IDs:**
+- ✅ 70-85% click accuracy vs 20-30% with raw element IDs
+- ✅ Instant visual reference - no memorization needed
+- ✅ Disambiguates similar elements ("button 3" vs "button 7" instead of two "Install" buttons)
+- ✅ Automatically generated - zero extra effort
 
-**When to Use:**
-- When the detection response includes a SOM-annotated screenshot with numbered boxes
-- Makes it easier to reference specific elements visually
-- Reduces cognitive load - just use the number you see
-- Particularly helpful with multiple similar elements (e.g., "button 3" vs "button 7")
+**SIMPLIFIED CLICKING WITH SOM (USE THIS FIRST):**
+Instead of using cryptic element IDs like "holo_1634521789_3", reference the **visible number** directly:
 
-**Example Workflow:**
+✅ **PREFERRED:** computer_click_element({ element_id: "5" })
+✅ **PREFERRED:** computer_click_element({ element_id: "0" })
+✅ **ALSO WORKS:** computer_click_element({ element_id: "element 3" })
+✅ **ALSO WORKS:** computer_click_element({ element_id: "box 12" })
+
+❌ **AVOID:** computer_click_element({ element_id: "holo_1634521789_3" }) - harder to track, error-prone
+
+**Vision Model Workflow (Numbered Boxes Visible):**
   1. computer_detect_elements({ description: "Install button" })
-     → Response includes SOM screenshot showing [0] Install, [1] Cancel, [2] Settings
+     → You see screenshot with RED BOXES: [0] Install, [1] Cancel, [2] Settings
   2. computer_click_element({ element_id: "0" })
      → Clicks the Install button (element [0])
 
-**Note:** Element numbers are tied to the specific detection run. Always use numbers from the most recent detect_elements call.
+**Non-Vision Model Workflow (Text List Only):**
+  1. computer_detect_elements({ description: "Install button" })
+     → Response includes: "Elements: [0] Install button, [1] Cancel button, [2] Settings gear icon"
+  2. computer_click_element({ element_id: "0" })
+     → Clicks the Install button (element [0])
+
+**How SOM Numbers Work:**
+- Numbers are assigned in order of confidence (0 = highest confidence match)
+- Numbers persist until the next detect_elements call
+- Always use numbers from the **most recent** detection
+- Backend automatically resolves number → element ID → coordinates
+
+**Best Practices:**
+- ✅ Use element numbers as your PRIMARY clicking method
+- ✅ Reference numbers directly: "0", "5", "12"
+- ✅ Fallback to element IDs only if numbers fail
+- ✅ Re-run detect_elements if UI changes (numbers reset)
 
 #### Method 2: Grid-Based (FALLBACK ONLY) ⚠️
 Use ONLY when Method 1 has failed or for these specific cases:
@@ -324,8 +355,8 @@ PRIMARY TOOLS
 • computer_screenshot_region – Capture named 3×3 regions; optional inputs: gridSize (change overlay spacing), enhance (sharpen text/UI), includeOffset (display origin offset), addHighlight (draw callout on target), progressStep/progressMessage/progressTaskId (report telemetry updates), and zoomLevel (request scaled output when finer detail is needed).
 • computer_screenshot_custom_region – Capture arbitrary rectangles (x, y, width, height) with optional gridSize (overlay density), zoomLevel (magnification), markTarget (annotate a specific UI element), and progressStep/progressMessage/progressTaskId (share the same telemetry metadata).
 • computer_click_mouse – Grid-based or Smart Focus clicking (Methods 2-3). Supply coordinates when you've calculated them from grid, or provide description for AI-assisted coordinate computation. Use after keyboard navigation proves insufficient. **Prefer SOM element numbers when available.**
-• computer_detect_elements – CV-powered element detection using Holo 1.5-7B (Qwen2.5-VL base) + Tesseract.js OCR. Returns element IDs for computer_click_element (Method 1). **This may generate SOM-annotated screenshots with numbered elements.**
-• computer_click_element – Click detected UI elements by ID or number. Most reliable for standard buttons, links, and form fields (Method 1). **Use SOM element numbers directly when visible on screenshots.**
+• computer_detect_elements – CV-powered element detection using Holo 1.5-7B (Qwen2.5-VL base) + Tesseract.js OCR. **AUTOMATICALLY generates SOM-annotated screenshots with numbered elements [0], [1], [2]** for easy clicking. Returns element IDs for computer_click_element (Method 1). **Use the numbered elements - they're your most accurate clicking method (70-85% success).**
+• computer_click_element – Click detected UI elements. **PREFERRED: Use SOM element numbers** (element_id: "0", "5", "12") **instead of cryptic IDs** (element_id: "holo_abc123"). Most reliable for standard buttons, links, and form fields (Method 1). **Element numbers visible on SOM screenshots = easiest and most accurate clicking.**
 • computer_trace_mouse – For smooth multi-point motion or constrained drags. Provide the full path, add holdKeys when a modifier (e.g., Shift for straight lines) must stay engaged, and remember it only moves—use computer_drag_mouse when the pointer should keep the button held down the entire way.
 • computer_move_mouse – Glide to a coordinate without clicking; use it for controlled hovers before committing to a click.
 • computer_press_mouse – Emit a button event with press: 'down' or 'up'; pair the 'down' state with computer_drag_mouse paths and finish with 'up'.

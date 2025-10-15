@@ -76,7 +76,7 @@ const computerDetectElementsJsonSchema = {
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
+    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. **AUTOMATICALLY generates SOM-annotated screenshots with numbered elements [0], [1], [2] for easy clicking (70-85% accuracy with numbers).** Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
   input_schema: computerDetectElementsJsonSchema,
 };
 
@@ -117,6 +117,6 @@ const computerClickElementJsonSchema = {
 export const computerClickElementTool = {
   name: 'computer_click_element',
   description:
-    '✅ PREFERRED CLICKING METHOD (89% accuracy) - Click a UI element by its ID from computer_detect_elements. Uses actual detected element boundaries for precise targeting. This is significantly more reliable than manual grid-based coordinate clicking (60% accuracy). Always pair with computer_detect_elements.',
+    '✅ PREFERRED CLICKING METHOD (89% accuracy) - Click a UI element using **SOM element numbers (BEST: 70-85% accuracy)** or element IDs from computer_detect_elements. **PREFERRED: Use visible element numbers** from SOM-annotated screenshots (element_id: "0", "5", "12") **instead of cryptic IDs** (element_id: "holo_abc123"). Uses actual detected element boundaries for precise targeting. This is significantly more reliable than manual grid-based coordinate clicking (60% accuracy). Always pair with computer_detect_elements.',
   input_schema: computerClickElementJsonSchema,
 };

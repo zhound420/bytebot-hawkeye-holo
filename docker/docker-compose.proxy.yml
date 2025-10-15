@@ -179,7 +179,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s  # Allow time for model download (2-5min) + loading (10-20s) on first run
+      start_period: 30s  # Lazy loading: service ready immediately, model loads on first API call
 
 networks:
   bytebot-network:

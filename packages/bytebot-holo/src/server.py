@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 from .config import settings
+from . import holo_wrapper
 from .holo_wrapper import get_model
 
 
@@ -198,19 +199,11 @@ async def lifespan(app: FastAPI):
         for i in range(torch.cuda.device_count()):
             print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
     print("=" * 50)
-
-    try:
-        # Preload models
-        print("Preloading Holo 1.5-7B model...")
-        holo = get_model()
-        print("✓ Model preloaded successfully")
-        print(f"  Active model: {holo.model_filename}")
-        print(f"  Active projector: {holo.mmproj_filename}")
-        print(f"  Quantization descriptor: {holo.dtype}")
-    except Exception as e:
-        print(f"✗ Error preloading model: {e}")
-        print("Model will be loaded on first request")
-
+    print("")
+    print("⚡ Lazy loading enabled: Model will load on first API request")
+    print("   First request will take 1-3 minutes (model download + loading)")
+    print("   Subsequent requests will be fast (~1-3s per detection)")
+    print("")
     print("=" * 50)
     print("Service ready!")
     print("=" * 50)
@@ -294,18 +287,14 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    try:
-        model = get_model()
-        models_loaded = True
-    except Exception as e:
-        models_loaded = False
-        print(f"Health check error: {e}")
+    # Check if model is already loaded (don't trigger loading)
+    models_loaded = holo_wrapper._model_instance is not None
 
-    # Get GPU information
+    # Get GPU information (doesn't require model)
     gpu_info = get_gpu_info()
 
     return HealthResponse(
-        status="healthy" if models_loaded else "unhealthy",
+        status="healthy",  # Service is always healthy if FastAPI is running
         version="1.0.0",
         device=settings.device,
         models_loaded=models_loaded,

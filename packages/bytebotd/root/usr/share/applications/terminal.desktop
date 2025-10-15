@@ -7,5 +7,5 @@ Exec=exo-open --launch TerminalEmulator
 Icon=org.xfce.terminalemulator
 Path=
 Terminal=false
-StartupNotify=true
+StartupNotify=false
 Categories=Utility;TerminalEmulator;

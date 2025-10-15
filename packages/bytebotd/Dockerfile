@@ -312,11 +312,12 @@ RUN chown -R user:user /home/user
 RUN chmod -R 755 /home/user
 
 RUN mkdir -p /home/user/Desktop && \
-    ln -sf /usr/share/applications/firefox.desktop /home/user/Desktop/firefox.desktop && \
-    ln -sf /usr/share/applications/thunderbird.desktop /home/user/Desktop/thunderbird.desktop && \
-    ln -sf /usr/share/applications/1password.desktop /home/user/Desktop/1password.desktop && \
-    ln -sf /usr/share/applications/code.desktop /home/user/Desktop/code.desktop && \
-    ln -sf /usr/share/applications/xfce4-terminal.desktop /home/user/Desktop/terminal.desktop && \
+    cp /usr/share/applications/firefox.desktop /home/user/Desktop/firefox.desktop && \
+    cp /usr/share/applications/thunderbird.desktop /home/user/Desktop/thunderbird.desktop && \
+    cp /usr/share/applications/1password.desktop /home/user/Desktop/1password.desktop && \
+    cp /usr/share/applications/code.desktop /home/user/Desktop/code.desktop && \
+    cp /usr/share/applications/terminal.desktop /home/user/Desktop/terminal.desktop && \
+    chmod +x /home/user/Desktop/*.desktop && \
     chown -R user:user /home/user/Desktop
 
 ENV BYTEBOT_GRID_OVERLAY=true \

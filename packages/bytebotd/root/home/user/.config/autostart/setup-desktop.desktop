@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Setup Desktop Icons
+Comment=Ensure desktop icons are properly configured
+Exec=/bin/bash -c "chmod +x /home/user/Desktop/*.desktop && gio set /home/user/Desktop/*.desktop metadata::trusted true 2>/dev/null || true"
+Terminal=false
+StartupNotify=false
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

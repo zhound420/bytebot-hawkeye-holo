@@ -5,6 +5,7 @@ Name=VSCode
 Comment=Visual Studio Code
 Exec=/usr/bin/code --password-store=basic %F
 Icon=vscode
+StartupNotify=false
 Categories=TextEditor;Development;IDE;
 MimeType=application/x-code-workspace;
 StartupWMClass=code

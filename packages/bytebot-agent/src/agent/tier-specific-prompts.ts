@@ -2,15 +2,43 @@ import { ModelTier } from '../models/model-capabilities.config';
 
 /**
  * Get tier-specific CV-first workflow instructions
- * Adapts enforcement messaging based on model's CV capabilities
+ * Adapts enforcement messaging based on model's CV capabilities and vision support
  */
 export function getTierSpecificCVInstructions(
   tier: ModelTier,
   maxCvAttempts: number,
+  supportsVision: boolean,
 ): string {
+  // Non-vision model prefix (applies to all tiers)
+  const nonVisionPrefix = !supportsVision ? `
+## 🔍 NON-VISION MODEL NOTE
+
+Your model does not support image input. You will receive:
+- **Text-based element lists** from computer_detect_elements (not SOM screenshots)
+- Element descriptions, coordinates, and confidence scores as text
+- Detection method indicators (🤖 Holo 1.5-7B, 📝 OCR)
+
+**DISCOVERY MODE (RECOMMENDED FIRST STEP):**
+\`\`\`
+computer_detect_elements({ description: "", includeAll: true })
+\`\`\`
+Returns complete UI inventory as text list - review and identify target element.
+
+**SPECIFIC SEARCH:**
+\`\`\`
+computer_detect_elements({ description: "Install button" })
+\`\`\`
+Returns matching elements only.
+
+**THEN CLICK:**
+\`\`\`
+computer_click_element({ element_id: "0" })
+\`\`\`
+
+` : '';
   // Tier 1: Strong Reasoning & Tool Use - Strict enforcement
   if (tier === 'tier1') {
-    return `6. **🎯 CRITICAL RULE: CV-FIRST CLICKING (89% accuracy)**
+    return `${nonVisionPrefix}6. **🎯 CRITICAL RULE: CV-FIRST CLICKING (89% accuracy)**
    **YOU MUST FOLLOW THIS WORKFLOW FOR ALL UI CLICKS:**
 
    ✅ **REQUIRED WORKFLOW (Your model has STRONG reasoning and tool-use capabilities):**
@@ -64,7 +92,7 @@ export function getTierSpecificCVInstructions(
 
   // Tier 2: Medium Reasoning & Tool Use - Balanced enforcement
   if (tier === 'tier2') {
-    return `6. **🎯 RECOMMENDED: CV-FIRST CLICKING (89% accuracy)**
+    return `${nonVisionPrefix}6. **🎯 RECOMMENDED: CV-FIRST CLICKING (89% accuracy)**
    **STRONGLY RECOMMENDED WORKFLOW FOR ALL UI CLICKS:**
 
    ✅ **RECOMMENDED WORKFLOW (Your model has GOOD reasoning and tool-use capabilities):**
@@ -111,7 +139,7 @@ export function getTierSpecificCVInstructions(
   }
 
   // Tier 3: Limited Reasoning or Tool Use - Minimal enforcement, keyboard-first
-  return `6. **💡 KEYBOARD-FIRST WORKFLOW (Optimized for Your Model)**
+  return `${nonVisionPrefix}6. **💡 KEYBOARD-FIRST WORKFLOW (Optimized for Your Model)**
    **RECOMMENDED APPROACH FOR UI INTERACTION:**
 
    ⌨️ **PRIMARY METHOD: KEYBOARD SHORTCUTS (Simplest & Most Reliable):**
@@ -493,7 +521,7 @@ export function buildTierSpecificAgentSystemPrompt(
   timeZone: string,
   supportsVision: boolean,
 ): string {
-  const cvInstructions = getTierSpecificCVInstructions(tier, maxCvAttempts);
+  const cvInstructions = getTierSpecificCVInstructions(tier, maxCvAttempts, supportsVision);
   const uiMethodsSection = getTierSpecificUIMethodsSection(tier, maxCvAttempts, supportsVision);
 
   return `

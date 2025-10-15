@@ -9,22 +9,35 @@ const regionSchema = z
   })
   .describe('Optional region to search within');
 
-export const computerDetectElementsSchema = z.object({
-  description: z
-    .string()
-    .min(1)
-    .describe(
-      'Description of the UI element to find (e.g., "Install button", "username field", "Save link")',
-    ),
-  region: regionSchema.optional(),
-  includeAll: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe(
-      'Return all detected elements, not just those matching description',
-    ),
-});
+export const computerDetectElementsSchema = z
+  .object({
+    description: z
+      .string()
+      .describe(
+        'Description of the UI element to find (e.g., "Install button", "username field", "Save link"). Can be empty when includeAll is true for discovery mode.',
+      ),
+    region: regionSchema.optional(),
+    includeAll: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'Return all detected elements (discovery mode). When true, description can be empty to get complete UI inventory.',
+      ),
+  })
+  .refine(
+    (data) => {
+      // Allow empty description ONLY if includeAll is true
+      if (data.description.length === 0 && data.includeAll !== true) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Description required unless includeAll is true',
+      path: ['description'],
+    },
+  );
 
 export type ComputerDetectElementsInput = z.infer<
   typeof computerDetectElementsSchema
@@ -56,7 +69,7 @@ const computerDetectElementsJsonSchema = {
     description: {
       type: 'string' as const,
       description:
-        'Description of the UI element to find (e.g., "Install button", "username field", "Save link")',
+        'Description of the UI element to find (e.g., "Install button", "username field", "Save link"). Can be empty when includeAll is true for discovery mode.',
     },
     region: {
       ...regionJsonSchema,
@@ -66,17 +79,17 @@ const computerDetectElementsJsonSchema = {
       type: 'boolean' as const,
       default: false,
       description:
-        'Return all detected elements, not just those matching description',
+        'Return all detected elements (discovery mode). When true, description can be empty to get complete UI inventory.',
     },
   },
-  required: ['description'],
+  required: [], // description is optional when includeAll is true
   additionalProperties: false,
 };
 
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    '🎯 PRIMARY CLICKING METHOD (89% accuracy) - REQUIRED FIRST STEP for all UI element clicks. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. **AUTOMATICALLY generates SOM-annotated screenshots with numbered elements [0], [1], [2] for easy clicking (70-85% accuracy with numbers).** Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
+    '🎯 PRIMARY DETECTION METHOD - Works for both vision and non-vision models. Vision models receive SOM-annotated screenshots with numbered elements [0], [1], [2] (70-85% accuracy). Non-vision models receive text-based element lists with descriptions and coordinates. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. Use includeAll: true with empty description for discovery mode (returns all elements). Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
   input_schema: computerDetectElementsJsonSchema,
 };
 

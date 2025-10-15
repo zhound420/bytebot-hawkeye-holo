@@ -521,6 +521,33 @@ export class AgentProcessor implements OnModuleDestroy {
       return { allowed: true };
     }
 
+    // Vision-aware enforcement: Check if current model supports vision
+    const hasVision = this.currentModel ? supportsVision(this.currentModel) : true;
+
+    // For non-vision models, enforce CV-first less strictly
+    // They need text-based element lists from Holo, but can't use SOM annotations
+    if (!hasVision) {
+      const attemptCount = this.getCVAttemptCount(screenshotBuffer, description || '');
+      if (attemptCount < 1) { // Require only 1 CV attempt for non-vision models
+        const reason = `⚠️ CV-First Workflow Required (Non-Vision Model)
+
+Your model cannot see images but can use text-based element detection.
+
+REQUIRED WORKFLOW:
+1. computer_detect_elements({ description: "", includeAll: true })
+   → Get text list of ALL UI elements detected by Holo 1.5-7B
+2. Review element list and identify target by description
+3. computer_click_element({ element_id: "X" }) or computer_click_mouse()
+
+Current CV attempts: ${attemptCount}/1
+
+💡 **TIP:** Non-vision models get text-based element lists instead of SOM screenshots. Use includeAll mode to see all available elements.`;
+        return { allowed: false, reason };
+      }
+      // Non-vision model has tried CV at least once, allow click
+      return { allowed: true };
+    }
+
     // Allow if coordinates provided without description (grid-based clicking)
     if (hasCoordinates && !description) {
       return { allowed: true };

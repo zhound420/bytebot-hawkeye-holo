@@ -8,6 +8,7 @@ interface CVMethodActivity {
   active: boolean;
   startTime?: number;
   duration?: number;
+  metadata?: Record<string, any>;
 }
 
 interface CVActivitySnapshot {

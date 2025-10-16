@@ -51,7 +51,7 @@ services:
       # fresh-build.sh/start-stack.sh automatically enables this mount if ISO exists in iso-cache/
       # To manually download: ./scripts/download-windows-iso.sh (choose Tiny11 or Nano11)
       # This line will be auto-updated with the actual ISO filename during script execution
-      # - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
+      - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
 
     networks:
       - bytebot-network

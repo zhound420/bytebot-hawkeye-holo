@@ -9,10 +9,11 @@ import {
   Button,
   FileType,
 } from '@nut-tree-fork/nut-js';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
 import * as os from 'os';
-import { logPlatformInfo, getPlatform, Platform } from '../utils/platform';
+import { logPlatformInfo, getPlatform, Platform, isWindows, isLinux, isMacOS } from '../utils/platform';
 
 /**
  * Enum representing key codes supported by nut-js.
@@ -427,32 +428,88 @@ export class NutService {
     this.logger.log(`Pasting text: ${text}`);
 
     try {
-      // Copy text to clipboard using xclip via spawn
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn('xclip', ['-selection', 'clipboard'], {
-          env: { ...process.env, DISPLAY: ':0.0' },
-          stdio: ['pipe', 'ignore', 'inherit'],
-        });
+      // Set clipboard content based on platform
+      if (isWindows()) {
+        await this.pasteTextWindows(text);
+      } else if (isLinux()) {
+        await this.pasteTextLinux(text);
+      } else if (isMacOS()) {
+        await this.pasteTextMacOS(text);
+      } else {
+        throw new Error(`Unsupported platform for paste operation: ${os.platform()}`);
+      }
 
-        child.once('error', reject);
-        child.once('close', (code) => {
-          code === 0
-            ? resolve()
-            : reject(new Error(`xclip exited with code ${code}`));
-        });
-
-        child.stdin.write(text);
-        child.stdin.end();
-      });
-
-      // brief pause to ensure clipboard owner is set
+      // Brief pause to ensure clipboard is set
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      await keyboard.pressKey(Key.LeftControl, Key.V);
-      await keyboard.releaseKey(Key.LeftControl, Key.V);
+      // Trigger paste shortcut (Ctrl+V on Windows/Linux, Cmd+V on macOS)
+      const modifierKey = isMacOS() ? Key.LeftMeta : Key.LeftControl;
+      await keyboard.pressKey(modifierKey, Key.V);
+      await keyboard.releaseKey(modifierKey, Key.V);
     } catch (error) {
       throw new Error(`Failed to paste text: ${error.message}`);
     }
+  }
+
+  private async pasteTextWindows(text: string): Promise<void> {
+    const execAsync = promisify(exec);
+
+    // Escape text for PowerShell - use here-string to handle special characters
+    // Replace single quotes with two single quotes for PowerShell escaping
+    const escapedText = text.replace(/'/g, "''");
+
+    try {
+      // Use PowerShell Set-Clipboard with here-string for reliable handling
+      await execAsync(
+        `powershell -Command "Set-Clipboard -Value @'\n${escapedText}\n'@"`,
+        { timeout: 5000 }
+      );
+      this.logger.debug('Windows clipboard set successfully');
+    } catch (error) {
+      this.logger.error(`Failed to set Windows clipboard: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private async pasteTextLinux(text: string): Promise<void> {
+    // Copy text to clipboard using xclip via spawn
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('xclip', ['-selection', 'clipboard'], {
+        env: { ...process.env, DISPLAY: ':0.0' },
+        stdio: ['pipe', 'ignore', 'inherit'],
+      });
+
+      child.once('error', reject);
+      child.once('close', (code) => {
+        code === 0
+          ? resolve()
+          : reject(new Error(`xclip exited with code ${code}`));
+      });
+
+      child.stdin.write(text);
+      child.stdin.end();
+    });
+    this.logger.debug('Linux clipboard set successfully');
+  }
+
+  private async pasteTextMacOS(text: string): Promise<void> {
+    // Use pbcopy for macOS clipboard
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('pbcopy', [], {
+        stdio: ['pipe', 'ignore', 'inherit'],
+      });
+
+      child.once('error', reject);
+      child.once('close', (code) => {
+        code === 0
+          ? resolve()
+          : reject(new Error(`pbcopy exited with code ${code}`));
+      });
+
+      child.stdin.write(text);
+      child.stdin.end();
+    });
+    this.logger.debug('macOS clipboard set successfully');
   }
 
   /**

@@ -6,6 +6,7 @@ const exec = promisify(execCb);
 import * as path from 'path';
 import * as os from 'os';
 import { COORDINATE_SYSTEM_CONFIG } from '../config/coordinate-system.config';
+import { isWindows, isLinux, isMacOS } from '../utils/platform';
 
 export class InvalidSessionIdError extends Error {
   constructor(public readonly sessionId: string | undefined) {
@@ -295,6 +296,40 @@ export class TelemetryService {
   }
 
   private async getActiveAppName(): Promise<string | null> {
+    if (isWindows()) {
+      return this.getActiveAppNameWindows();
+    } else if (isLinux()) {
+      return this.getActiveAppNameLinux();
+    } else if (isMacOS()) {
+      return this.getActiveAppNameMacOS();
+    }
+    return null;
+  }
+
+  private async getActiveAppNameWindows(): Promise<string | null> {
+    try {
+      // Get the foreground window's process name
+      const { stdout } = await exec(
+        `powershell -Command "$proc = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object @{Expression={ (New-Object -ComObject WScript.Shell).AppActivate($_.Id); $_ }} -Descending | Select-Object -First 1; $proc.ProcessName"`,
+        { timeout: 3000 }
+      );
+      const processName = stdout.trim();
+      return processName || null;
+    } catch {
+      // Fallback: Try simpler approach
+      try {
+        const { stdout } = await exec(
+          `powershell -Command "Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object -First 1 -ExpandProperty ProcessName"`,
+          { timeout: 3000 }
+        );
+        return stdout.trim() || null;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  private async getActiveAppNameLinux(): Promise<string | null> {
     try {
       // Try xprop via wmctrl -lx; pick the active window (marked with '*') if present
       const { stdout } = await exec('wmctrl -lx');
@@ -307,6 +342,19 @@ export class TelemetryService {
       const parts = activeLine.trim().split(/\s+/);
       const clazz = parts[3] || '';
       return clazz;
+    } catch {
+      return null;
+    }
+  }
+
+  private async getActiveAppNameMacOS(): Promise<string | null> {
+    try {
+      // Get the frontmost application name
+      const { stdout } = await exec(
+        `osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'`,
+        { timeout: 3000 }
+      );
+      return stdout.trim() || null;
     } catch {
       return null;
     }

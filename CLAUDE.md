@@ -434,6 +434,79 @@ All NestJS packages use Jest:
 - Desktop accuracy metrics available at `/desktop` UI route
 - Holo 1.5-7B requires 8-10GB VRAM (NVIDIA GPU, Apple Silicon M1-M4, or CPU fallback)
 
+## Cross-Platform Compatibility
+
+**Status:** ✅ FULL WINDOWS SUPPORT - All tools work identically on Windows, Linux, and macOS
+
+The desktop daemon (bytebotd) now provides full cross-platform support with platform-specific implementations for all computer control operations:
+
+### Platform-Aware Computer Control
+
+All tools automatically detect the operating system and use appropriate platform APIs:
+
+**Open Application Tool** (`computer_use/computer-use.service.ts:1328-1634`)
+- **Windows**: PowerShell Start-Process + Win32 API (ShowWindow, SetForegroundWindow)
+- **Linux**: wmctrl for X11 window management
+- **macOS**: AppleScript and `open -a` commands
+
+**Clipboard Operations** (`nut/nut.service.ts:427-513`)
+- **Windows**: PowerShell Set-Clipboard with here-string escaping
+- **Linux**: xclip for X11 clipboard
+- **macOS**: pbcopy native clipboard
+
+**Active Window Telemetry** (`telemetry/telemetry.service.ts:298-361`)
+- **Windows**: PowerShell Get-Process with MainWindowHandle filtering
+- **Linux**: wmctrl -lx for window detection
+- **macOS**: AppleScript frontmost application detection
+
+### What Works Cross-Platform
+
+**✅ Fully Supported on All Platforms:**
+- Mouse operations (move, click, drag, scroll) - via nut-js
+- Keyboard operations (type, press, hold) - via nut-js
+- Screenshots and screen info - via nut-js
+- Application launching and window management
+- Clipboard paste operations
+- File read/write operations
+- Element detection (Holo 1.5-7B works on all platforms)
+
+**Platform-Specific Implementations:**
+- Application launching: PowerShell (Windows), wmctrl (Linux), osascript (macOS)
+- Clipboard: Set-Clipboard (Windows), xclip (Linux), pbcopy (macOS)
+- Active window: Get-Process (Windows), wmctrl (Linux), osascript (macOS)
+
+### Implementation Details
+
+**Platform Detection** (`utils/platform.ts`)
+```typescript
+import { isWindows, isLinux, isMacOS } from '../utils/platform';
+
+// Automatically routes to platform-specific implementation
+if (isWindows()) {
+  // Windows-specific code
+} else if (isLinux()) {
+  // Linux-specific code
+} else if (isMacOS()) {
+  // macOS-specific code
+}
+```
+
+**Windows-Specific Notes:**
+- Uses PowerShell for process management and clipboard
+- Win32 API via PowerShell for window manipulation (ShowWindow, SetForegroundWindow)
+- No external dependencies required (PowerShell built into Windows)
+- Tested on Windows 11 (Tiny11/Nano11 containers)
+
+**Linux-Specific Notes:**
+- Requires wmctrl for window management (pre-installed in Linux desktop containers)
+- Requires xclip for clipboard (pre-installed)
+- Uses X11 DISPLAY environment variable (:0.0)
+
+**macOS-Specific Notes:**
+- Uses osascript (AppleScript) for window management
+- Uses pbcopy for clipboard
+- All tools work natively on macOS (no container required)
+
 ### Platform-Specific Native Modules
 
 **Sharp (Image Processing):**

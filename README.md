@@ -133,6 +133,9 @@ cd bytebot-hawkeye-holo
 
 ### Optional: Tiny11 or macOS Desktop Container
 
+![Bytebot running Windows 11](docs/images/bytebotd-windows11.png)
+*Bytebot agent controlling a Windows 11 desktop environment with live desktop view*
+
 Run Bytebot with a **Tiny11** (stripped Windows 11) or **macOS** desktop environment instead of Linux:
 
 **🎯 Interactive Mode (Easiest - NEW!):**

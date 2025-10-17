@@ -13,6 +13,7 @@ import { ProgressBroadcaster } from '../progress/progress-broadcaster';
 import { FOCUS_CONFIG } from '../config/focus-config';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { HoloClientService } from '@bytebot/cv';
+import { isWindows, isLinux, isMacOS } from '../utils/platform';
 import {
   ComputerAction,
   MoveMouseAction,
@@ -1325,6 +1326,144 @@ export class ComputerUseService {
   }
 
   private async application(action: ApplicationAction): Promise<void> {
+    if (isWindows()) {
+      return this.applicationWindows(action);
+    } else if (isLinux()) {
+      return this.applicationLinux(action);
+    } else if (isMacOS()) {
+      return this.applicationMacOS(action);
+    }
+    throw new Error(
+      `Unsupported platform for application action: ${os.platform()}`,
+    );
+  }
+
+  private async applicationWindows(action: ApplicationAction): Promise<void> {
+    const execAsync = promisify(exec);
+
+    // Windows application mapping
+    const commandMap: Record<string, string> = {
+      firefox: 'firefox.exe',
+      '1password': '1Password.exe',
+      thunderbird: 'thunderbird.exe',
+      vscode: 'Code.exe',
+      terminal: 'cmd.exe', // Can also use 'powershell.exe' or 'wt.exe' (Windows Terminal)
+      directory: 'explorer.exe',
+    };
+
+    // Process name for detection (without .exe)
+    const processMap: Record<Application, string> = {
+      firefox: 'firefox',
+      '1password': '1Password',
+      thunderbird: 'thunderbird',
+      vscode: 'Code',
+      terminal: 'cmd',
+      directory: 'explorer',
+      desktop: 'explorer', // Desktop is managed by explorer
+    };
+
+    // Special case: Show desktop (minimize all windows)
+    if (action.application === 'desktop') {
+      try {
+        // Windows+D shortcut to show desktop
+        await execAsync(
+          `powershell -Command "(New-Object -ComObject shell.application).minimizeall()"`,
+          { timeout: 5000 },
+        );
+        this.logger.log('Desktop shown (all windows minimized)');
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to show desktop: ${error.message || String(error)}`,
+        );
+      }
+      return;
+    }
+
+    // Check if application is already running
+    let appOpen = false;
+    try {
+      const { stdout } = await execAsync(
+        `powershell -Command "Get-Process -Name '${processMap[action.application]}' -ErrorAction SilentlyContinue | Select-Object -First 1"`,
+        { timeout: 5000 },
+      );
+      appOpen = stdout.trim().length > 0;
+    } catch (error: any) {
+      // Process not found, treat as not open
+      this.logger.debug(
+        `Process check error (treating as not running): ${error.message}`,
+      );
+    }
+
+    if (appOpen) {
+      this.logger.log(
+        `Application ${action.application} is already running, attempting to focus...`,
+      );
+
+      // Attempt to activate and maximize the window
+      try {
+        const command = commandMap[action.application];
+        // Use PowerShell to focus window - try multiple approaches
+        const focusScript = `
+          $proc = Get-Process -Name '${processMap[action.application]}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+          if ($proc) {
+            Add-Type @"
+              using System;
+              using System.Runtime.InteropServices;
+              public class WinAPI {
+                [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+              }
+"@
+            [WinAPI]::ShowWindow($proc.MainWindowHandle, 3)  # 3 = SW_MAXIMIZE
+            [WinAPI]::SetForegroundWindow($proc.MainWindowHandle)
+          }
+        `;
+
+        await execAsync(
+          `powershell -Command "${focusScript.replace(/"/g, '\\"').replace(/\n/g, ';')}"`,
+          { timeout: 5000 },
+        );
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to focus window: ${error.message || String(error)}`,
+        );
+      }
+      return;
+    }
+
+    // Application not running, launch it
+    this.logger.log(
+      `Launching application ${action.application} (${commandMap[action.application]})...`,
+    );
+
+    try {
+      const command = commandMap[action.application];
+
+      // Special handling for directory (open File Explorer)
+      if (action.application === 'directory') {
+        await execAsync(`start ${command}`, { timeout: 5000 });
+      } else {
+        // Use Start-Process to launch with WindowStyle Maximized
+        await execAsync(
+          `powershell -Command "Start-Process '${command}' -WindowStyle Maximized"`,
+          { timeout: 10000 },
+        );
+      }
+
+      this.logger.log(
+        `Application ${action.application} launched successfully`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to launch ${action.application}: ${error.message || String(error)}`,
+      );
+      throw new Error(
+        `Failed to launch ${action.application}: ${error.message || String(error)}`,
+      );
+    }
+  }
+
+  private async applicationLinux(action: ApplicationAction): Promise<void> {
     const execAsync = promisify(exec);
 
     // Helper to spawn a command and forget about it
@@ -1422,6 +1561,76 @@ export class ComputerUseService {
 
     // Just return immediately
     return;
+  }
+
+  private async applicationMacOS(action: ApplicationAction): Promise<void> {
+    const execAsync = promisify(exec);
+
+    // macOS application mapping
+    const appMap: Record<string, string> = {
+      firefox: 'Firefox',
+      '1password': '1Password',
+      thunderbird: 'Thunderbird',
+      vscode: 'Visual Studio Code',
+      terminal: 'Terminal',
+      directory: 'Finder',
+    };
+
+    // Special case: Show desktop
+    if (action.application === 'desktop') {
+      try {
+        // F11 or Mission Control to show desktop
+        await execAsync(
+          `osascript -e 'tell application "System Events" to key code 103'`,
+          { timeout: 5000 },
+        );
+        this.logger.log('Desktop shown');
+      } catch (error: any) {
+        this.logger.warn(`Failed to show desktop: ${error.message}`);
+      }
+      return;
+    }
+
+    const appName = appMap[action.application];
+    if (!appName) {
+      throw new Error(`Unknown application: ${action.application}`);
+    }
+
+    try {
+      // Check if app is running
+      const { stdout: runningCheck } = await execAsync(
+        `osascript -e 'tell application "System Events" to (name of processes) contains "${appName}"'`,
+        { timeout: 5000 },
+      );
+
+      const isRunning = runningCheck.trim() === 'true';
+
+      if (isRunning) {
+        this.logger.log(
+          `Application ${action.application} is already running, activating...`,
+        );
+        // Activate and maximize
+        await execAsync(
+          `osascript -e 'tell application "${appName}" to activate' -e 'tell application "System Events" to tell process "${appName}" to set frontmost to true'`,
+          { timeout: 5000 },
+        );
+      } else {
+        this.logger.log(`Launching application ${action.application}...`);
+        // Launch and activate
+        await execAsync(`open -a "${appName}"`, { timeout: 10000 });
+      }
+
+      this.logger.log(
+        `Application ${action.application} handled successfully`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to handle ${action.application}: ${error.message}`,
+      );
+      throw new Error(
+        `Failed to handle ${action.application}: ${error.message}`,
+      );
+    }
   }
 
   private async writeFile(

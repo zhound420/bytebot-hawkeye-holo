@@ -172,17 +172,46 @@ Run Bytebot with a macOS Sonoma/Sequoia desktop environment:
 ./scripts/start-stack.sh --os macos
 ```
 
-**Requirements:**
-- **Apple Hardware Only** (iMac, Mac mini, MacBook, Mac Studio, Mac Pro)
+**System Requirements:**
+- **Apple Hardware Only** (iMac, Mac mini, MacBook, Mac Studio, Mac Pro - licensing requirements)
 - KVM support, 8GB+ RAM, 64GB+ disk space
 
-**Setup:**
-1. Stack starts macOS container (5-10 minutes for first boot)
-2. Access macOS web viewer at `http://localhost:8006` or VNC at `vnc://localhost:5900`
-3. Open Terminal inside macOS and run: `cd /shared && sudo bash ./setup-macos-bytebotd.sh`
-4. Bytebotd auto-starts via LaunchAgent on subsequent boots
+**Setup Process:**
+1. **macOS installer package built automatically** (~150MB with ARM64 binaries)
+   - Builds packages on Linux host (shared, bytebot-cv, bytebotd)
+   - Pre-installs macOS-native sharp binaries (@img/sharp-darwin-arm64)
+   - Creates TAR.GZ package at `docker/macos-installer/bytebotd-macos-prebaked.tar.gz`
+2. Stack starts macOS container (5-10 minutes for first boot)
+3. **One-command automated installation** via `setup-macos.sh`:
+   - Access macOS at `http://localhost:8006` or `vnc://localhost:5900`
+   - Open Terminal inside macOS
+   - Run: `sudo bash /shared/setup-macos.sh`
+4. **Automated installation** via `install-macos-prebaked.sh`:
+   - Installs Homebrew package manager
+   - Installs Node.js 20 via Homebrew
+   - Extracts installer package to `/Users/Shared/bytebot`
+   - Creates LaunchAgent for bytebotd auto-start
+   - Sets up LaunchDaemon for future auto-installs
+5. **Total time: 5-8 minutes** (Homebrew + Node.js installation)
 
-**Ports:** Same as Windows container (8006, 5900, 9990, 9991, 9992, 9989)
+**LaunchDaemon Auto-Start:**
+- Bootstrap script installs LaunchDaemon on first run
+- Bytebotd auto-starts via LaunchAgent on subsequent boots
+- LaunchDaemon self-deletes after successful installation
+
+**Troubleshooting:**
+- **Check logs**: `/Users/Shared/bytebot-logs/install-prebaked.log` and `bytebotd.log`
+- **Bootstrap script**: Located at `/shared/setup-macos.sh` in macOS VM
+- **Rebuild package**: `rm -rf docker/macos-installer && ./scripts/build-macos-prebaked-package.sh`
+- **Fresh start**: Delete volume (`docker volume rm docker_bytebot-macos-storage`) then restart
+
+**Ports:**
+- `8006` - Web-based viewer
+- `5900` - VNC access
+- `9990` - Bytebotd API
+- `9991` - Bytebot Agent
+- `9992` - Bytebot UI
+- `9989` - Holo 1.5-7B
 
 ## Development Commands
 

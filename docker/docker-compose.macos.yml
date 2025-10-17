@@ -57,7 +57,8 @@ services:
       # - BYTEBOT_TELEMETRY_DIR=/tmp/bytebot-telemetry
     volumes:
       - macos_storage:/storage
-      # Optional: Share files between host and macOS
+      # Shared folder for automated installation
+      # Contains: setup-macos.sh, install-macos-prebaked.sh, com.bytebot.firstboot.plist, bytebotd-macos-prebaked.tar.gz
       - ${MACOS_SHARED_DIR:-./shared}:/shared
     depends_on:
       bytebot-holo:

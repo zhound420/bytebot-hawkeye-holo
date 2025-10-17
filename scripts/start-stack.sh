@@ -554,6 +554,89 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     fi
 fi
 
+# macOS-specific: Prepare installer package and OEM files
+if [[ "$TARGET_OS" == "macos" ]]; then
+    # Get script directory and project root
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+    echo -e "${BLUE}Preparing macOS automated installation...${NC}"
+    echo ""
+
+    # Check if macOS package already exists
+    if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
+        PACKAGE_SIZE=$(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1)
+        echo -e "${YELLOW}macOS installer package already exists (${PACKAGE_SIZE})${NC}"
+        echo -e "${BLUE}Using existing package from previous build${NC}"
+        echo -e "${BLUE}To force rebuild: rm -rf docker/macos-installer${NC}"
+        echo ""
+    else
+        echo -e "${BLUE}Building macOS installer package...${NC}"
+        echo ""
+
+        # Run the package build script
+        if [[ -f "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh" ]]; then
+            bash "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
+        else
+            echo -e "${RED}✗ macOS package build script not found${NC}"
+            echo ""
+            echo "Expected: $PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
+            exit 1
+        fi
+    fi
+
+    # Copy OEM files and package to shared directory
+    echo -e "${BLUE}Copying installation files to shared directory...${NC}"
+
+    # Ensure shared directory exists
+    mkdir -p "$PROJECT_ROOT/docker/shared"
+
+    # Copy installer script
+    if [[ -f "$PROJECT_ROOT/docker/oem/install-macos-prebaked.sh" ]]; then
+        cp "$PROJECT_ROOT/docker/oem/install-macos-prebaked.sh" "$PROJECT_ROOT/docker/shared/"
+        chmod +x "$PROJECT_ROOT/docker/shared/install-macos-prebaked.sh"
+        echo -e "${GREEN}  ✓ Installer script copied${NC}"
+    else
+        echo -e "${RED}✗ Installer script not found at docker/oem/install-macos-prebaked.sh${NC}"
+        exit 1
+    fi
+
+    # Copy LaunchDaemon plist
+    if [[ -f "$PROJECT_ROOT/docker/oem/com.bytebot.firstboot.plist" ]]; then
+        cp "$PROJECT_ROOT/docker/oem/com.bytebot.firstboot.plist" "$PROJECT_ROOT/docker/shared/"
+        echo -e "${GREEN}  ✓ LaunchDaemon plist copied${NC}"
+    else
+        echo -e "${RED}✗ LaunchDaemon plist not found at docker/oem/com.bytebot.firstboot.plist${NC}"
+        exit 1
+    fi
+
+    # Copy package tarball
+    if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
+        cp "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" "$PROJECT_ROOT/docker/shared/"
+        echo -e "${GREEN}  ✓ Package tarball copied${NC}"
+    else
+        echo -e "${RED}✗ Package tarball not found${NC}"
+        exit 1
+    fi
+
+    # setup-macos.sh should already exist in docker/shared/
+    if [[ ! -f "$PROJECT_ROOT/docker/shared/setup-macos.sh" ]]; then
+        echo -e "${YELLOW}⚠ Bootstrap script not found, will use manual setup${NC}"
+    else
+        chmod +x "$PROJECT_ROOT/docker/shared/setup-macos.sh"
+        echo -e "${GREEN}  ✓ Bootstrap script ready${NC}"
+    fi
+
+    echo -e "${GREEN}✓ Installation files ready${NC}"
+    echo ""
+    echo -e "${BLUE}Files available in macOS VM at /shared/:${NC}"
+    echo "  • setup-macos.sh (bootstrap script - run this first)"
+    echo "  • install-macos-prebaked.sh (automated installer)"
+    echo "  • com.bytebot.firstboot.plist (LaunchDaemon)"
+    echo "  • bytebotd-macos-prebaked.tar.gz ($(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1))"
+    echo ""
+fi
+
 # Change to docker directory
 cd docker
 
@@ -906,10 +989,20 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo ""
     fi
 elif [[ "$TARGET_OS" == "macos" ]]; then
-    echo -e "${YELLOW}macOS Setup Required:${NC}"
-    echo "1. Access macOS at http://localhost:8006"
-    echo "2. Download setup script from /shared folder"
-    echo "3. Run: sudo bash setup-macos-bytebotd.sh"
+    echo -e "${BLUE}macOS Automated Installation:${NC}"
+    echo "  1. Wait for macOS to boot (first-time: ~5-10 minutes)"
+    echo "  2. Access macOS at http://localhost:8006 or vnc://localhost:5900"
+    echo "  3. Open Terminal and run ONE command:"
+    echo -e "     ${CYAN}sudo bash /shared/setup-macos.sh${NC}"
+    echo ""
+    echo "  The bootstrap script will:"
+    echo "  • Install LaunchDaemon for auto-start"
+    echo "  • Run the installer (5-8 minutes)"
+    echo "  • Set up bytebotd service"
+    echo ""
+    echo "  After installation:"
+    echo "  • Bytebotd will be available at http://localhost:9990"
+    echo "  • Auto-starts on future boots"
     echo ""
 fi
 echo "View logs:"

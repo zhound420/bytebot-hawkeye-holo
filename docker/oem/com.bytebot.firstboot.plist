@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Launch Daemon for Bytebot First-Boot Installation -->
+    <!-- This runs automatically on system boot and self-deletes after successful installation -->
+
+    <key>Label</key>
+    <string>com.bytebot.firstboot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/shared/install-macos-prebaked.sh</string>
+    </array>
+
+    <!-- Run automatically on boot -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Only run once (script will delete this plist after success) -->
+    <key>LaunchOnlyOnce</key>
+    <true/>
+
+    <!-- Wait for network to be available (Homebrew install needs internet) -->
+    <key>WatchPaths</key>
+    <array>
+        <string>/Library/Preferences/SystemConfiguration</string>
+    </array>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/Users/Shared/bytebot-logs/firstboot-install.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/Shared/bytebot-logs/firstboot-install-error.log</string>
+
+    <!-- Run with root privileges (needed for Homebrew install, directory creation) -->
+    <key>UserName</key>
+    <string>root</string>
+
+    <!-- Set working directory -->
+    <key>WorkingDirectory</key>
+    <string>/shared</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/var/root</string>
+    </dict>
+
+    <!-- Don't throttle on failure (allow retries) -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <!-- Exit timeout (installer may take 5-8 minutes) -->
+    <key>ExitTimeOut</key>
+    <integer>600</integer>
+</dict>
+</plist>

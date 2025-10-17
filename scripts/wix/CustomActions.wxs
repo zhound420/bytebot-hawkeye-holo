@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Fragment>
+    <!-- Custom Action: Rebuild Sharp module for Windows -->
+    <CustomAction Id="RebuildSharpModule"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="cmd.exe /c &quot;cd /d &quot;[INSTALLFOLDER]packages\bytebotd&quot; &amp;&amp; npm rebuild sharp --verbose &gt; &quot;[BYTEBOTLOGSDIR]sharp-rebuild.log&quot; 2>&amp;1&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- Custom Action: Register Windows Service using schtasks -->
+    <!-- IMPORTANT: Batch files must be executed through cmd.exe, not directly -->
+    <CustomAction Id="RegisterWindowsService"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="cmd.exe /c &quot;schtasks /create /tn &quot;Bytebotd Desktop Agent&quot; /tr &quot;cmd.exe /c \&quot;[INSTALLFOLDER]packages\bytebotd\start-bytebotd.bat\&quot;&quot; /sc onstart /delay 0000:30 /ru SYSTEM /f &gt; &quot;[BYTEBOTLOGSDIR]service-register.log&quot; 2>&amp;1&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- Custom Action: Start Bytebotd service -->
+    <CustomAction Id="StartBytebotdService"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="cmd.exe /c &quot;schtasks /run /tn &quot;Bytebotd Desktop Agent&quot; &gt; &quot;[BYTEBOTLOGSDIR]service-start.log&quot; 2>&amp;1&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom Action: Start Tray Icon (runs as current user) -->
+    <CustomAction Id="StartTrayIcon"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="powershell.exe -WindowStyle Hidden -File &quot;[INSTALLFOLDER]packages\bytebotd\bytebotd-tray.ps1&quot;"
+                  Execute="commit"
+                  Impersonate="yes"
+                  Return="asyncNoWait" />
+
+    <!-- Custom Action: Stop Bytebotd service before uninstall -->
+    <CustomAction Id="StopBytebotdService"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="cmd.exe /c &quot;schtasks /end /tn &quot;Bytebotd Desktop Agent&quot; &gt; nul 2>&amp;1&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom Action: Unregister Windows Service -->
+    <CustomAction Id="UnregisterWindowsService"
+                  Directory="BYTEBOTDDIR"
+                  ExeCommand="cmd.exe /c &quot;schtasks /delete /tn &quot;Bytebotd Desktop Agent&quot; /f &gt; nul 2>&amp;1&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom Action: Kill tray icon processes -->
+    <CustomAction Id="KillTrayProcesses"
+                  ExeCommand="cmd.exe /c &quot;taskkill /f /im powershell.exe /fi &quot;WINDOWTITLE eq *bytebotd-tray*&quot; &gt; nul 2>&amp;1&quot;"
+                  Execute="immediate"
+                  Return="ignore" />
+
+    <!-- Custom Action: Clean up node processes -->
+    <CustomAction Id="CleanupNodeProcesses"
+                  ExeCommand="cmd.exe /c &quot;taskkill /f /im node.exe /fi &quot;WINDOWTITLE eq *bytebotd*&quot; &gt; nul 2>&amp;1&quot;"
+                  Execute="immediate"
+                  Return="ignore" />
+
+  </Fragment>
+
+  <Fragment>
+    <!-- Property to detect Node.js installation -->
+    <Property Id="NODEJSINSTALLED">
+      <RegistrySearch Id="NodeJsSearch"
+                      Root="HKLM"
+                      Key="SOFTWARE\Node.js"
+                      Name="InstallPath"
+                      Type="raw" />
+    </Property>
+
+    <!-- Condition: Require Node.js 20 or later -->
+    <Condition Message="Node.js 20.0.0 or later is required. Please install Node.js from https://nodejs.org/">
+      <![CDATA[Installed OR NODEJSINSTALLED]]>
+    </Condition>
+
+    <!-- Property to detect if bytebotd is running -->
+    <Property Id="BYTEBOTDRUNNING">
+      <DirectorySearch Id="SearchHeartbeat" Path="[CommonAppDataFolder]Bytebot">
+        <FileSearch Name="heartbeat.txt" />
+      </DirectorySearch>
+    </Property>
+
+    <!-- Condition: Warn if bytebotd is running -->
+    <Condition Message="Bytebotd appears to be running. Please stop the service before installing/uninstalling.">
+      <![CDATA[NOT BYTEBOTDRUNNING OR Installed]]>
+    </Condition>
+
+  </Fragment>
+</Wix>

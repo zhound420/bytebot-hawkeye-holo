@@ -15,6 +15,7 @@ export interface EnhancedDetectionOptions {
   holoTask?: string; // Task-specific instruction for single-shot detection (e.g., "Find the VSCode icon")
   holoCaptions?: boolean; // Enable functional captions for detected elements
   holoConfidence?: number; // Minimum confidence threshold (0-1)
+  holoPerformanceProfile?: 'speed' | 'balanced' | 'quality';
 
   // General options
   confidenceThreshold?: number;
@@ -80,33 +81,44 @@ export class EnhancedVisualDetectorService {
     const holoAvailable = await this.holoClient?.isAvailable() ?? false;
 
     const {
-      useOCR = false, // OCR is expensive, use as fallback only
-      useHolo = holoAvailable, // Use Holo 1.5-7B, defaults to enabled when service healthy
       confidenceThreshold = 0.6,
       maxResults = 20,
       combineResults = true
     } = options;
 
+    // Use let for useOCR to allow Phase 3.2 optimization (conditional skip)
+    let useOCR = options.useOCR ?? false; // OCR is expensive, use as fallback only
+    const useHolo = options.useHolo ?? holoAvailable; // Use Holo 1.5-7B, defaults to enabled when service healthy
+
     try {
-      // Run Holo 1.5 and OCR in parallel since both are I/O-bound
-      const [holoResult, ocrResults] = await Promise.all([
-        useHolo && this.holoClient
-          ? (async () => {
-              const holoStart = Date.now();
-              const result = await this.runHoloDetection(screenshotBuffer, options);
-              performance.holoTime = Date.now() - holoStart;
-              return result;
-            })()
-          : Promise.resolve({ elements: [], somImage: undefined, elementMapping: undefined }),
-        useOCR
-          ? (async () => {
-              const ocrStart = Date.now();
-              const results = await this.runOCRDetection(screenshotBuffer, options);
-              performance.ocrTime = Date.now() - ocrStart;
-              return results;
-            })()
-          : Promise.resolve([])
-      ]);
+      // Phase 3.2: Run Holo first, skip OCR if Holo succeeds with high confidence
+      let holoResult: { elements: DetectedElement[]; somImage?: string; elementMapping?: Map<number, string> } =
+        { elements: [], somImage: undefined, elementMapping: undefined };
+      let ocrResults: DetectedElement[] = [];
+
+      // Run Holo detection if enabled
+      if (useHolo && this.holoClient) {
+        const holoStart = Date.now();
+        holoResult = await this.runHoloDetection(screenshotBuffer, options);
+        performance.holoTime = Date.now() - holoStart;
+
+        // Check if Holo succeeded with high confidence (Phase 3.2)
+        // If so, skip OCR to save time
+        if (holoResult.elements.length >= 5) {
+          const avgConfidence = holoResult.elements.reduce((sum, el) => sum + el.confidence, 0) / holoResult.elements.length;
+          if (avgConfidence >= 0.7) {
+            this.logger.debug(`Holo succeeded with high confidence (${Math.round(avgConfidence * 100)}%, ${holoResult.elements.length} elements) - skipping OCR`);
+            useOCR = false; // Override - skip OCR
+          }
+        }
+      }
+
+      // Run OCR only if needed (Phase 3.2)
+      if (useOCR) {
+        const ocrStart = Date.now();
+        ocrResults = await this.runOCRDetection(screenshotBuffer, options);
+        performance.ocrTime = Date.now() - ocrStart;
+      }
 
       // Extract SOM data from Holo result
       let somImage: string | undefined;
@@ -157,31 +169,6 @@ export class EnhancedVisualDetectorService {
     }
   }
 
-  /**
-   * Quick UI element detection using Holo 1.5-7B only
-   * Optimized for speed over comprehensiveness
-   */
-  async quickDetectElements(
-    screenshotBuffer: Buffer,
-    options: Partial<EnhancedDetectionOptions> = {}
-  ): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useOCR: false,
-      maxResults: 10,
-      ...options
-    });
-  }
-
-  /**
-   * Specialized button detection using Holo 1.5-7B for precision localization
-   */
-  async detectButtons(screenshotBuffer: Buffer): Promise<EnhancedDetectionResult> {
-    return this.detectElements(screenshotBuffer, null, {
-      useHolo: true, // Use Holo 1.5-7B for UI element detection
-      useOCR: false,
-    });
-  }
-
   private async runOCRDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     return this.cvActivity.executeWithTracking(
       'ocr-detection',
@@ -200,12 +187,21 @@ export class EnhancedVisualDetectorService {
   private async runHoloDetection(screenshotBuffer: Buffer, options: EnhancedDetectionOptions) {
     // Track Holo 1.5-7B activity with device info
     const detectionMode = options.holoTask ? 'single-shot' : 'multi-element';
+    const taskDescription = options.holoTask
+      ? `Searching: "${options.holoTask}"`
+      : 'Scanning all UI elements';
+    const performanceProfile = options.holoPerformanceProfile || 'balanced';
+
     const activityId = this.cvActivity.startMethod('holo-1.5-7b', {
       mode: detectionMode,
       task: options.holoTask || 'multi-element scan',
+      task_description: taskDescription,
       captions: options.holoCaptions ?? true,
       confidence_threshold: options.holoConfidence ?? 0.3,
       device: 'loading',  // Will be updated after response
+      performance_profile: performanceProfile,
+      performanceProfile: performanceProfile,  // Alias for UI compatibility
+      quantization: 'Q4_K_M',  // Default quantization
     });
 
     try {
@@ -226,6 +222,9 @@ export class EnhancedVisualDetectorService {
         detectMultiple: !options.holoTask, // Single-shot if task provided, multi-element otherwise
         includeCaptions: options.holoCaptions ?? true,
         minConfidence: options.holoConfidence ?? 0.3,
+        maxDetections: options.maxResults,
+        returnRawOutputs: process.env.HOLO_DEBUG_RAW === 'true',
+        performanceProfile: options.holoPerformanceProfile,
       });
 
       // Update metadata with device info for UI display
@@ -236,6 +235,19 @@ export class EnhancedVisualDetectorService {
         ocrDetected: response.ocr_detected,
         iconDetected: response.icon_detected,
         interactableCount: response.interactable_count,
+        profile: response.profile,
+        maxDetections: response.max_detections,
+        minConfidence: response.min_confidence,
+        // Enhanced descriptive fields for UI
+        performance_profile: response.profile || options.holoPerformanceProfile || 'balanced',
+        performanceProfile: response.profile || options.holoPerformanceProfile || 'balanced',  // Alias
+        processing_time_ms: response.processing_time_ms,
+        processingTimeMs: response.processing_time_ms,  // Alias
+        quantization: 'Q4_K_M',  // Default quantization
+        detection_status: response.count > 0
+          ? `Found ${response.count} element${response.count !== 1 ? 's' : ''}`
+          : 'No elements found',
+        task_description: taskDescription,  // Preserve task description for UI
       });
 
       // Convert to DetectedElement format

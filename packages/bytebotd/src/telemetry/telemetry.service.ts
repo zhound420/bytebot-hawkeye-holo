@@ -4,6 +4,7 @@ import { exec as execCb } from 'child_process';
 import { promisify } from 'util';
 const exec = promisify(execCb);
 import * as path from 'path';
+import * as os from 'os';
 import { COORDINATE_SYSTEM_CONFIG } from '../config/coordinate-system.config';
 
 export class InvalidSessionIdError extends Error {
@@ -76,7 +77,7 @@ export class TelemetryService {
     process.env.BYTEBOT_DRIFT_SMOOTHING ?? '0.2',
   );
   private readonly telemetryDir = path.resolve(
-    process.env.BYTEBOT_TELEMETRY_DIR ?? path.join('/tmp', 'bytebot-telemetry'),
+    process.env.BYTEBOT_TELEMETRY_DIR ?? path.join(os.tmpdir(), 'bytebot-telemetry'),
   );
   private readonly ready: Promise<void>;
   private currentSessionId = 'default';

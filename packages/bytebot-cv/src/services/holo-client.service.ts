@@ -1,5 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UniversalUIElement } from '../interfaces/universal-element.interface';
+
+/**
+ * Universal element types for cross-detection compatibility
+ */
+export type UniversalElementType = 'button' | 'text_input' | 'clickable' | 'menu_item';
+
+/**
+ * Universal UI element interface (used by Holo conversion methods)
+ */
+export interface UniversalUIElement {
+  id: string;
+  type: UniversalElementType;
+  bounds: { x: number; y: number; width: number; height: number };
+  clickPoint: { x: number; y: number };
+  confidence: number;
+  text?: string;
+  semanticRole?: string;
+  description: string;
+}
 
 /**
  * Holo 1.5-7B detection result from the Python service
@@ -28,6 +46,9 @@ export interface HoloResponse {
     height: number;
   };
   device: string;
+  profile?: string;
+  max_detections?: number;
+  min_confidence?: number;
   som_image?: string; // Base64 encoded Set-of-Mark annotated image
   ocr_detected?: number; // Number of OCR text elements detected
   icon_detected?: number; // Number of icon elements detected
@@ -48,6 +69,9 @@ export interface HoloOptions {
   minConfidence?: number;
   iouThreshold?: number; // Deprecated - maintained for compatibility
   usePaddleOcr?: boolean; // Deprecated - maintained for compatibility
+  maxDetections?: number; // Cap detections server-side to reduce latency
+  returnRawOutputs?: boolean; // Request raw model transcripts for debugging
+  performanceProfile?: 'speed' | 'balanced' | 'quality';
 }
 
 /**
@@ -67,6 +91,17 @@ export interface HoloModelStatus {
   weights_path: string;
 }
 
+export interface HoloGPUInfo {
+  device_type: string; // "cuda", "mps", or "cpu"
+  gpu_name: string | null;
+  memory_total_mb: number | null;
+  memory_used_mb: number | null;
+  memory_free_mb: number | null;
+  memory_utilization_percent: number | null;
+}
+
+export type ModelTier = 'tier1' | 'tier2' | 'tier3';
+
 /**
  * Client service for Holo 1.5-7B REST API
  *
@@ -81,10 +116,14 @@ export class HoloClientService {
   private readonly enabled: boolean;
   private isHealthy: boolean = false;
   private modelStatus: HoloModelStatus | null = null;
+  private gpuInfo: HoloGPUInfo | null = null;
+  private gpuPollInterval: NodeJS.Timeout | null = null;
+  private isPollingGpu: boolean = false; // Debounce flag for GPU polling
+  private detectionInProgress: boolean = false; // Pause polling during detection (Phase 2.3)
 
   constructor() {
     this.baseUrl = process.env.HOLO_URL || 'http://localhost:9989';
-    this.timeout = parseInt(process.env.HOLO_TIMEOUT || '30000', 10);
+    this.timeout = parseInt(process.env.HOLO_TIMEOUT || '120000', 10);
     this.enabled = process.env.BYTEBOT_CV_USE_HOLO === 'true';
 
     if (this.enabled) {
@@ -93,9 +132,98 @@ export class HoloClientService {
       this.checkHealth().catch((err) => {
         this.logger.warn(`Holo 1.5-7B health check failed: ${err.message}`);
       });
+
+      // Start real-time GPU polling (every 3 seconds)
+      this.startGPUPolling();
     } else {
       this.logger.log('Holo 1.5-7B integration disabled');
     }
+  }
+
+  /**
+   * Start periodic GPU info polling for real-time VRAM updates
+   * Optimized (Phase 2.3):
+   * - Increased interval from 3s to 5s
+   * - Pauses during detection to reduce service load
+   */
+  private startGPUPolling(): void {
+    // Poll every 5 seconds for real-time GPU metrics (increased from 3s - Phase 2.3)
+    this.gpuPollInterval = setInterval(async () => {
+      // Skip if detection in progress (Phase 2.3)
+      if (this.detectionInProgress) {
+        this.logger.debug('Skipping GPU poll - detection in progress');
+        return;
+      }
+
+      // Debounce: Skip if previous poll still running
+      if (this.isPollingGpu) {
+        this.logger.debug('Skipping GPU poll - previous request still in progress');
+        return;
+      }
+
+      if (this.isHealthy) {
+        this.isPollingGpu = true;
+        await this.fetchGPUInfo().catch((err) => {
+          this.logger.debug(`GPU polling failed: ${err.message}`);
+        }).finally(() => {
+          this.isPollingGpu = false;
+        });
+      }
+    }, 5000);
+
+    this.logger.debug('GPU polling started (5s interval, pauses during detection)');
+  }
+
+  /**
+   * Stop GPU polling (cleanup)
+   */
+  stopGPUPolling(): void {
+    if (this.gpuPollInterval) {
+      clearInterval(this.gpuPollInterval);
+      this.gpuPollInterval = null;
+      this.logger.debug('GPU polling stopped');
+    }
+  }
+
+  /**
+   * Select optimal Holo performance profile based on UI complexity
+   *
+   * Holo 1.5-7B profiles control detection thoroughness vs speed tradeoffs:
+   * - 'speed': Fast detection (20 elements, 256 tokens, ~2-3s) - simple UIs
+   * - 'balanced': Moderate coverage (40 elements, 512 tokens, ~4-6s) - default for most UIs
+   * - 'quality': Maximum coverage (100 elements, 1024 tokens, ~10-16s) - complex UIs
+   *
+   * NOTE: Profile selection should be based on UI complexity, NOT on VLM reasoning capability.
+   * Holo 1.5-7B detection quality is independent of which VLM consumes the results.
+   *
+   * @param uiComplexity - UI complexity hint ('simple'/'moderate'/'complex')
+   * @returns Recommended performance profile
+   */
+  selectProfileForUI(
+    uiComplexity: 'simple' | 'moderate' | 'complex' = 'moderate',
+  ): 'speed' | 'balanced' | 'quality' {
+    switch (uiComplexity) {
+      case 'simple':
+        return 'speed'; // Fast detection for simple UIs (e.g., login screens, dialogs)
+      case 'complex':
+        return 'quality'; // Thorough detection for dense UIs (e.g., IDEs, dashboards)
+      case 'moderate':
+      default:
+        return 'balanced'; // Good default for most applications
+    }
+  }
+
+  /**
+   * Get max detections for a given profile
+   *
+   * @param profile - Performance profile
+   * @returns Max detections limit
+   */
+  getMaxDetectionsForProfile(
+    profile: 'speed' | 'balanced' | 'quality',
+  ): number {
+    // Standard profile limits from Holo configuration
+    return profile === 'speed' ? 20 : profile === 'balanced' ? 40 : 100;
   }
 
   /**
@@ -130,13 +258,22 @@ export class HoloClientService {
 
       if (response.ok) {
         const data = await response.json();
-        this.isHealthy = data.status === 'healthy' && data.models_loaded;
+        // Accept service as healthy even if models not loaded yet (lazy loading)
+        // Models will load on first API request
+        this.isHealthy = data.status === 'healthy';
 
-        // Fetch model status if healthy
-        if (this.isHealthy && !this.modelStatus) {
-          this.fetchModelStatus().catch((err) => {
-            this.logger.warn(`Failed to fetch model status: ${err.message}`);
-          });
+        // Fetch model status and GPU info if healthy
+        if (this.isHealthy) {
+          if (!this.modelStatus) {
+            this.fetchModelStatus().catch((err) => {
+              this.logger.warn(`Failed to fetch model status: ${err.message}`);
+            });
+          }
+          if (!this.gpuInfo) {
+            this.fetchGPUInfo().catch((err) => {
+              this.logger.warn(`Failed to fetch GPU info: ${err.message}`);
+            });
+          }
         }
 
         return this.isHealthy;
@@ -185,6 +322,41 @@ export class HoloClientService {
   }
 
   /**
+   * Fetch GPU information from Holo 1.5-7B service
+   */
+  async fetchGPUInfo(): Promise<HoloGPUInfo | null> {
+    try {
+      const controller = new AbortController();
+      // Use shorter timeout for GPU info (should be fast)
+      const gpuTimeout = 5000; // 5 seconds - GPU info should respond quickly
+      const timeoutId = setTimeout(() => controller.abort(), gpuTimeout);
+
+      const response = await fetch(`${this.baseUrl}/gpu-info`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        this.gpuInfo = await response.json();
+        return this.gpuInfo;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.debug(`GPU info fetch failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get cached GPU information
+   */
+  getGPUInfo(): HoloGPUInfo | null {
+    return this.gpuInfo;
+  }
+
+  /**
    * Localize a specific UI element using task-specific instruction (single-shot mode)
    * This is faster and more accurate than multi-element scanning when you know what you're looking for.
    *
@@ -213,6 +385,52 @@ export class HoloClientService {
   }
 
   /**
+   * Parse screenshot with tier-aware optimizations (DEPRECATED)
+   *
+   * @deprecated Use parseScreenshot() with explicit performanceProfile instead.
+   * Holo profile should be based on UI complexity, not VLM reasoning tier.
+   *
+   * Example migration:
+   * ```typescript
+   * // Old approach (coupled to VLM tier)
+   * const result = await holoClient.parseScreenshotWithTier(buffer, 'tier1');
+   *
+   * // New approach (based on UI complexity)
+   * const result = await holoClient.parseScreenshot(buffer, {
+   *   performanceProfile: 'balanced' // or 'speed'/'quality' based on UI
+   * });
+   * ```
+   *
+   * @param imageBuffer - Screenshot image buffer
+   * @param tier - Model tier (ignored, use performanceProfile in options instead)
+   * @param options - Parsing options
+   * @returns Detected UI elements
+   */
+  async parseScreenshotWithTier(
+    imageBuffer: Buffer,
+    tier: ModelTier,
+    options: HoloOptions = {},
+  ): Promise<HoloResponse> {
+    this.logger.warn(
+      'parseScreenshotWithTier() is deprecated. Use parseScreenshot() with explicit performanceProfile.',
+    );
+
+    // Default to balanced profile if not specified
+    if (!options.performanceProfile) {
+      options.performanceProfile = 'balanced';
+    }
+
+    // Default to standard max detections if not specified
+    if (!options.maxDetections) {
+      options.maxDetections = this.getMaxDetectionsForProfile(
+        options.performanceProfile,
+      );
+    }
+
+    return this.parseScreenshot(imageBuffer, options);
+  }
+
+  /**
    * Parse screenshot using Holo 1.5-7B (multi-element or single-element mode)
    *
    * @param imageBuffer - Screenshot image buffer
@@ -229,22 +447,23 @@ export class HoloClientService {
 
     const startTime = Date.now();
 
+    // Pause GPU polling during detection (Phase 2.3)
+    this.detectionInProgress = true;
+
     try {
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
 
-      // Create request body (using official OmniParser demo defaults)
+      // Create request body for Holo 1.5-7B API
       const requestBody = {
         image: base64Image,
         task: options.task ?? null, // Task-specific instruction for single-element mode
         detect_multiple: options.detectMultiple ?? true, // Multi-element scan mode
-        include_captions: options.includeCaptions ?? true,
-        include_som: options.includeSom ?? true,
-        include_ocr: options.includeOcr ?? true,
-        use_full_pipeline: options.useFullPipeline ?? true,
-        min_confidence: options.minConfidence ?? 0.05, // Official demo default (was 0.3)
-        iou_threshold: options.iouThreshold ?? 0.1, // Official demo default (was 0.7)
-        use_paddleocr: options.usePaddleOcr ?? true,
+        include_som: options.includeSom ?? true, // Set-of-Mark annotations
+        min_confidence: options.minConfidence ?? 0.3, // Higher confidence for quality results
+        max_detections: options.maxDetections ?? undefined, // Server-side detection cap
+        return_raw_outputs: options.returnRawOutputs ?? false, // Include raw model outputs
+        performance_profile: options.performanceProfile ?? 'balanced', // Balanced profile for production use
       };
 
       // Send request to Holo 1.5-7B service
@@ -285,6 +504,9 @@ export class HoloClientService {
         `Holo 1.5-7B error after ${elapsed}ms: ${error.message}`,
       );
       throw error;
+    } finally {
+      // Resume GPU polling after detection completes (Phase 2.3)
+      this.detectionInProgress = false;
     }
   }
 

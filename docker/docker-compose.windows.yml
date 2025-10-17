@@ -1,0 +1,223 @@
+name: bytebot
+
+services:
+  bytebot-windows:
+    # Windows 11 container using dockur/windows
+    image: dockurr/windows
+    container_name: bytebot-windows
+    restart: unless-stopped
+    hostname: computer
+    privileged: true
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8006:8006"   # Web viewer
+      - "3389:3389/tcp" # RDP
+      - "3389:3389/udp"
+      - "9990:9990"   # bytebotd service (after Node.js setup)
+      - "8081:8081"   # progress websocket
+    environment:
+      # Windows container settings
+      - VERSION=${WINDOWS_VERSION:-11}
+      - RAM_SIZE=${WINDOWS_RAM_SIZE:-12G}
+      - CPU_CORES=${WINDOWS_CPU_CORES:-6}
+      - DISK_SIZE=${WINDOWS_DISK_SIZE:-150G}
+      - RESOLUTION=${WINDOWS_RESOLUTION:-1280x960}
+      # Time sync with host + Custom port forwarding for bytebotd (9990)
+      # QEMU hostfwd syntax: tcp:bind_address:host_port-:guest_port
+      # Bind to 0.0.0.0 to allow connections from other Docker containers
+      - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp:0.0.0.0:9990-:9990
+      # BTRFS compatibility (avoids O_DIRECT requirement)
+      # Allows Windows containers to work on BTRFS without ext4 loop device
+      - DISK_IO=threads
+      - DISK_CACHE=writeback
+      # Auto-install: Run first-boot-setup-optimized.cmd during Windows OOBE
+      # This copies installer ZIP to C:\OEM and creates scheduled task + RunOnce entry
+      - CUSTOM=/oem/first-boot-setup-optimized.cmd
+      # Bytebot Hawkeye settings
+      - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
+      - BYTEBOT_GRID_DEBUG=${BYTEBOT_GRID_DEBUG:-false}
+      - BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=${BYTEBOT_PROGRESSIVE_ZOOM_USE_AI:-true}
+      - BYTEBOT_UNIVERSAL_TEACHING=${BYTEBOT_UNIVERSAL_TEACHING:-true}
+      - BYTEBOT_ADAPTIVE_CALIBRATION=${BYTEBOT_ADAPTIVE_CALIBRATION:-true}
+      - BYTEBOT_ZOOM_REFINEMENT=${BYTEBOT_ZOOM_REFINEMENT:-true}
+      - BYTEBOT_COORDINATE_METRICS=${BYTEBOT_COORDINATE_METRICS:-true}
+      - BYTEBOT_POST_CLICK_CALIBRATION=true
+      - BYTEBOT_DRIFT_COMPENSATION=true
+      - BYTEBOT_DRIFT_SMOOTHING=0.2
+      # Accuracy aids
+      - BYTEBOT_PRECLICK_SNAP=true
+      - BYTEBOT_SNAP_RADIUS=6
+      - BYTEBOT_SNAP_PENALTY=0.25
+      - BYTEBOT_CLICK_RETRY_ON_NOCHANGE=true
+      - BYTEBOT_CLICK_VERIFY_DELAY=250
+      - BYTEBOT_CLICK_VERIFY_RADIUS=12
+      - BYTEBOT_CLICK_VERIFY_THRESHOLD=4.0
+      - BYTEBOT_CLICK_RETRY_MAX=1
+      # Holo 1.5-7B integration
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
+      # Windows-specific directories (optional - bytebotd uses os.tmpdir() by default)
+      # - BYTEBOT_SCREENSHOT_PATH=C:\Windows\Temp\bytebot-screenshots
+      # - BYTEBOT_TELEMETRY_DIR=C:\Windows\Temp\bytebot-telemetry
+    volumes:
+      # Windows storage: standard Docker volume (BTRFS compatible via DISK_IO/DISK_CACHE)
+      - windows_storage:/storage
+      # ISO cache: Tiny11 2311 (~3.5GB) or Nano11 25H2 (~2.3GB) cached to avoid redownloading on fresh installs
+      # fresh-build.sh/start-stack.sh automatically enables this mount if ISO exists in iso-cache/
+      # To manually download: ./scripts/download-windows-iso.sh (choose Tiny11 or Nano11)
+      # This line will be auto-updated with the actual ISO filename during script execution
+      # - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
+      # Auto-install script (runs on first boot, copied to C:\OEM)
+      # IMPORTANT: Keep /oem small (~30KB scripts) to avoid install hangs
+      - ./oem:/oem
+      # Pre-built Windows installer package (Samba share, accessible as \\host.lan\Data in Windows)
+      # dockur/windows Samba config: [Data] path=/shared → \\host.lan\Data
+      # Contains bytebotd-windows-installer.zip (~150MB vs 1.8GB artifacts)
+      - ./windows-installer:/shared
+    depends_on:
+      bytebot-holo:
+        condition: service_healthy
+    networks:
+      - bytebot-network
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8006 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s  # Increased from 120s to allow more time for Windows startup
+
+  postgres:
+    image: ${BYTEBOT_POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: bytebot-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=bytebotdb
+    networks:
+      - bytebot-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  bytebot-agent:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-agent/Dockerfile
+    container_name: bytebot-agent
+    restart: unless-stopped
+    ports:
+      - "9991:9991"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/bytebotdb}
+      - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-windows:9990}
+      - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - BYTEBOT_ZOOM_REFINEMENT=${BYTEBOT_ZOOM_REFINEMENT:-true}
+      - BYTEBOT_GRID_OVERLAY=true
+      - BYTEBOT_PROGRESSIVE_ZOOM_USE_AI=true
+      # Agent-side verification + screenshot policy
+      - BYTEBOT_CLICK_VERIFY=true
+      - BYTEBOT_POST_ACTION_SCREENSHOT=true
+      - BYTEBOT_INCLUDE_FULL_AFTER_VERIFY=true
+      # Holo 1.5-7B integration
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
+    depends_on:
+      postgres:
+        condition: service_started
+      bytebot-holo:
+        condition: service_healthy
+    networks:
+      - bytebot-network
+
+  bytebot-ui:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-ui/Dockerfile
+      args:
+        - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
+        - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-windows:8006}
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    container_name: bytebot-ui
+    restart: unless-stopped
+    ports:
+      - "9992:9992"
+    environment:
+      - NODE_ENV=production
+      - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
+      - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-windows:8006}
+      - NEXT_PUBLIC_API_URL=http://localhost:9991
+      - NEXT_PUBLIC_BYTEBOTD_URL=http://localhost:9990
+      - NEXT_PUBLIC_PROGRESS_WS_PORT=${NEXT_PUBLIC_PROGRESS_WS_PORT:-8081}
+    depends_on:
+      - bytebot-agent
+    networks:
+      - bytebot-network
+
+  bytebot-holo:
+    build:
+      context: ../packages/bytebot-holo
+      dockerfile: Dockerfile
+    container_name: bytebot-holo
+    restart: unless-stopped
+    ports:
+      - "9989:9989"
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
+    environment:
+      - HOLO_HOST=0.0.0.0
+      - HOLO_PORT=9989
+      # Device auto-detection: 'auto' detects cuda/cpu in container
+      # On Apple Silicon: Docker uses CPU (MPS not available in containers)
+      # On NVIDIA: Docker uses CUDA if nvidia-docker runtime available
+      # Override with: cpu, cuda
+      - HOLO_DEVICE=${HOLO_DEVICE:-auto}
+      - HOLO_MIN_CONFIDENCE=${HOLO_MIN_CONFIDENCE:-0.3}
+      - HOLO_MODEL_DTYPE=${HOLO_MODEL_DTYPE:-float16}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=
+    volumes:
+      # Optional: mount weights to persist across rebuilds
+      - holo_weights:/app/weights
+    networks:
+      - bytebot-network
+    # GPU support configured in docker-compose.override.yml (automatically loaded)
+    # Requires: nvidia-container-toolkit installed on host
+    # Apple Silicon: MPS not available in Docker, runs on CPU (for GPU use native setup)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9989/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s  # Lazy loading: service ready immediately, model loads on first API call
+
+networks:
+  bytebot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  holo_weights:
+  windows_storage:

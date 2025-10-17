@@ -30,14 +30,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # Longer startup for model loading
+      start_period: 30s  # Lazy loading: service ready immediately, model loads on first API call
 
   # Update bytebot-desktop to use Holo 1.5-7B
   bytebot-desktop:
     environment:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
     depends_on:
       bytebot-holo:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
     environment:
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
     depends_on:
       bytebot-holo:
         condition: service_healthy

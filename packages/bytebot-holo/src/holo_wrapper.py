@@ -18,7 +18,7 @@ except ImportError:
         "Install with: pip install llama-cpp-python"
     )
 
-from .config import settings
+from .config import settings, PERFORMANCE_PROFILES, ADAPTIVE_CONFIDENCE_THRESHOLDS, CONFIDENCE_ZONES
 
 
 class Holo15:
@@ -143,20 +143,44 @@ class Holo15:
         return lookup.get(model_filename, model_filename)
 
     def _get_n_gpu_layers(self) -> int:
-        """Get number of layers to offload to GPU based on device."""
+        """Get number of layers to offload to GPU based on device with auto-tuning."""
         if self.device == "cuda":
-            # NVIDIA: Offload all layers to GPU
+            # NVIDIA: Offload all layers to GPU (tested and working)
             return -1
         elif self.device == "mps":
-            # Apple Silicon: Offload all layers to Metal
-            return -1
+            # Apple Silicon: Use auto-tuning based on available memory
+            # Qwen2.5-VL-7B has ~28 transformer layers
+            # Q4_K_M quantization: ~4.8GB model + ~1GB projector
+            try:
+                import psutil
+                available_gb = psutil.virtual_memory().available / (1024 ** 3)
+
+                if available_gb >= 10:
+                    # Plenty of memory: offload all layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading all layers to GPU")
+                    return -1
+                elif available_gb >= 6:
+                    # Moderate memory: offload most layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading 24/28 layers to GPU")
+                    return 24
+                else:
+                    # Limited memory: offload fewer layers
+                    print(f"  MPS: {available_gb:.1f}GB available, offloading 16/28 layers to GPU")
+                    return 16
+            except ImportError:
+                # psutil not available, offload all layers (conservative default)
+                print("  MPS: psutil not available, offloading all layers")
+                return -1
         else:
             # CPU: No GPU layers
             return 0
 
     def _get_mmproj_gpu_layers(self) -> int:
-        """Determine GPU offload for multimodal projector/CLIP encoder."""
-        return -1 if self.device in {"cuda", "mps"} else 0
+        """Determine GPU offload for multimodal projector/CLIP encoder (always offload on GPU)."""
+        if self.device in {"cuda", "mps"}:
+            # Always offload projector to GPU for best visual understanding
+            return -1
+        return 0
 
     def _load_model(self) -> Tuple[Llama, Qwen25VLChatHandler]:
         """Load Holo 1.5-7B GGUF model and multimodal projector."""
@@ -207,17 +231,38 @@ class Holo15:
             else:
                 model = Llama.from_pretrained(**llama_kwargs)
 
-            actual_gpu_layers = getattr(model, "n_gpu_layers", None)
-            if self.device == "cuda" and (actual_gpu_layers is None or actual_gpu_layers == 0):
-                print(
-                    "⚠ CUDA device requested but llama-cpp-python reports no GPU layers. "
-                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
-                )
-            if self.device == "mps" and (actual_gpu_layers is None or actual_gpu_layers == 0):
-                print(
-                    "⚠ MPS device requested but Metal acceleration is disabled. "
-                    "Reinstall with CMAKE_ARGS=\"-DLLAMA_METAL=on\" pip install --force-reinstall llama-cpp-python"
-                )
+            gpu_working = False
+
+            # Validate CUDA with nvidia-smi (llama.cpp uses separate CUDA context from PyTorch)
+            if self.device == "cuda":
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        gpu_mem_mb = int(result.stdout.strip().split('\n')[0])
+                        if gpu_mem_mb > 100:  # At least 100MB allocated = GPU is working
+                            gpu_working = True
+                            gpu_mem_gb = gpu_mem_mb / 1024
+                            print(f"✓ CUDA GPU acceleration active ({gpu_mem_gb:.1f}GB VRAM in use)")
+                except Exception:
+                    pass
+
+                if not gpu_working:
+                    print(
+                        "⚠ CUDA device requested but GPU memory usage not detected. "
+                        "If inference is slow, reinstall with CMAKE_ARGS=\"-DLLAMA_CUBLAS=on\" pip install --force-reinstall llama-cpp-python"
+                    )
+
+            # Validate MPS (Apple Silicon)
+            # Note: MPS doesn't have nvidia-smi equivalent, so we rely on successful model loading
+            if self.device == "mps":
+                # If model loaded without errors, MPS is working
+                print("  MPS (Metal) device configured - validation via model loading")
 
             print("  llama.cpp runtime parameters:")
             print(f"    context_length: {self.n_ctx}")
@@ -379,8 +424,11 @@ class Holo15:
             "scale_factors": scale_factors,
         }
 
-    def _call_model(self, image_url: str, prompt_text: str) -> str:
-        """Invoke the llama.cpp chat completion with standard settings."""
+    def _call_model(self, image_url: str, prompt_text: str, max_tokens: Optional[int] = None) -> str:
+        """Invoke the llama.cpp chat completion with standard settings and timing."""
+        import time
+        start_time = time.time()
+
         messages = []
 
         if settings.system_prompt:
@@ -396,9 +444,12 @@ class Holo15:
             }
         )
 
+        # Use profile-specific max_tokens if provided, otherwise fall back to global setting
+        effective_max_tokens = max_tokens if max_tokens is not None else settings.max_new_tokens
+
         completion_kwargs = {
             "messages": messages,
-            "max_tokens": settings.max_new_tokens,
+            "max_tokens": effective_max_tokens,
             "temperature": self.temperature,
         }
 
@@ -407,7 +458,12 @@ class Holo15:
 
         response = self.model.create_chat_completion(**completion_kwargs)
 
-        return response["choices"][0]["message"]["content"]
+        inference_time = (time.time() - start_time) * 1000
+        output = response["choices"][0]["message"]["content"]
+
+        print(f"  Model inference: {inference_time:.1f}ms (max_tokens={effective_max_tokens}), Output length: {len(output)} chars")
+
+        return output
 
     @staticmethod
     def _augment_prompt(prompt_text: str) -> str:
@@ -564,6 +620,96 @@ class Holo15:
 
         return detections
 
+    @staticmethod
+    def _is_prompt_instruction(text: str) -> bool:
+        """
+        Check if text looks like a prompt instruction rather than a UI element label.
+
+        Prompt instructions typically:
+        - Start with imperative verbs (Identify, Highlight, List, Surface, Find...)
+        - Contain instructions like "such as", "that appear", "elements like"
+        - Are longer/more verbose than typical UI labels
+        """
+        if not text or len(text) < 5:
+            return False
+
+        normalized = text.lower().strip()
+
+        # Check for prompt instruction keywords
+        prompt_starters = [
+            "identify ",
+            "highlight ",
+            "list ",
+            "surface ",
+            "find ",
+            "locate ",
+            "detect ",
+            "show ",
+            "point out ",
+            "mark ",
+        ]
+
+        prompt_phrases = [
+            "such as",
+            "that appear",
+            "elements like",
+            "controls such",
+            "the user might",
+            "interactive elements",
+            "ui elements",
+        ]
+
+        # Check if it starts with a prompt verb
+        for starter in prompt_starters:
+            if normalized.startswith(starter):
+                return True
+
+        # Check if it contains prompt instruction phrases
+        for phrase in prompt_phrases:
+            if phrase in normalized:
+                return True
+
+        # Check if it's suspiciously long (typical UI labels are short)
+        # Most real UI labels are < 50 chars
+        if len(text) > 60:
+            # But allow if it looks like actual content (has specific nouns)
+            specific_ui_terms = ["button", "icon", "menu", "tab", "input", "field", "link", "window"]
+            has_specific_term = any(term in normalized for term in specific_ui_terms)
+            if not has_specific_term:
+                return True
+
+        return False
+
+    @staticmethod
+    def _clean_element_label(label: str, fallback: str = "UI element") -> str:
+        """
+        Clean and validate element label, replacing prompt instructions with fallback.
+
+        Args:
+            label: Raw label from model output
+            fallback: Fallback label to use if input is invalid
+
+        Returns:
+            Cleaned label or fallback if label is a prompt instruction
+        """
+        if not label or not label.strip():
+            return fallback
+
+        cleaned = label.strip()
+
+        # Filter out prompt instructions
+        if Holo15._is_prompt_instruction(cleaned):
+            print(f"⚠ Filtered prompt instruction from label: \"{cleaned[:60]}...\"")
+            return fallback
+
+        # Additional cleanup: remove common prefixes from actual labels
+        prefixes_to_remove = ["a ", "an ", "the "]
+        for prefix in prefixes_to_remove:
+            if cleaned.lower().startswith(prefix) and len(cleaned) > len(prefix) + 5:
+                cleaned = cleaned[len(prefix):]
+
+        return cleaned
+
     def _element_dict_to_detection(
         self,
         element: Dict[str, Any],
@@ -603,12 +749,15 @@ class Holo15:
             if normalized_y is not None:
                 y = normalized_y * scale_factors['resized_height']
 
-        label = (
+        raw_label = (
             element.get("label")
             or element.get("description")
             or element.get("name")
             or fallback_label
         )
+
+        # Clean and validate label, filtering out prompt instructions
+        label = self._clean_element_label(raw_label, fallback_label)
 
         element_type = element.get("type") or element.get("category") or "clickable"
         confidence = self._coerce_float(element.get("confidence"))
@@ -767,11 +916,29 @@ class Holo15:
                 return True
         return False
 
+    def _deduplicate_detections(self, detections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate detections based on coordinate proximity."""
+        if not detections:
+            return []
+
+        unique: List[Dict[str, Any]] = []
+        seen_centers: List[Tuple[int, int]] = []
+
+        for detection in detections:
+            center = tuple(detection["center"])
+            if not self._is_duplicate(center, seen_centers):
+                unique.append(detection)
+                seen_centers.append(center)
+
+        return unique
+
     def _legacy_multi_detection(
         self,
         image: np.ndarray,
         detection_prompts: List[str],
         prepared_payload: Dict[str, Any],
+        max_detections: int,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Fallback multi-detection loop using legacy prompt list."""
         detections: List[Dict[str, Any]] = []
@@ -783,6 +950,7 @@ class Holo15:
                 image,
                 prompt,
                 prepared_payload=prepared_payload,
+                max_tokens=max_tokens,  # CRITICAL FIX: Pass profile's max_tokens
             )
 
             raw_outputs.extend(outputs)
@@ -798,7 +966,7 @@ class Holo15:
             detections.append(detection)
             seen_centers.append(center_tuple)
 
-            if len(detections) >= settings.max_detections:
+            if len(detections) >= max_detections:
                 break
 
         return detections, raw_outputs
@@ -850,6 +1018,7 @@ class Holo15:
         task_instruction: str,
         guidelines: Optional[str] = None,
         prepared_payload: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
         """
         Localize a UI element using Holo 1.5-7B GGUF.
@@ -859,6 +1028,7 @@ class Holo15:
             task_instruction: Task description (e.g., "Click the submit button")
             guidelines: Optional guidelines for the model
             prepared_payload: Optional cached payload with image_url & scale factors
+            max_tokens: Optional max tokens override (from profile)
 
         Returns:
             Tuple of (detection dict or None, list of raw model outputs)
@@ -881,7 +1051,7 @@ class Holo15:
 
         for attempt in range(self.max_retries + 1):
             try:
-                output_text = self._call_model(image_url, prompt_text)
+                output_text = self._call_model(image_url, prompt_text, max_tokens=max_tokens)
             except Exception as exc:
                 print(f"✗ Holo error during localization (task: '{task_instruction}'): {exc}")
                 break
@@ -910,6 +1080,8 @@ class Holo15:
         image: np.ndarray,
         detection_prompts: Optional[List[str]] = None,
         prepared_payload: Optional[Dict[str, Any]] = None,
+        max_detections: Optional[int] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """
         Detect multiple UI elements using multiple localization prompts.
@@ -917,6 +1089,9 @@ class Holo15:
         Args:
             image: Input image as numpy array (RGB)
             detection_prompts: List of prompts to try (default from settings)
+            prepared_payload: Optional cached image payload
+            max_detections: Maximum detections to return
+            max_tokens: Optional max tokens override (from profile)
 
         Returns:
             Tuple of (list of detected elements, raw outputs)
@@ -924,13 +1099,19 @@ class Holo15:
         if detection_prompts is None:
             detection_prompts = settings.detection_prompts
 
+        # Honor explicit API request over profile defaults to avoid overriding user intent
+        if max_detections is not None:
+            effective_max = max(1, min(max_detections, 200))
+        else:
+            effective_max = max(1, min(settings.max_detections, 200))
+
         payload = prepared_payload or self._prepare_image_payload(image)
 
         detections: List[Dict[str, Any]] = []
         raw_outputs: List[str] = []
 
         discovery_prompt = settings.discovery_prompt.format(
-            max_detections=settings.max_detections
+            max_detections=effective_max
         )
         prompt_text = self._build_multi_prompt(
             discovery_prompt,
@@ -942,7 +1123,7 @@ class Holo15:
 
         for attempt in range(self.max_retries + 1):
             try:
-                output_text = self._call_model(payload["image_url"], prompt_text)
+                output_text = self._call_model(payload["image_url"], prompt_text, max_tokens=max_tokens)
             except Exception as exc:
                 print(f"✗ Holo error during multi-detection: {exc}")
                 break
@@ -956,26 +1137,124 @@ class Holo15:
             )
 
             if structured_detections is not None:
-                detections = structured_detections
+                detections.extend(structured_detections)
                 structured_success = True
+                print(f"✓ Structured parsing succeeded: {len(structured_detections)} elements extracted")
                 break
+            else:
+                # Diagnostic logging for failed structured parsing
+                print(f"⚠ Structured parsing failed (attempt {attempt + 1}/{self.max_retries + 1})")
+                print(f"  Output length: {len(output_text)} chars")
+                print(f"  Output preview: {output_text[:300]}...")
+                if attempt == 0:  # Log more detail on first attempt
+                    # Check if output looks like JSON
+                    first_char = output_text.strip()[0] if output_text.strip() else None
+                    if first_char in ['{', '[']:
+                        print(f"  ✓ Output starts with JSON character: '{first_char}'")
+                    else:
+                        print(f"  ✗ Output does NOT start with JSON (first char: '{first_char}')")
 
             if attempt < self.max_retries:
                 prompt_text = self._augment_prompt(prompt_text)
                 if self.retry_backoff:
                     time.sleep(self.retry_backoff * (attempt + 1))
 
-        if not structured_success and settings.allow_legacy_fallback:
+        # Phase 2: Run legacy mode as TRUE FALLBACK (only if structured parsing failed)
+        # After Phase 1 prompt consolidation (4→1 comprehensive prompt), structured mode succeeds in most cases.
+        # Legacy mode now acts as a safety net for edge cases where JSON parsing fails completely.
+        if settings.allow_legacy_fallback and not structured_success:
+            print(f"→ Structured parsing failed - falling back to legacy mode ({len(detection_prompts)} prompts)")
             legacy_detections, legacy_outputs = self._legacy_multi_detection(
                 image,
                 detection_prompts,
                 payload,
+                effective_max,
+                max_tokens=max_tokens,
             )
-            if legacy_detections:
-                detections = legacy_detections
             raw_outputs.extend(legacy_outputs)
 
+            if legacy_detections:
+                print(f"✓ Legacy fallback found {len(legacy_detections)} element(s)")
+                # Deduplicate before adding
+                before_dedup = len(detections) + len(legacy_detections)
+                detections.extend(legacy_detections)
+                detections = self._deduplicate_detections(detections)
+                print(f"✓ After deduplication: {len(detections)} unique elements (was {before_dedup})")
+            else:
+                print(f"⚠ Legacy fallback found 0 elements - detection completely failed")
+        elif settings.allow_legacy_fallback and structured_success:
+            print(f"→ Structured parsing succeeded ({len(detections)} elements) - skipping legacy fallback")
+
+        if detections:
+            detections.sort(key=lambda item: float(item.get("confidence", settings.default_confidence)), reverse=True)
+            if len(detections) > effective_max:
+                detections = detections[:effective_max]
+            for index, detection in enumerate(detections):
+                detection["element_id"] = index
+
         return detections, raw_outputs
+
+    def _apply_adaptive_confidence_filtering(
+        self,
+        detections: List[Dict[str, Any]],
+        use_adaptive: bool = True,
+        fallback_threshold: float = 0.3,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """
+        Apply element-type aware confidence filtering (Phase 2 optimization).
+
+        Holo 1.5-7B's GRPO training produces calibrated confidence scores.
+        Different element types have different detection reliability:
+        - Buttons/icons: High reliability (well-defined visual patterns)
+        - Text/links: Lower reliability (context-dependent, abundant)
+
+        Args:
+            detections: List of detected elements
+            use_adaptive: Whether to use element-type aware thresholds
+            fallback_threshold: Single threshold if adaptive mode disabled
+
+        Returns:
+            Tuple of (filtered detections, stats dict with zone counts)
+        """
+        if not detections:
+            return [], {"high": 0, "medium": 0, "low": 0, "very_low": 0, "filtered": 0}
+
+        filtered: List[Dict[str, Any]] = []
+        stats = {"high": 0, "medium": 0, "low": 0, "very_low": 0, "filtered": 0}
+
+        for detection in detections:
+            confidence = float(detection.get("confidence", settings.default_confidence))
+            element_type = detection.get("type", "clickable").lower()
+
+            # Determine confidence zone (high/medium/low/very_low)
+            zone = "very_low"
+            for zone_name in ["high", "medium", "low"]:
+                if confidence >= CONFIDENCE_ZONES[zone_name]["min"]:
+                    zone = zone_name
+                    break
+
+            stats[zone] += 1
+
+            # Apply filtering threshold
+            if use_adaptive:
+                # Element-type specific threshold
+                threshold = ADAPTIVE_CONFIDENCE_THRESHOLDS.get(
+                    element_type,
+                    ADAPTIVE_CONFIDENCE_THRESHOLDS["default"]
+                )
+            else:
+                # Uniform threshold
+                threshold = fallback_threshold
+
+            if confidence >= threshold:
+                # Add metadata about confidence zone for downstream validation
+                detection["confidence_zone"] = zone
+                detection["confidence"] = round(confidence, 4)
+                filtered.append(detection)
+            else:
+                stats["filtered"] += 1
+
+        return filtered, stats
 
     def generate_som_image(
         self,
@@ -1037,6 +1316,10 @@ class Holo15:
         task: Optional[str] = None,
         detect_multiple: bool = True,
         include_som: bool = True,
+        max_detections: Optional[int] = None,
+        min_confidence: Optional[float] = None,
+        return_raw_outputs: Optional[bool] = None,
+        performance_profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Parse UI screenshot using Holo 1.5-7B GGUF.
@@ -1046,11 +1329,35 @@ class Holo15:
             task: Optional specific task instruction (single element mode)
             detect_multiple: Whether to detect multiple elements (default: True)
             include_som: Whether to generate Set-of-Mark annotated image
+            max_detections: Optional cap for detections (overrides profile)
+            min_confidence: Optional confidence floor for returned detections
+            return_raw_outputs: Whether to include raw model outputs in response
+            performance_profile: Optional per-request profile override
 
         Returns:
             Dictionary with detected elements and metadata
         """
         start_time = time.time()
+
+        profile_key = (performance_profile or settings.active_profile).lower()
+        profile = PERFORMANCE_PROFILES.get(profile_key, PERFORMANCE_PROFILES[settings.active_profile])
+        # Honor explicit API request over profile defaults
+        if max_detections is not None:
+            effective_max = max(1, min(max_detections, 200))
+        else:
+            effective_max = max(1, min(settings.max_detections, 200))
+        confidence_floor = (
+            min_confidence
+            if min_confidence is not None
+            else settings.min_confidence_threshold
+        )
+        include_raw = (
+            return_raw_outputs
+            if return_raw_outputs is not None
+            else settings.return_raw_outputs or profile.get("return_raw_outputs", False)
+        )
+        # CRITICAL FIX: Extract profile's max_new_tokens
+        profile_max_tokens = profile.get("max_new_tokens", settings.max_new_tokens)
 
         prepared_payload: Optional[Dict[str, Any]] = None
         raw_model_outputs: List[str] = []
@@ -1062,15 +1369,20 @@ class Holo15:
                 image,
                 task,
                 prepared_payload=prepared_payload,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
             detections = [detection] if detection else []
+            if detections:
+                detections[0]["element_id"] = 0
         elif detect_multiple:
             # Multi-element mode: run multiple detection prompts
             prepared_payload = self._prepare_image_payload(image)
             detections, outputs = self.detect_multiple_elements(
                 image,
                 prepared_payload=prepared_payload,
+                max_detections=effective_max,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
         else:
@@ -1079,8 +1391,35 @@ class Holo15:
             detections, outputs = self.detect_multiple_elements(
                 image,
                 prepared_payload=prepared_payload,
+                max_detections=effective_max,
+                max_tokens=profile_max_tokens,
             )
             raw_model_outputs.extend(outputs)
+
+        # Phase 2: Apply adaptive confidence filtering (element-type aware)
+        if detections and confidence_floor is not None:
+            # Check if profile enables adaptive thresholding
+            use_adaptive = profile.get("use_adaptive_thresholds", False)
+
+            detections, confidence_stats = self._apply_adaptive_confidence_filtering(
+                detections,
+                use_adaptive=use_adaptive,
+                fallback_threshold=confidence_floor,
+            )
+
+            # Log confidence distribution for visibility
+            if confidence_stats["high"] + confidence_stats["medium"] + confidence_stats["low"] > 0:
+                total_before = sum(confidence_stats.values())
+                mode_label = "adaptive (type-aware)" if use_adaptive else "fixed"
+                print(f"  Confidence filtering ({mode_label}):")
+                print(f"    High (≥0.70): {confidence_stats['high']}, Medium (≥0.40): {confidence_stats['medium']}, "
+                      f"Low (≥0.20): {confidence_stats['low']}, Very low (<0.20): {confidence_stats['very_low']}")
+                print(f"    Filtered out: {confidence_stats['filtered']}/{total_before} ({confidence_stats['filtered']/total_before*100:.1f}%)")
+                print(f"    Retained: {len(detections)}/{total_before} ({len(detections)/total_before*100:.1f}%)")
+
+        if detections:
+            for index, detection in enumerate(detections):
+                detection["element_id"] = index
 
         # Generate SOM annotated image if requested
         som_image = None
@@ -1089,11 +1428,20 @@ class Holo15:
 
         processing_time = (time.time() - start_time) * 1000  # Convert to ms
 
-        # Log detection result for visibility
+        # Log detection result for visibility with performance metrics
         if detections:
             print(f"✓ Holo detected {len(detections)} element(s) in {processing_time:.1f}ms")
+            if len(detections) > 0:
+                avg_confidence = sum(d.get("confidence", 0) for d in detections) / len(detections)
+                print(f"  Average confidence: {avg_confidence:.2f}, Device: {self.device}, Profile: {profile_key}")
         else:
-            print(f"⚠ Holo found 0 elements (task: {task}, detect_multiple: {detect_multiple})")
+            print(f"⚠ Holo found 0 elements")
+            print(f"  Task: {task}, Detect multiple: {detect_multiple}")
+            print(f"  Processing time: {processing_time:.1f}ms, Device: {self.device}")
+            if include_raw and raw_model_outputs:
+                print(f"  Raw model outputs ({len(raw_model_outputs)} attempts):")
+                for i, output in enumerate(raw_model_outputs[:2]):  # Show first 2 outputs
+                    print(f"    Attempt {i+1}: {output[:200]}...")  # First 200 chars
 
         result = {
             "elements": detections,
@@ -1101,12 +1449,15 @@ class Holo15:
             "processing_time_ms": round(processing_time, 2),
             "image_size": {"width": image.shape[1], "height": image.shape[0]},
             "device": self.device,
+            "profile": profile_key,
+            "max_detections": effective_max,
+            "min_confidence": round(confidence_floor, 3) if confidence_floor is not None else None,
         }
 
         if som_image:
             result["som_image"] = som_image
 
-        if raw_model_outputs:
+        if include_raw and raw_model_outputs:
             result["raw_model_outputs"] = raw_model_outputs
 
         return result

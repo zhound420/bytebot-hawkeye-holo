@@ -14,9 +14,12 @@ import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
+import { supportsVision } from '../agent/vision-capability.util';
+import { transformImagesForNonVision } from '../agent/message-transformer.util';
 import { Message, Role } from '@prisma/client';
-import { googleTools } from './google.tools';
+import { googleTools, getGoogleTools } from './google.tools';
 import {
   Content,
   GenerateContentResponse,
@@ -40,20 +43,27 @@ export class GoogleService implements BytebotAgentService {
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string = DEFAULT_MODEL.name,
+    modelName: string = DEFAULT_MODEL.name,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     try {
       const googleClient = this.getGoogleClient();
       const maxTokens = 8192;
 
+      // Transform images to text for non-vision models
+      const processedMessages = supportsVision(modelMetadata)
+        ? messages  // Keep images for vision models
+        : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
+
       // Convert our message content blocks to Anthropic's expected format
-      const googleMessages = this.formatMessagesForGoogle(messages);
+      const googleMessages = this.formatMessagesForGoogle(processedMessages);
 
       const response: GenerateContentResponse =
         await googleClient.models.generateContent({
-          model,
+          model: modelName,
           contents: googleMessages,
           config: {
             thinkingConfig: {
@@ -64,7 +74,7 @@ export class GoogleService implements BytebotAgentService {
             tools: useTools
               ? [
                   {
-                    functionDeclarations: googleTools,
+                    functionDeclarations: getGoogleTools(directVisionMode),
                   },
                 ]
               : [],

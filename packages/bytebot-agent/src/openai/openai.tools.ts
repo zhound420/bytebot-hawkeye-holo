@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { agentTools } from '../agent/agent.tools';
+import { agentTools, getToolsForTask } from '../agent/agent.tools';
 
 function agentToolToOpenAITool(agentTool: any): OpenAI.Responses.FunctionTool {
   return {
@@ -51,7 +51,16 @@ export const setTaskStatusTool = toolMap.setTaskStatusTool;
 export const createTaskTool = toolMap.createTaskTool;
 export const applicationTool = toolMap.applicationTool;
 
-// Array of all tools
+// Array of all tools (default - includes CV tools)
 export const openaiTools: OpenAI.Responses.FunctionTool[] = agentTools.map(
   agentToolToOpenAITool,
 );
+
+/**
+ * Get OpenAI tools based on task configuration
+ * @param directVisionMode - If true, exclude CV tools (Holo 1.5-7B detection)
+ * @returns Filtered OpenAI tool array
+ */
+export function getOpenAITools(directVisionMode: boolean = false): OpenAI.Responses.FunctionTool[] {
+  return getToolsForTask(directVisionMode).map(agentToolToOpenAITool);
+}

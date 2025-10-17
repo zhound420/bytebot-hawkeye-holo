@@ -1,5 +1,5 @@
 import { ChatCompletionTool } from 'openai/resources';
-import { agentTools } from '../agent/agent.tools';
+import { agentTools, getToolsForTask } from '../agent/agent.tools';
 
 /**
  * Converts an agent tool definition to OpenAI Chat Completion tool format
@@ -31,11 +31,20 @@ function convertToCamelCase(name: string): string {
 }
 
 /**
- * All tools converted to Chat Completion format
+ * All tools converted to Chat Completion format (default - includes CV tools)
  */
 export const proxyTools: ChatCompletionTool[] = agentTools.map((tool) =>
   agentToolToChatCompletionTool(tool),
 );
+
+/**
+ * Get Proxy tools based on task configuration
+ * @param directVisionMode - If true, exclude CV tools (Holo 1.5-7B detection)
+ * @returns Filtered Proxy tool array
+ */
+export function getProxyTools(directVisionMode: boolean = false): ChatCompletionTool[] {
+  return getToolsForTask(directVisionMode).map(agentToolToChatCompletionTool);
+}
 
 /**
  * Individual tool exports for selective usage

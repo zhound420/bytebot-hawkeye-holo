@@ -21,7 +21,9 @@ RUN ln -sf /usr/local/bin/node /usr/bin/node && \
 # -----------------------------------------------------------------------------
 # 2. System dependencies installation
 # -----------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
+# Force IPv4 to avoid IPv6 connectivity issues
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 && \
+    apt-get update && apt-get install -y \
     # Essential build tools
     dpkg-dev \
     # X11 / VNC
@@ -58,6 +60,7 @@ RUN mkdir -p /run/dbus && \
 # 3. Additional software installation
 # -----------------------------------------------------------------------------
 # Install Firefox and additional software
+# IPv4 config already set in previous RUN command
 RUN apt-get update && apt-get install -y \
     # Install necessary packages
     software-properties-common apt-transport-https wget gnupg \
@@ -128,6 +131,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi
 
 # Install Visual Studio Code
+# IPv4 config already set in previous RUN command
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
         apt-get update && apt-get install -y wget gpg apt-transport-https software-properties-common && \
@@ -157,6 +161,7 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
 # 5. Application setup (bytebotd)
 # -----------------------------------------------------------------------------
 # Install dependencies required to build libnut-core and uiohook-napi
+# IPv4 config already set in previous RUN command
 RUN apt-get update && \
     apt-get install -y \
         cmake \
@@ -178,6 +183,7 @@ COPY packages/bytebotd/ /bytebot/packages/bytebotd/
 COPY config/universal-coordinates.yaml /bytebot/config/universal-coordinates.yaml
 WORKDIR /bytebot/packages/bytebotd
 
+# IPv4 config already set in previous RUN command
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -304,7 +310,9 @@ RUN chown -R root:root /bytebot/packages/bytebotd/root && \
     find /bytebot/packages/bytebotd/root -type f -exec chmod 644 {} + && \
     find /bytebot/packages/bytebotd/root -type d -exec chmod 755 {} + && \
     find /bytebot/packages/bytebotd/root -type f -executable -exec chmod +x {} + && \
-    cp -a /bytebot/packages/bytebotd/root/. /
+    cp -a /bytebot/packages/bytebotd/root/. / && \
+    # Ensure autostart script is executable
+    chmod +x /home/user/.config/autostart/setup-desktop.sh 2>/dev/null || true
 
 RUN chmod +x /usr/local/bin/bytebot-bluez-stub
 
@@ -312,13 +320,17 @@ RUN chown -R user:user /home/user
 RUN chmod -R 755 /home/user
 
 RUN mkdir -p /home/user/Desktop && \
-    cp -f /usr/share/applications/firefox.desktop /home/user/Desktop/ && \
-    cp -f /usr/share/applications/thunderbird.desktop /home/user/Desktop/ && \
-    cp -f /usr/share/applications/1password.desktop /home/user/Desktop/ && \
-    cp -f /usr/share/applications/code.desktop /home/user/Desktop/ && \
-    cp -f /usr/share/applications/terminal.desktop /home/user/Desktop/ && \
+    cp /usr/share/applications/firefox.desktop /home/user/Desktop/firefox.desktop && \
+    cp /usr/share/applications/thunderbird.desktop /home/user/Desktop/thunderbird.desktop && \
+    cp /usr/share/applications/1password.desktop /home/user/Desktop/1password.desktop && \
+    cp /usr/share/applications/code.desktop /home/user/Desktop/code.desktop && \
+    cp /usr/share/applications/terminal.desktop /home/user/Desktop/terminal.desktop && \
     chmod +x /home/user/Desktop/*.desktop && \
-    chown user:user /home/user/Desktop/*.desktop
+    for f in /home/user/Desktop/*.desktop; do \
+        echo "" >> "$f" && \
+        echo "X-XFCE-Trusted=true" >> "$f"; \
+    done && \
+    chown -R user:user /home/user/Desktop
 
 ENV BYTEBOT_GRID_OVERLAY=true \
     BYTEBOT_GRID_DEBUG=false \

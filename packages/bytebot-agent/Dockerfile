@@ -5,7 +5,9 @@
 FROM node:20.19.5-slim AS base
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Force IPv4 to avoid IPv6 connectivity issues
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 && \
+    apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     gnupg \

@@ -7,5 +7,5 @@ Exec=/usr/bin/firefox-esr %U
 Icon=firefox-esr
 Path=
 Terminal=false
-StartupNotify=true
+StartupNotify=false
 Categories=Network;WebBrowser;

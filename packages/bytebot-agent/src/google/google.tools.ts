@@ -1,5 +1,5 @@
 import { FunctionDeclaration, Type } from '@google/genai';
-import { agentTools } from '../agent/agent.tools';
+import { agentTools, getToolsForTask } from '../agent/agent.tools';
 
 /**
  * Converts JSON Schema type to Google Genai Type
@@ -117,7 +117,16 @@ export const setTaskStatusTool = toolMap.setTaskStatusTool;
 export const createTaskTool = toolMap.createTaskTool;
 export const applicationTool = toolMap.applicationTool;
 
-// Array of all tools
+// Array of all tools (default - includes CV tools)
 export const googleTools: FunctionDeclaration[] = agentTools.map(
   agentToolToGoogleTool,
 );
+
+/**
+ * Get Google tools based on task configuration
+ * @param directVisionMode - If true, exclude CV tools (Holo 1.5-7B detection)
+ * @returns Filtered Google tool array
+ */
+export function getGoogleTools(directVisionMode: boolean = false): FunctionDeclaration[] {
+  return getToolsForTask(directVisionMode).map(agentToolToGoogleTool);
+}

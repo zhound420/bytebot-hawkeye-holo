@@ -1,0 +1,204 @@
+version: '3.8'
+
+services:
+  # Tiny11 2311 container with Bytebotd pre-installed via PowerShell installer
+  # Uses stripped Windows 11 (Tiny11) for faster install and lower resource usage
+  # Pre-baked image provides 96% faster startup (30-60s vs 8-15 min)
+  bytebot-windows:
+    image: bytebot-windows-prebaked:latest
+    container_name: bytebot-windows
+    privileged: true
+    devices:
+      - /dev/kvm
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8006:8006"  # Web-based VNC viewer
+      - "3389:3389"  # RDP access
+      - "9990:9990"  # Bytebotd API
+    environment:
+      # Tiny11 2311 or Nano11 25H2 configuration (auto-selected by start-stack.sh)
+      # WINDOWS_ISO_URL set dynamically based on user's ISO selection (Tiny11 or Nano11)
+      - VERSION=${WINDOWS_ISO_URL:-https://archive.org/download/tiny11-2311/tiny11%202311%20x64.iso}
+      - RAM_SIZE=${WINDOWS_RAM_SIZE:-6G}
+      - CPU_CORES=${WINDOWS_CPU_CORES:-4}
+      - DISK_SIZE=${WINDOWS_DISK_SIZE:-50G}
+      - RESOLUTION=${WINDOWS_RESOLUTION:-1280x960}
+
+      # Time sync with host + Custom port forwarding for bytebotd (9990)
+      # QEMU hostfwd syntax: tcp:bind_address:host_port-:guest_port
+      # Bind to 0.0.0.0 to allow connections from other Docker containers
+      # Note: QXL not available in dockur/windows QEMU. Using default VirtIO GPU.
+      # VirtIO GPU limitation: Defaults to 1280x720 regardless of RESOLUTION env var
+      # (QXL would support 1280x960, but qemu-system-modules-spice not installed)
+      - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp:0.0.0.0:9990-:9990
+
+      # BTRFS compatibility (avoids O_DIRECT requirement)
+      # Allows Windows containers to work on BTRFS without ext4 loop device
+      - DISK_IO=threads
+      - DISK_CACHE=writeback
+
+      # Bytebotd environment (already installed via MSI)
+      # These are passed through to the Windows environment
+      - BYTEBOT_GRID_OVERLAY=${BYTEBOT_GRID_OVERLAY:-true}
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
+      - BYTEBOT_SMART_FOCUS=${BYTEBOT_SMART_FOCUS:-true}
+      - BYTEBOT_SMART_FOCUS_MODEL=${BYTEBOT_SMART_FOCUS_MODEL:-gpt-4o-mini}
+      - BYTEBOT_OVERVIEW_GRID=${BYTEBOT_OVERVIEW_GRID:-200}
+      - BYTEBOT_FOCUSED_GRID=${BYTEBOT_FOCUSED_GRID:-25}
+      - BYTEBOT_COORDINATE_METRICS=${BYTEBOT_COORDINATE_METRICS:-true}
+
+    volumes:
+      # Persistent Windows installation (BTRFS compatible via DISK_IO/DISK_CACHE)
+      - bytebot-windows-storage:/storage
+      # ISO cache: Tiny11 2311 (~3.5GB) or Nano11 25H2 (~2.3GB) cached to avoid redownloading on fresh installs
+      # fresh-build.sh/start-stack.sh automatically enables this mount if ISO exists in iso-cache/
+      # To manually download: ./scripts/download-windows-iso.sh (choose Tiny11 or Nano11)
+      # This line will be auto-updated with the actual ISO filename during script execution
+      - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
+
+    networks:
+      - bytebot-network
+
+    depends_on:
+      - bytebot-holo
+
+    restart: unless-stopped
+
+    labels:
+      - "bytebot.component=windows-desktop"
+      - "bytebot.version=prebaked-tiny11"
+      - "bytebot.description=Tiny11 2311 (stripped Windows 11) with pre-installed Bytebotd"
+
+  # Holo 1.5-7B service for UI element detection
+  bytebot-holo:
+    image: bytebot-holo:latest
+    container_name: bytebot-holo
+    build:
+      context: ../packages/bytebot-holo
+      dockerfile: Dockerfile
+    ports:
+      - "9989:9989"
+    environment:
+      - HOLO_DEVICE=${HOLO_DEVICE:-auto}
+      - HOLO_MIN_CONFIDENCE=${HOLO_MIN_CONFIDENCE:-0.05}
+      - HOLO_PERFORMANCE_PROFILE=${HOLO_PERFORMANCE_PROFILE:-balanced}
+    volumes:
+      - holo-cache:/root/.cache/huggingface
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    labels:
+      - "bytebot.component=holo"
+      - "bytebot.description=Holo 1.5-7B UI element detection"
+
+  # PostgreSQL database for agent state
+  postgres:
+    image: postgres:15-alpine
+    container_name: bytebot-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-bytebotdb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=database"
+
+  # Bytebot Agent (orchestrates AI tasks)
+  bytebot-agent:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-agent/Dockerfile
+    container_name: bytebot-agent
+    ports:
+      - "9991:9991"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bytebotdb}
+      - BYTEBOT_DESKTOP_BASE_URL=http://bytebot-windows:9990
+      - HOLO_URL=http://bytebot-holo:9989
+      - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
+      - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - BYTEBOT_SMART_FOCUS=${BYTEBOT_SMART_FOCUS:-true}
+      - BYTEBOT_SMART_FOCUS_MODEL=${BYTEBOT_SMART_FOCUS_MODEL:-gpt-4o-mini}
+    depends_on:
+      - postgres
+      - bytebot-windows
+      - bytebot-holo
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=agent"
+
+  # Bytebot UI (web frontend)
+  bytebot-ui:
+    build:
+      context: ..
+      dockerfile: packages/bytebot-ui/Dockerfile
+    container_name: bytebot-ui
+    ports:
+      - "9992:9992"
+    environment:
+      - NODE_ENV=production
+      - BYTEBOT_AGENT_BASE_URL=http://bytebot-agent:9991
+      - BYTEBOT_DESKTOP_VNC_URL=http://bytebot-windows:8006/websockify
+      - NEXT_PUBLIC_API_URL=http://localhost:9991
+      - NEXT_PUBLIC_BYTEBOTD_URL=http://localhost:9990
+      - NEXT_PUBLIC_PROGRESS_WS_PORT=8081
+    depends_on:
+      - bytebot-agent
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=ui"
+
+  # LiteLLM Proxy for multi-provider model routing
+  bytebot-llm-proxy:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-llm-proxy/Dockerfile
+    container_name: bytebot-llm-proxy
+    ports:
+      - "4000:4000"
+    volumes:
+      # Mount config to avoid needing image rebuilds for model list changes
+      - ../packages/bytebot-llm-proxy/litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    networks:
+      - bytebot-network
+    restart: unless-stopped
+    labels:
+      - "bytebot.component=llm-proxy"
+      - "bytebot.description=LiteLLM proxy for multi-provider routing"
+
+volumes:
+  bytebot-windows-storage:
+  holo-cache:
+  postgres-data:
+
+networks:
+  bytebot-network:
+    driver: bridge

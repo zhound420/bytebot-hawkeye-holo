@@ -88,6 +88,7 @@ export interface Task {
   result?: unknown;
   model: Model;
   files?: File[];
+  directVisionMode?: boolean;
 }
 
 export interface TelemetryLearningMetricsTrend {

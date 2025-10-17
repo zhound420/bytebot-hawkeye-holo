@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { agentTools } from '../agent/agent.tools';
+import { agentTools, getToolsForTask } from '../agent/agent.tools';
 
 /**
  * Converts an agent tool definition to an Anthropic.Tool
@@ -49,7 +49,16 @@ export const setTaskStatusTool = toolMap.setTaskStatusTool;
 export const createTaskTool = toolMap.createTaskTool;
 export const applicationTool = toolMap.applicationTool;
 
-// Array of all tools
+// Array of all tools (default - includes CV tools)
 export const anthropicTools: Anthropic.Tool[] = agentTools.map(
   agentToolToAnthropicTool,
 );
+
+/**
+ * Get Anthropic tools based on task configuration
+ * @param directVisionMode - If true, exclude CV tools (Holo 1.5-7B detection)
+ * @returns Filtered Anthropic tool array
+ */
+export function getAnthropicTools(directVisionMode: boolean = false): Anthropic.Tool[] {
+  return getToolsForTask(directVisionMode).map(agentToolToAnthropicTool);
+}

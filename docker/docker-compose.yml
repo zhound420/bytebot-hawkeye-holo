@@ -38,7 +38,8 @@ services:
       # Holo 1.5-7B integration
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
     depends_on:
       bytebot-holo:
         condition: service_healthy
@@ -46,7 +47,7 @@ services:
       - bytebot-network
 
   postgres:
-    image: ${BYTEBOT_POSTGRES_IMAGE:-public.ecr.aws/docker/library/postgres:16-alpine}
+    image: ${BYTEBOT_POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: bytebot-postgres
     restart: unless-stopped
     ports:
@@ -86,14 +87,42 @@ services:
       # Holo 1.5-7B integration
       - BYTEBOT_CV_USE_HOLO=${BYTEBOT_CV_USE_HOLO:-true}
       - HOLO_URL=${HOLO_URL:-http://bytebot-holo:9989}
-      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-30000}
+      - HOLO_TIMEOUT=${HOLO_TIMEOUT:-120000}
+      - BYTEBOT_ENFORCE_CV_FIRST=${BYTEBOT_ENFORCE_CV_FIRST:-true}
     depends_on:
       postgres:
         condition: service_started
       bytebot-holo:
         condition: service_healthy
+      bytebot-llm-proxy:
+        condition: service_healthy
     networks:
       - bytebot-network
+
+  bytebot-llm-proxy:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-llm-proxy/Dockerfile
+    container_name: bytebot-llm-proxy
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      # Mount the config to avoid needing image rebuilds for model list changes
+      - ../packages/bytebot-llm-proxy/litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    networks:
+      - bytebot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   bytebot-ui:
     build:
@@ -160,7 +189,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s  # Lazy loading: service ready immediately, model loads on first API call
 
 networks:
   bytebot-network:

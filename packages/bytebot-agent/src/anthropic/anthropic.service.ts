@@ -13,12 +13,15 @@ import {
 } from '@bytebot/shared';
 import { DEFAULT_MODEL } from './anthropic.constants';
 import { Message, Role } from '@prisma/client';
-import { anthropicTools } from './anthropic.tools';
+import { anthropicTools, getAnthropicTools } from './anthropic.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
+import { supportsVision } from '../agent/vision-capability.util';
+import { transformImagesForNonVision } from '../agent/message-transformer.util';
 
 @Injectable()
 export class AnthropicService implements BytebotAgentService {
@@ -34,26 +37,38 @@ export class AnthropicService implements BytebotAgentService {
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string = DEFAULT_MODEL.name,
+    modelName: string = DEFAULT_MODEL.name,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
     try {
       const anthropicClient = this.getAnthropicClient();
       const maxTokens = 8192;
 
+      // Transform images to text for non-vision models
+      const processedMessages = supportsVision(modelMetadata)
+        ? messages  // Keep images for vision models
+        : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
+
       // Convert our message content blocks to Anthropic's expected format
-      const anthropicMessages = this.formatMessagesForAnthropic(messages);
+      const anthropicMessages = this.formatMessagesForAnthropic(processedMessages);
+
+      // Get tools based on directVisionMode
+      const tools = useTools ? getAnthropicTools(directVisionMode) : [];
 
       // add cache_control to last tool
-      anthropicTools[anthropicTools.length - 1].cache_control = {
-        type: 'ephemeral',
-      };
+      if (tools.length > 0) {
+        tools[tools.length - 1].cache_control = {
+          type: 'ephemeral',
+        };
+      }
 
       // Make the API call
       const response = await anthropicClient.messages.create(
         {
-          model,
+          model: modelName,
           max_tokens: maxTokens * 2,
           thinking: { type: 'disabled' },
           system: [
@@ -64,7 +79,7 @@ export class AnthropicService implements BytebotAgentService {
             },
           ],
           messages: anthropicMessages,
-          tools: useTools ? anthropicTools : [],
+          tools,
         },
         { signal },
       );

@@ -1,0 +1,61 @@
+# Dockerfile for pre-baked Windows 11 container with Bytebotd pre-installed
+# Based on dockur/windows with PowerShell installer (NO MSI/WiX required)
+#
+# Build time: ~30-40 minutes (one-time)
+# Startup time: ~30-60 seconds (96% faster than runtime installation)
+#
+# Usage:
+#   docker build -f docker/Dockerfile.windows-prebaked -t bytebot-windows-prebaked:latest .
+#   docker run -d --name bytebot-windows --device=/dev/kvm --cap-add NET_ADMIN \
+#     -p 8006:8006 -p 9990:9990 bytebot-windows-prebaked:latest
+
+FROM dockurr/windows
+
+# Metadata
+LABEL maintainer="Bytebot Team"
+LABEL description="Windows 11 container with Bytebotd Desktop Agent pre-installed (PowerShell installer)"
+LABEL version="1.0.0"
+
+# Copy pre-baked package ZIP to /oem directory
+COPY docker/windows-installer/bytebotd-prebaked.zip /oem/
+
+# ADD OEM scripts as tar.gz archive to preserve CRLF line endings
+# Docker's COPY converts text files to LF on Linux, breaking PowerShell
+# Using ADD with tar.gz preserves exact file bytes including CRLF
+# dockur/windows automatically executes install.bat from /oem after installation
+ADD docker/oem/oem-files.tar.gz /oem/
+
+# Environment variables for Bytebotd
+ENV BYTEBOT_GRID_OVERLAY=true \
+    BYTEBOT_CV_USE_HOLO=true \
+    HOLO_URL=http://bytebot-holo:9989 \
+    BYTEBOT_SMART_FOCUS=true \
+    BYTEBOT_SMART_FOCUS_MODEL=gpt-4o-mini \
+    BYTEBOT_OVERVIEW_GRID=200 \
+    BYTEBOT_FOCUSED_GRID=25 \
+    BYTEBOT_COORDINATE_METRICS=true
+
+# Windows container configuration
+ENV VERSION=win11 \
+    RAM_SIZE=8G \
+    CPU_CORES=4 \
+    DISK_SIZE=100G \
+    ARGUMENTS="-rtc base=localtime"
+
+# Expose ports
+# 8006 - Web-based VNC viewer
+# 3389 - RDP access
+# 9990 - Bytebotd API
+EXPOSE 8006 3389 9990
+
+# Health check (checks if bytebotd is responding)
+# Gives 5 minutes for Windows installation and service startup
+# Uses curl from host (not PowerShell inside Windows VM)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+    CMD curl -f http://localhost:9990/health || exit 1
+
+# Volume for persistent Windows installation
+VOLUME ["/storage"]
+
+# Note: No CMD needed - dockur/windows handles QEMU startup
+# MSI installation happens automatically via CUSTOM script during first boot

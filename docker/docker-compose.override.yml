@@ -52,14 +52,5 @@ services:
       # Disable NVIDIA requirement check (allows CPU fallback)
       - NVIDIA_REQUIRE_CUDA=
 
-    # Explicit device request (docker compose --gpus equivalent)
-    device_requests:
-      - driver: nvidia
-        count: -1
-        capabilities:
-          - gpu
-          - compute
-          - utility
-
   bytebot-llm-proxy:
     platform: linux/amd64

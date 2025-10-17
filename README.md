@@ -87,11 +87,20 @@ Install `nvidia-container-toolkit` to enable GPU in Docker:
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
+# Install the Nvidia Container Toolkit packages
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.17.8-1
+  sudo apt-get install -y \
+      nvidia-container-toolkit=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      nvidia-container-toolkit-base=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container-tools=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container1=${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+
+# Configure the container so it can use the Nvidia runtime
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
-# Verify GPU access works
-docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+# Verify GPU access works by running a sample workload
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
 
 **Without GPU:** Falls back to CPU (~8-15s/inference) - works but significantly slower.
@@ -118,9 +127,82 @@ Since Holo uses GGUF models, you can also load the model in LM Studio:
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/zhound420/bytebot-hawkeye-uitars.git
-cd bytebot-hawkeye-uitars
+git clone https://github.com/zhound420/bytebot-hawkeye-holo.git
+cd bytebot-hawkeye-holo
 ```
+
+### Optional: Tiny11 or macOS Desktop Container
+
+Run Bytebot with a **Tiny11** (stripped Windows 11) or **macOS** desktop environment instead of Linux:
+
+**🎯 Interactive Mode (Easiest - NEW!):**
+```bash
+# Simply run start-stack.sh without any flags
+./scripts/start-stack.sh
+
+# You'll see an interactive menu:
+# ════════════════════════════════════════════════
+#    Target OS Selection
+# ════════════════════════════════════════════════
+# Which OS stack would you like to start?
+#   1) Linux (desktop container - default)
+#   2) Windows 11 (requires KVM)
+#   3) macOS (requires KVM, Apple hardware)
+#
+# If you select Windows (option 2), you'll be asked:
+#   Use pre-baked image? [Y/n]
+#     • Pre-baked: 30-60 seconds startup (96% faster)
+#     • Runtime:   8-15 minutes startup
+
+# Access via web viewer
+open http://localhost:8006  # Windows or macOS
+```
+
+**⚡ Or use direct flags (for automation/scripts):**
+```bash
+# Tiny11 Pre-baked Image (RECOMMENDED)
+./scripts/start-stack.sh --os windows --prebaked
+
+# Tiny11 Runtime Installation
+./scripts/start-stack.sh --os windows
+
+# macOS Sonoma/Sequoia
+./scripts/start-stack.sh --os macos
+
+# Inside macOS Terminal, run setup script as root
+cd /shared
+sudo bash ./setup-macos-bytebotd.sh
+```
+
+**Tiny11 Benefits:**
+- 🚀 50% faster download: ~3.5GB ISO vs ~6GB Windows 11 ISO
+- ⚡ 40% less resources: 6GB RAM vs 8GB, 50GB disk vs 100GB
+- 🎯 Stripped Windows 11: No bloatware, fully serviceable and updateable
+- ✅ Same compatibility: Works identically to Windows 11 for bytebotd
+- ✅ 96% faster startup: 30-60 seconds vs 8-15 minutes (pre-baked)
+- ✅ No network dependency: MSI installer baked into Docker image (pre-baked)
+
+**Requirements:**
+- KVM support (`/dev/kvm` must be available on Linux host)
+- **Tiny11:** 6GB+ RAM, 4+ CPU cores, 50GB+ disk space
+- **macOS:** 8GB+ RAM, 4+ CPU cores, 64GB+ disk space
+- **macOS only:** Must run on Apple hardware (licensing requirement)
+
+**Why Use Tiny11/macOS Containers?**
+- Test automation on native Windows or macOS applications
+- Holo 1.5-7B trained on Windows/Linux/macOS UI (same model, cross-platform)
+- Same resolution across all platforms (1280x960)
+- **Tiny11 benefits:** 50% faster download, 40% less resources than full Windows 11
+
+**Ports:**
+- `8006` - Web-based viewer (all platforms)
+- `3389` - RDP access (Windows only)
+- `5900` - VNC access (macOS only)
+- `9990` - Bytebotd API (after setup)
+
+**📚 Full Guides:**
+- Windows: [`docs/WINDOWS_SETUP.md`](docs/WINDOWS_SETUP.md)
+- macOS: [`docs/MACOS_SETUP.md`](docs/MACOS_SETUP.md)
 
 ### Step 2: Configure API Keys
 
@@ -144,8 +226,16 @@ The setup script automatically detects your hardware and configures optimal perf
 # One-time setup (installs Holo 1.5-7B and dependencies)
 ./scripts/setup-holo.sh
 
-# Start the full stack
+# Start the full stack (Interactive Mode - Recommended for first-time users)
 ./scripts/start-stack.sh
+# → You'll be prompted to select:
+#    1) Target OS (Linux/Windows/macOS)
+#    2) Windows installation method (if Windows selected)
+
+# Or use flags for automation/CI (skips all prompts)
+./scripts/start-stack.sh --os linux              # Explicit Linux
+./scripts/start-stack.sh --os windows --prebaked # Windows pre-baked image
+./scripts/start-stack.sh --os macos              # macOS container
 ```
 
 **What happens automatically:**
@@ -178,6 +268,27 @@ The start script will:
 ```bash
 ./scripts/stop-stack.sh
 ```
+
+### 💡 Interactive vs Flag-Based Mode
+
+Both modes work identically - choose based on your workflow:
+
+| Mode | Command | Best For |
+|------|---------|----------|
+| **Interactive** 🎯 | `./scripts/start-stack.sh` | First-time users, exploring options, trying different OS |
+| **Flag-Based** ⚡ | `./scripts/start-stack.sh --os windows --prebaked` | Automation, CI/CD pipelines, scripting |
+
+**Interactive Mode Features:**
+- Guided OS selection menu (Linux/Windows/macOS)
+- Automatic Windows pre-baked image prompt
+- Default values (press Enter for Linux)
+- Same friendly experience as fresh-build.sh
+
+**Flag-Based Mode Features:**
+- Skips all prompts for non-interactive environments
+- Explicit OS and installation method specification
+- Ideal for scripts and automation pipelines
+- Backward compatible with existing workflows
 
 ### Troubleshooting Setup
 
@@ -231,6 +342,7 @@ Hawkeye layers precision tooling on top of upstream Bytebot so the agent can lan
 | **Real-time CV activity monitoring** | Live tracking of active CV methods with animated indicators, Holo 1.5-7B model display, GPU detection (NVIDIA GPU/Apple Silicon/CPU), performance metrics, success rates, and dedicated UI panels on Desktop and Task pages with 500ms polling. | No visibility into which detection methods are active or their performance characteristics. |
 | **Accessible UI theming** | Header theme toggle powered by Next.js theme switching delivers high-contrast light/dark palettes so operators can pick the most legible view. | Single default theme without in-app toggles. |
 | **Active Model desktop telemetry** | The desktop dashboard's Active Model card (under `/desktop`) continuously surfaces the agent's current provider, model alias, and streaming heartbeat so you can spot token stalls before they derail long-running sessions. | No dedicated real-time status card—operators must tail logs to confirm the active model. |
+| **Hybrid vision/non-vision support** | 41 models (28 vision + 13 text-only) with automatic message transformation, vision-aware prompts/guards, optimized enrichment, and enhanced UI picker with visual grouping. Enables reasoning models (o1, o3, DeepSeek R1) for complex tasks. | Limited model support with assumed vision capability; no differentiation between vision and text-only models. |
 
 Flip individual systems off by setting the corresponding environment variables—`BYTEBOT_UNIVERSAL_TEACHING`, `BYTEBOT_ADAPTIVE_CALIBRATION`, `BYTEBOT_ZOOM_REFINEMENT`, or `BYTEBOT_COORDINATE_METRICS`—to `false` (default `true`). Enable deep-dive logs with `BYTEBOT_COORDINATE_DEBUG=true` when troubleshooting. Visit the `/desktop` route (see the screenshot above) to monitor the Active Model card while long-running tasks execute.
 
@@ -311,8 +423,134 @@ Hawkeye provides comprehensive visibility into computer vision operations with l
 - **Holo 1.5-7B Model Display** - Real-time display of active model (Holo 1.5-7B / Qwen2.5-VL) with GPU detection (NVIDIA GPU, Apple Silicon, or CPU)
 - **Performance Metrics** - Real-time success rates, processing times, average execution times, and total executions
 - **GPU Acceleration Status** - Live hardware detection showing compute device: ⚡ NVIDIA GPU, 🍎 Apple Silicon, or 💻 CPU
+- **GPU VRAM Monitoring** - Real-time memory usage with color-coded progress bars (green <50%, yellow 50-80%, red >80%)
 - **UI Integration** - Dedicated CV Activity panels on both Desktop and Task pages with 500ms polling for real-time updates
 - **Debug Telemetry** - Comprehensive method execution history for optimization and troubleshooting
+
+### Adaptive Model Capability System
+
+Hawkeye's **Model Capability System** provides intelligent CV-first enforcement based on each AI model's vision capabilities. Different models receive different levels of enforcement, ensuring optimal performance without blocking capable models or frustrating weaker ones.
+
+#### **Three-Tier Model Classification**
+
+**🥇 Tier 1: Strong CV Capability (Strict Enforcement)**
+- **Models**: GPT-4o, Claude Sonnet 4.5, Claude Opus 4, Claude 3.5 Sonnet
+- **CV Success Rate**: 90-95%
+- **Behavior**: Strict CV-first workflow enforcement, no click violations allowed
+- **Testing**: GPT-4o demonstrated 100% CV-first compliance with adaptive keyboard fallback
+- **Max CV Attempts**: 2 before keyboard shortcut suggestions
+
+**🥈 Tier 2: Medium CV Capability (Balanced Enforcement)**
+- **Models**: GPT-4o-mini, Gemini 2.0 Flash, Gemini 1.5 Pro, Claude 3 Haiku
+- **CV Success Rate**: 75-85%
+- **Behavior**: Relaxed enforcement (allow 1 click violation), emphasized keyboard shortcuts
+- **Max CV Attempts**: 3 before alternative approaches
+- **Default**: Unknown models default to Tier 2 for balanced behavior
+
+**🥉 Tier 3: Weak CV Capability (Minimal Enforcement)**
+- **Models**: Qwen3-VL, LLaVA, CogVLM
+- **CV Success Rate**: 40-50%
+- **Behavior**: Suggest CV-first but don't block, keyboard-first prompts
+- **Testing**: Qwen3-VL showed 4 click violations and detect→click loops, required help
+- **Max CV Attempts**: 2 with aggressive loop detection
+
+#### **Real-World Performance Data**
+
+Based on production session analysis comparing GPT-4o vs Qwen3-VL:
+
+| Metric | GPT-4o (Tier 1) | Qwen3-VL (Tier 3) |
+|--------|----------------|-------------------|
+| **Assistant Messages** | 8 | 21 (2.6x more) |
+| **CV Detection Attempts** | 2 | 6 |
+| **Click Violations** | 0 ✅ | 4 ❌ |
+| **Workflow Quality** | Clean with keyboard fallback | Stuck in detect→click loops |
+| **Outcome** | Adaptive completion | Requested help (loop detected) |
+
+#### **Adaptive Enforcement Features**
+
+- **Pattern Matching**: Fuzzy model name matching for automatic tier assignment
+- **Loop Detection**: Tier 3 models get more sensitive loop detection (2 failures vs 3)
+- **Dynamic Prompts**: Future: Different system prompts per tier emphasizing strengths
+- **Fallback Strategies**: Future: Tier-specific fallback chains (CV → Keyboard → Coords)
+
+**Location**: `packages/bytebot-agent/src/models/`
+**Configuration**: See `model-capabilities.config.ts` for full model database
+
+### Hybrid Vision/Non-Vision Model Support
+
+Hawkeye now supports **both vision-capable and text-only models** with intelligent content adaptation. The system automatically transforms visual content based on each model's capabilities, enabling you to use reasoning models (o1, o3, DeepSeek R1) and other non-vision models alongside vision models.
+
+#### **Intelligent Content Transformation**
+
+When you select a non-vision model, Hawkeye automatically:
+
+- **Transforms Images → Text Descriptions**: Screenshots and uploaded images are converted to detailed text descriptions including metadata (resolution, capture time, file size)
+- **Adapts System Prompts**: Non-vision models receive instructions focused on text-based analysis and tool results, while vision models get visual observation prompts
+- **Skips Visual Observation Guards**: Screenshot observation requirements only apply to vision models; non-vision models can proceed immediately after screenshots
+- **Optimizes Background Processing**: Holo 1.5-7B enrichment only runs for vision models, eliminating unnecessary 30-80s detections for text-only models
+
+#### **Supported Non-Vision Models (13 Added)**
+
+**OpenAI Reasoning Models:**
+- `o3-pro`, `o3`, `o3-mini` - Advanced reasoning with extended thinking time
+- `o1`, `o1-mini`, `o1-preview` - Original reasoning model series
+
+**OpenRouter Models:**
+- `openrouter-deepseek-r1` - DeepSeek's flagship reasoning model
+- `openrouter-deepseek-r1-distill-qwen-32b` - Qwen-distilled variant (32B)
+- `openrouter-deepseek-r1-distill-llama-70b` - Llama-distilled variant (70B)
+- `openrouter-qwen-plus`, `openrouter-qwen-turbo`, `openrouter-qwen-max` - Qwen series
+- `openrouter-claude-3-haiku` - Fast, cost-effective Claude variant
+- `openrouter-mistral-large` - Mistral's flagship model
+
+**Total:** 41 models supported (28 vision + 13 text-only)
+
+#### **Enhanced Model Picker UI**
+
+The model selection dropdown now features visual differentiation:
+
+- **👁️ Vision Models Section** - Eye icon with blue theme for image-capable models
+- **📝 Text-Only Models Section** - FileText icon with amber theme for text-only models
+- **Color-Coded Badges** - "Vision" (blue) or "Text-Only" (amber) labels
+- **Descriptive Headers** - "Can process images" vs "Text descriptions only"
+- **Scrolling Support** - Smooth scrolling for all 41 models with max-height constraint
+
+The UI makes it immediately clear which models support image input, preventing confusion when uploading files or expecting visual analysis.
+
+#### **Technical Implementation**
+
+**Message Transformation Pipeline** (`message-transformer.util.ts`):
+```typescript
+// Automatically transforms images for non-vision models
+if (!model.supportsVision) {
+  messages = transformImagesForNonVision(messages);
+  // Converts Image blocks → Text descriptions
+  // Handles nested images in ToolResult blocks
+}
+```
+
+**Vision-Aware Prompts** (`tier-specific-prompts.ts`):
+```typescript
+buildTierSpecificAgentSystemPrompt(tier, maxCvAttempts, currentDate, currentTime, timeZone, supportsVision)
+// Different instructions per capability:
+// - Vision models: "deliver exhaustive visual observation"
+// - Non-vision: "review text descriptions and tool results"
+```
+
+**Optimized Enrichment** (`agent.processor.ts`):
+```typescript
+// Only run Holo for vision models
+if (isScreenshot && supportsVision(model)) {
+  enrichScreenshotWithOmniParser(); // 30-80s Holo detection
+}
+```
+
+**Benefits:**
+- ✅ Reasoning models (o1, o3, DeepSeek R1) now accessible for complex tasks
+- ✅ No manual configuration - automatic adaptation based on model capabilities
+- ✅ Performance optimization - skip expensive CV for text-only models
+- ✅ Better UX - clear visual indicators of model capabilities
+- ✅ Consistent experience - both model types use same tool APIs
 
 **CV Activity Panel Features:**
 - Active method indicators with color-coded badges (Holo 1.5-7B: Pink, OCR: Yellow)
@@ -401,11 +639,19 @@ EOF
 docker compose -f docker/docker-compose.proxy.yml up -d --build
 ```
 
-**Available Models via Proxy:**
-- Anthropic: `claude-opus-4`, `claude-sonnet-4`
-- OpenAI: `gpt-4o`, `o3`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5` variants
-- OpenRouter: `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, etc.
-- Local LMStudio: Configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
+**Available Models via Proxy (41 Total: 28 Vision + 13 Text-Only):**
+
+**Vision Models (👁️ Can process images):**
+- **Anthropic**: `claude-opus-4`, `claude-sonnet-4`
+- **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5-thinking`, `gpt-5-main`, `gpt-5-mini`, `gpt-5-nano`
+- **OpenRouter**: `openrouter-claude-3.5-sonnet`, `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, `openrouter-gemini-2.5-flash`, `openrouter-gemini-1.5-pro`, `openrouter-internvl3-78b`, `openrouter-qwen3-vl-235b-a22b-instruct`
+- **Gemini**: `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-vertex-pro`, `gemini-vertex-flash`
+- **Local LMStudio**: `local-lmstudio-qwen2.5-vl-32b-instruct` (vision), configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
+
+**Text-Only Models (📝 Receive text descriptions):**
+- **OpenAI Reasoning**: `o3-pro`, `o3`, `o3-mini`, `o1`, `o1-mini`, `o1-preview`
+- **OpenRouter**: `openrouter-deepseek-r1`, `openrouter-deepseek-r1-distill-qwen-32b`, `openrouter-deepseek-r1-distill-llama-70b`, `openrouter-qwen-plus`, `openrouter-qwen-turbo`, `openrouter-qwen-max`, `openrouter-claude-3-haiku`, `openrouter-mistral-large`, `openrouter-glm-4.6`, `openrouter-grok-4-fast-free`
+- **Local LMStudio**: `local-lmstudio-ui-tars-72b-dpo`, `local-lmstudio-ui-tars-7b-dpo`, `local-lmstudio-gemma-3-27b`, `local-lmstudio-magistral-small-2509` (text-only)
 
 To use custom model endpoints, edit `litellm-config.yaml` and restart: `docker compose restart bytebot-llm-proxy`
 

@@ -3,11 +3,32 @@
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
+interface HoloMethodMetadata {
+  task_description?: string;
+  performance_profile?: string;
+  performanceProfile?: string;
+  quantization?: string;
+  detection_status?: string;
+  device?: string;
+  elementCount?: number;
+  processingTime?: number;
+  ocrDetected?: boolean;
+  iconDetected?: boolean;
+  interactableCount?: number;
+  profile?: string;
+  maxDetections?: number;
+  minConfidence?: number;
+  processing_time_ms?: number;
+  processingTimeMs?: number;
+  [key: string]: unknown; // Allow additional properties
+}
+
 interface CVMethodActivity {
   method: string;
   active: boolean;
   startTime?: number;
   duration?: number;
+  metadata?: HoloMethodMetadata;
 }
 
 interface CVActivitySnapshot {
@@ -21,6 +42,14 @@ interface CVActivitySnapshot {
   };
   holoDevice?: string;  // cuda, mps, cpu
   holoModel?: string;   // "Holo 1.5-7B (Qwen2.5-VL base)"
+  holoPerformanceProfile?: string; // "SPEED", "BALANCED", "QUALITY"
+  holoQuantization?: string; // "Q4_K_M", "Q8_0"
+  holoProcessingTimeMs?: number; // Last processing time
+  gpuName?: string; // GPU device name (e.g., "NVIDIA GeForce RTX 4090")
+  gpuMemoryTotalMB?: number; // Total GPU memory in MB
+  gpuMemoryUsedMB?: number; // Used GPU memory in MB
+  gpuMemoryFreeMB?: number; // Free GPU memory in MB
+  gpuMemoryUtilizationPercent?: number; // Memory utilization percentage
 }
 
 interface CVDetectionData {
@@ -74,6 +103,15 @@ const methodColors: Record<string, string> = {
   "holo-1.5-7b": "bg-pink-500",
 };
 
+// Helper function to format memory
+const formatMemory = (mb: number | null | undefined): string => {
+  if (mb === null || mb === undefined) return "N/A";
+  if (mb >= 1024) {
+    return `${(mb / 1024).toFixed(1)}GB`;
+  }
+  return `${Math.round(mb)}MB`;
+};
+
 // Helper function to get device badge and styling
 const getDeviceBadge = (device?: string): { icon: string; label: string; color: string } => {
   if (!device) return { icon: "💻", label: "Native", color: "text-blue-500" };
@@ -89,13 +127,29 @@ const getDeviceBadge = (device?: string): { icon: string; label: string; color: 
   return { icon: "💻", label: "Native", color: "text-blue-500" };
 };
 
+// Helper function to get performance profile badge
+const getPerformanceProfileBadge = (profile?: string): { icon: string; label: string; color: string } | null => {
+  if (!profile) return null;
+
+  const profileUpper = profile.toUpperCase();
+  if (profileUpper === "SPEED") {
+    return { icon: "🚀", label: "SPEED", color: "text-blue-600 dark:text-blue-400" };
+  } else if (profileUpper === "BALANCED") {
+    return { icon: "⚖️", label: "BALANCED", color: "text-purple-600 dark:text-purple-400" };
+  } else if (profileUpper === "QUALITY") {
+    return { icon: "🎯", label: "QUALITY", color: "text-orange-600 dark:text-orange-400" };
+  }
+  return null;
+};
+
 interface CVActivityIndicatorProps {
   className?: string;
   compact?: boolean;
   inline?: boolean; // New prop for inline chat display
+  directVisionMode?: boolean; // If true, show Direct Vision Mode UI instead of CV activity
 }
 
-export function CVActivityIndicator({ className, compact = false, inline = false }: CVActivityIndicatorProps) {
+export function CVActivityIndicator({ className, compact = false, inline = false, directVisionMode = false }: CVActivityIndicatorProps) {
   const [activity, setActivity] = useState<CVActivitySnapshot | null>(null);
   const [detectionData, setDetectionData] = useState<CVDetectionData | null>(null);
 
@@ -152,6 +206,29 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     };
   }, [inline]);
 
+  // If Direct Vision Mode is enabled, show special UI
+  if (directVisionMode) {
+    // Show compact Direct Vision Mode indicator
+    return (
+      <div className={cn(
+        "rounded-lg border border-purple-500/20 bg-purple-500/10 px-2 py-1.5 dark:border-purple-500/30 dark:bg-purple-500/20",
+        className
+      )}>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">
+            Direct Vision Mode
+          </span>
+          <span className="text-[10px] font-medium text-foreground">
+            🎯 Native Model Vision
+          </span>
+          <span className="text-[9px] text-muted-foreground">
+            Holo CV disabled
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   // Show if: active methods OR recent history OR device/model info available
   const hasRecentActivity = (activity?.performance?.totalMethodsExecuted ?? 0) > 0;
   const hasDeviceInfo = activity?.holoDevice !== undefined;
@@ -182,6 +259,7 @@ export function CVActivityIndicator({ className, compact = false, inline = false
     const hasHolo = activity?.activeMethods?.includes("holo-1.5-7b") ||
                      activity?.holoModel;
     const deviceBadge = getDeviceBadge(activity?.holoDevice);
+    const profileBadge = getPerformanceProfileBadge(activity?.holoPerformanceProfile);
 
     return (
       <div className={cn("rounded-lg border border-border bg-card/50 dark:bg-card/30 px-3 py-2 backdrop-blur-sm", className)}>
@@ -201,22 +279,36 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               ))}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-foreground">
-                {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
-              </span>
-              {activity?.holoModel && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-foreground">
+                  {hasHolo ? "🔍 AI Computer Vision" : "🔍 CV Detection"}
+                </span>
+                {profileBadge && (
+                  <span className={cn("text-[9px] font-semibold flex items-center gap-0.5", profileBadge.color)} title={`Holo ${profileBadge.label} mode`}>
+                    <span>{profileBadge.icon}</span>
+                  </span>
+                )}
+              </div>
+              {activity?.gpuName && (
                 <span className="text-[9px] text-muted-foreground">
-                  {activity.holoModel}
+                  {activity.gpuName}
                 </span>
               )}
             </div>
           </div>
-          {hasHolo && activity?.holoDevice && (
-            <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
-              <span>{deviceBadge.icon}</span>
-              <span>{deviceBadge.label}</span>
-            </span>
-          )}
+          <div className="flex flex-col items-end gap-0.5">
+            {hasHolo && activity?.holoDevice && (
+              <span className={cn("text-[10px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
+                <span>{deviceBadge.icon}</span>
+                <span>{deviceBadge.label}</span>
+              </span>
+            )}
+            {activity?.gpuMemoryTotalMB && (
+              <span className="text-[9px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Active Methods */}
@@ -228,12 +320,40 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               const color = methodColors[method] || "bg-gray-500";
               const elapsed = detail?.startTime ? Math.round((Date.now() - detail.startTime) / 100) / 10 : 0;
 
+              // Enhanced Holo info display
+              const isHolo = method === 'holo-1.5-7b';
+              const holoTask = isHolo ? detail?.metadata?.task_description : null;
+              const holoProfile = isHolo ? detail?.metadata?.performance_profile?.toUpperCase() || detail?.metadata?.performanceProfile?.toUpperCase() : null;
+              const holoQuantization = isHolo ? detail?.metadata?.quantization : null;
+              const holoDetectionStatus = isHolo ? detail?.metadata?.detection_status : null;
+
               return (
-                <div key={method} className="flex items-center gap-2 text-xs">
-                  <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
-                  <span className="font-medium">{displayName}</span>
-                  {elapsed > 0 && (
-                    <span className="text-muted-foreground ml-auto">{elapsed}s</span>
+                <div key={method} className="flex flex-col gap-0.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
+                    <span className="font-medium">{displayName}</span>
+                    {isHolo && holoProfile && (
+                      <span className="text-[9px] text-muted-foreground">({holoProfile})</span>
+                    )}
+                    {isHolo && holoQuantization && (
+                      <span className="text-[9px] text-muted-foreground">{holoQuantization}</span>
+                    )}
+                    <span className="text-red-500 dark:text-red-400 text-[9px]" title="Live processing">🔴</span>
+                    {elapsed > 0 && (
+                      <span className="text-muted-foreground ml-auto">{elapsed}s</span>
+                    )}
+                  </div>
+                  {/* Show Holo task description */}
+                  {isHolo && holoTask && (
+                    <span className="text-[10px] text-muted-foreground italic ml-4">
+                      {holoTask}
+                    </span>
+                  )}
+                  {/* Show detection status after processing */}
+                  {isHolo && holoDetectionStatus && elapsed > 0.5 && (
+                    <span className="text-[10px] text-green-600 dark:text-green-400 ml-4">
+                      {holoDetectionStatus}
+                    </span>
                   )}
                 </div>
               );
@@ -349,10 +469,38 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               </span>
             )}
           </div>
-          {activity?.holoModel && (
+          {activity?.gpuName && (
             <span className="text-[10px] text-muted-foreground">
-              {activity.holoModel}
+              {activity.gpuName}
             </span>
+          )}
+          {activity?.gpuMemoryTotalMB && (
+            <div className="flex flex-col gap-0.5 w-full">
+              <span className="text-[9px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </span>
+              {/* GPU Memory Progress Bar */}
+              <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full transition-all duration-300 ease-in-out",
+                    (() => {
+                      const usagePercent = activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                        ? ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100
+                        : 0;
+                      if (usagePercent < 50) return "bg-green-500";
+                      if (usagePercent < 80) return "bg-yellow-500";
+                      return "bg-red-500";
+                    })()
+                  )}
+                  style={{
+                    width: activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                      ? `${Math.min(100, ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100)}%`
+                      : "0%"
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -378,9 +526,37 @@ export function CVActivityIndicator({ className, compact = false, inline = false
               </span>
             )}
           </div>
-          {activity?.holoModel && (
-            <div className="text-[8px] text-muted-foreground">
-              {activity.holoModel}
+          {activity?.gpuName && (
+            <div className="text-[8px] font-medium text-foreground">
+              {activity.gpuName}
+            </div>
+          )}
+          {activity?.gpuMemoryTotalMB && (
+            <div className="flex flex-col gap-0.5">
+              <div className="text-[8px] text-muted-foreground">
+                {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
+              </div>
+              {/* GPU Memory Progress Bar */}
+              <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full transition-all duration-300 ease-in-out",
+                    (() => {
+                      const usagePercent = activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                        ? ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100
+                        : 0;
+                      if (usagePercent < 50) return "bg-green-500";
+                      if (usagePercent < 80) return "bg-yellow-500";
+                      return "bg-red-500";
+                    })()
+                  )}
+                  style={{
+                    width: activity.gpuMemoryTotalMB > 0 && activity.gpuMemoryUsedMB !== undefined
+                      ? `${Math.min(100, ((activity.gpuMemoryUsedMB || 0) / activity.gpuMemoryTotalMB) * 100)}%`
+                      : "0%"
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>

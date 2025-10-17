@@ -7,6 +7,6 @@ Exec=/usr/bin/thunderbird %U
 Icon=thunderbird
 Path=
 Terminal=false
-StartupNotify=true
+StartupNotify=false
 Categories=Network;Email;
 MimeType=x-scheme-handler/mailto;application/x-xpinstall;message/rfc822;

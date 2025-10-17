@@ -37,9 +37,9 @@ function executeCommand(command, description, options = {}) {
 console.log('🔍 Testing Ubuntu 24.04 OpenCV packages...\n');
 
 const ubuntuTest = executeCommand(
-  `docker run --rm public.ecr.aws/ubuntu/ubuntu:24.04 bash -c "
-    apt-get update && 
-    apt-cache show libopencv-dev | grep Version && 
+  `docker run --rm ubuntu:24.04 bash -c "
+    apt-get update &&
+    apt-cache show libopencv-dev | grep Version &&
     apt-cache show libopencv-ml-dev | grep Version &&
     echo 'Ubuntu 24.04 OpenCV packages verified'
   "`,

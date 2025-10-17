@@ -24,7 +24,7 @@ Instead of compiling @u4/opencv4nodejs (which fails with "Argument list too long
 **FROM**: Changed base image
 ```dockerfile
 # OLD (compilation required):
-FROM public.ecr.aws/ubuntu/ubuntu:24.04
+FROM ubuntu:24.04
 
 # NEW (pre-compiled):
 FROM urielch/opencv-nodejs:latest

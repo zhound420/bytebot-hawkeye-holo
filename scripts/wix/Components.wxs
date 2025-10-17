@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Product component group -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+
+      <!-- Bytebotd package -->
+      <Component Id="BytebotdDist" Guid="11111111-2222-3333-4444-555555555555" Directory="BYTEBOTDDIR">
+        <File Id="BytebotdMain" Source="$(var.BuildRoot)\packages\bytebotd\dist\main.js" KeyPath="yes" />
+        <!-- Will be harvested by heat.exe -->
+      </Component>
+
+      <Component Id="BytebotdPackageJson" Guid="22222222-3333-4444-5555-666666666666" Directory="BYTEBOTDDIR">
+        <File Id="BytebotdPkg" Source="$(var.BuildRoot)\packages\bytebotd\package.json" KeyPath="yes" />
+      </Component>
+
+      <Component Id="BytebotdScripts" Guid="33333333-4444-5555-6666-777777777777" Directory="BYTEBOTDDIR">
+        <File Id="StartBytebotd" Source="$(var.SourceRoot)\docker\oem\start-bytebotd.bat" KeyPath="yes" />
+        <File Id="BytebotdTray" Source="$(var.SourceRoot)\docker\oem\bytebotd-tray.ps1" />
+        <File Id="DiagnoseScript" Source="$(var.SourceRoot)\docker\oem\diagnose.ps1" />
+      </Component>
+
+      <!-- Shared package -->
+      <Component Id="SharedDist" Guid="44444444-5555-6666-7777-888888888888" Directory="SHAREDDIR">
+        <File Id="SharedIndex" Source="$(var.BuildRoot)\packages\shared\dist\index.js" KeyPath="yes" />
+        <!-- Will be harvested by heat.exe -->
+      </Component>
+
+      <Component Id="SharedPackageJson" Guid="55555555-6666-7777-8888-999999999999" Directory="SHAREDDIR">
+        <File Id="SharedPkg" Source="$(var.BuildRoot)\packages\shared\package.json" KeyPath="yes" />
+      </Component>
+
+      <!-- Bytebot-cv package -->
+      <Component Id="BytebotCvDist" Guid="66666666-7777-8888-9999-AAAAAAAAAAAA" Directory="BYTEBOTCVDIR">
+        <File Id="BytebotCvIndex" Source="$(var.BuildRoot)\packages\bytebot-cv\dist\index.js" KeyPath="yes" />
+        <!-- Will be harvested by heat.exe -->
+      </Component>
+
+      <Component Id="BytebotCvPackageJson" Guid="77777777-8888-9999-AAAA-BBBBBBBBBBBB" Directory="BYTEBOTCVDIR">
+        <File Id="BytebotCvPkg" Source="$(var.BuildRoot)\packages\bytebot-cv\package.json" KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+
+    <!-- ProgramData components (logs, heartbeat directory) -->
+    <ComponentGroup Id="ProgramDataComponents">
+      <Component Id="BytebotDataDir" Guid="88888888-9999-AAAA-BBBB-CCCCCCCCCCCC" Directory="BYTEBOTDATADIR">
+        <CreateFolder>
+          <util:PermissionEx User="Everyone" GenericAll="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM"
+                       Key="Software\Bytebot\Bytebotd"
+                       Name="DataDir"
+                       Type="string"
+                       Value="[BYTEBOTDATADIR]"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="BytebotLogsDir" Guid="99999999-AAAA-BBBB-CCCC-DDDDDDDDDDDD" Directory="BYTEBOTLOGSDIR">
+        <CreateFolder>
+          <util:PermissionEx User="Everyone" GenericAll="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM"
+                       Key="Software\Bytebot\Bytebotd"
+                       Name="LogsDir"
+                       Type="string"
+                       Value="[BYTEBOTLOGSDIR]"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+  </Fragment>
+</Wix>

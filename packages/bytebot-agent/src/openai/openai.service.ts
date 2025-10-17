@@ -14,12 +14,15 @@ import {
 } from '@bytebot/shared';
 import { DEFAULT_MODEL } from './openai.constants';
 import { Message, Role } from '@prisma/client';
-import { openaiTools } from './openai.tools';
+import { openaiTools, getOpenAITools } from './openai.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
+import { supportsVision } from '../agent/vision-capability.util';
+import { transformImagesForNonVision } from '../agent/message-transformer.util';
 
 @Injectable()
 export class OpenAIService implements BytebotAgentService {
@@ -35,23 +38,31 @@ export class OpenAIService implements BytebotAgentService {
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
-    model: string = DEFAULT_MODEL.name,
+    modelName: string = DEFAULT_MODEL.name,
+    modelMetadata: BytebotAgentModel,
     useTools: boolean = true,
     signal?: AbortSignal,
+    directVisionMode: boolean = false,
   ): Promise<BytebotAgentResponse> {
-    const isReasoning = model.startsWith('o');
+    const isReasoning = modelName.startsWith('o');
     try {
       const openaiClient = this.getOpenAIClient();
-      const openaiMessages = this.formatMessagesForOpenAI(messages);
+
+      // Transform images to text for non-vision models
+      const processedMessages = supportsVision(modelMetadata)
+        ? messages  // Keep images for vision models
+        : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
+
+      const openaiMessages = this.formatMessagesForOpenAI(processedMessages);
 
       const maxTokens = 8192;
       const response = await openaiClient.responses.create(
         {
-          model,
+          model: modelName,
           max_output_tokens: maxTokens,
           input: openaiMessages,
           instructions: systemPrompt,
-          tools: useTools ? openaiTools : [],
+          tools: useTools ? getOpenAITools(directVisionMode) : [],
           reasoning: isReasoning ? { effort: 'medium' } : null,
           store: false,
           include: isReasoning ? ['reasoning.encrypted_content'] : [],

@@ -9,6 +9,7 @@ import {
   HttpCode,
   Query,
   HttpException,
+  Logger,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -44,6 +45,8 @@ const models = [
 
 @Controller('tasks')
 export class TasksController {
+  private readonly logger = new Logger(TasksController.name);
+
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
@@ -111,18 +114,59 @@ export class TasksController {
 
         // Map proxy response to BytebotAgentModel format
         const models: BytebotAgentModel[] = proxyModelList.map((model: any) => {
-          const supportsVision =
-            model.supports_vision === true ||
-            model.model_info?.supports_vision === true ||
-            model.litellm_params?.supports_vision === true ||
-            model.litellm_params?.supports_image_input === true;
+          // Prioritize explicit false values (user overrides in litellm-config.yaml)
+          // This ensures model_info.supports_vision: false always wins
+          const explicitlyDisabled =
+            model.model_info?.supports_vision === false ||
+            model.litellm_params?.supports_vision === false ||
+            model.supports_vision === false;
+
+          let supportsVision: boolean;
+          if (explicitlyDisabled) {
+            supportsVision = false;
+          } else {
+            // Check if any field explicitly enables vision
+            supportsVision =
+              model.supports_vision === true ||
+              model.model_info?.supports_vision === true ||
+              model.litellm_params?.supports_vision === true ||
+              model.litellm_params?.supports_image_input === true;
+          }
+
+          // Debug logging for vision capability detection
+          this.logger.debug(
+            `Model ${model.model_name}: ` +
+            `supports_vision=${model.supports_vision}, ` +
+            `model_info.supports_vision=${model.model_info?.supports_vision}, ` +
+            `litellm_params.supports_vision=${model.litellm_params?.supports_vision}, ` +
+            `litellm_params.supports_image_input=${model.litellm_params?.supports_image_input} ` +
+            `→ supportsVision=${supportsVision}`
+          );
+
+          // Extract LiteLLM metadata for advanced routing
+          const modelName = model.litellm_params.model.toLowerCase();
+          const inputCost = model.model_info?.input_cost_per_token;
+          const outputCost = model.model_info?.output_cost_per_token;
+          const maxTokens = model.model_info?.max_output_tokens || model.max_tokens;
+          const contextWindow = model.model_info?.max_input_tokens || 128000;
+
+          // Detect advanced feature support
+          const supportsPromptCaching = modelName.includes('anthropic/claude');
+          // Note: OpenAI's API rejects reasoning_effort for o-series models despite LiteLLM metadata claiming support
+          // Disabled until verified which models actually support it
+          const supportsReasoningEffort = false;
 
           return {
             provider: 'proxy',
             name: model.litellm_params.model,
             title: model.model_name,
-            contextWindow: 128000,
+            contextWindow,
             supportsVision,
+            inputCost,
+            outputCost,
+            maxTokens,
+            supportsPromptCaching,
+            supportsReasoningEffort,
           } satisfies BytebotAgentModel;
         });
 

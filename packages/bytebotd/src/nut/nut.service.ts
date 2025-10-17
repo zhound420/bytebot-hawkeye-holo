@@ -11,6 +11,8 @@ import {
 } from '@nut-tree-fork/nut-js';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as os from 'os';
+import { logPlatformInfo, getPlatform, Platform } from '../utils/platform';
 
 /**
  * Enum representing key codes supported by nut-js.
@@ -124,12 +126,15 @@ export class NutService {
   private availableKeySet: Set<string> | null = null;
 
   constructor() {
+    // Log platform information
+    logPlatformInfo(this.logger);
+
     // Initialize nut-js settings
     mouse.config.autoDelayMs = 100;
     keyboard.config.autoDelayMs = 100;
 
-    // Create screenshot directory if it doesn't exist
-    this.screenshotDir = path.join('/tmp', 'bytebot-screenshots');
+    // Create screenshot directory if it doesn't exist (cross-platform)
+    this.screenshotDir = path.join(os.tmpdir(), 'bytebot-screenshots');
     import('fs').then((fs) => {
       fs.promises
         .mkdir(this.screenshotDir, { recursive: true })

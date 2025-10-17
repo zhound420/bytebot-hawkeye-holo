@@ -1,5 +1,5 @@
 # Base image
-FROM public.ecr.aws/docker/library/node:20-alpine
+FROM node:20-alpine
 
 # Create app directory
 WORKDIR /app

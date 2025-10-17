@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Setup Desktop Icons
+Comment=Ensure desktop icons are properly configured
+Exec=/bin/bash /home/user/.config/autostart/setup-desktop.sh
+Terminal=false
+StartupNotify=false
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -7,9 +7,9 @@ import { ChatInput } from "@/components/messages/ChatInput";
 import { useRouter } from "next/navigation";
 import { startTask } from "@/utils/taskUtils";
 import { Model } from "@/types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TaskList } from "@/components/tasks/TaskList";
 import { MODEL_STORAGE_KEY, selectInitialModel } from "./modelStorage";
+import { ModelSelect } from "@/components/ui/model-select";
 
 interface StockPhotoProps {
   src: string;
@@ -42,6 +42,14 @@ export default function Home() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<FileWithBase64[]>([]);
+  const [directVisionMode, setDirectVisionMode] = useState(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("directVisionMode");
+      return stored === "true";
+    }
+    return false;
+  });
   const router = useRouter();
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
     null,
@@ -80,6 +88,13 @@ export default function Home() {
       })
       .catch((err) => console.error("Failed to load models", err));
   }, [updateSelectedModel]);
+
+  // Persist directVisionMode to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("directVisionMode", String(directVisionMode));
+    }
+  }, [directVisionMode]);
 
   // Close popover when clicking outside or pressing ESC
   useEffect(() => {
@@ -123,9 +138,11 @@ export default function Home() {
         description: string;
         model: Model;
         files?: FileWithBase64[];
+        directVisionMode?: boolean;
       } = {
         description: input,
         model: selectedModel,
+        directVisionMode,
       };
 
       // Include files if any are uploaded
@@ -179,26 +196,22 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
-                <div className="mt-2">
-                  <Select
-                    value={selectedModel?.name}
-                    onValueChange={(val) =>
-                      updateSelectedModel(
-                        models.find((m) => m.name === val) || null,
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.name} value={m.name}>
-                          {m.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="mt-2 flex items-center justify-between">
+                  <ModelSelect
+                    models={models}
+                    selectedModel={selectedModel}
+                    onModelChange={updateSelectedModel}
+                    className="w-auto"
+                  />
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={directVisionMode}
+                      onChange={(e) => setDirectVisionMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    Direct Vision Mode
+                  </label>
                 </div>
               </div>
 
@@ -237,26 +250,22 @@ export default function Home() {
                   onFileUpload={handleFileUpload}
                   minLines={3}
                 />
-                <div className="mt-2">
-                  <Select
-                    value={selectedModel?.name}
-                    onValueChange={(val) =>
-                      updateSelectedModel(
-                        models.find((m) => m.name === val) || null,
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.name} value={m.name}>
-                          {m.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="mt-2 flex items-center justify-between">
+                  <ModelSelect
+                    models={models}
+                    selectedModel={selectedModel}
+                    onModelChange={updateSelectedModel}
+                    className="w-auto"
+                  />
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={directVisionMode}
+                      onChange={(e) => setDirectVisionMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    Direct Vision Mode
+                  </label>
                 </div>
               </div>
 

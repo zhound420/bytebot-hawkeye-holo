@@ -1,0 +1,60 @@
+# Line Ending Normalization for Cross-Platform Compatibility
+# This file ensures Windows Git doesn't convert LF to CRLF for shell scripts
+# Critical for Docker container execution on Windows hosts
+
+# Enforce LF line endings for shell scripts (critical for Docker on Windows)
+*.sh text eol=lf
+
+# Enforce CRLF for Windows scripts (PowerShell and CMD)
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Enforce LF for Python scripts (shebang compatibility)
+*.py text eol=lf
+
+# Enforce LF for Dockerfiles and Docker-related files
+Dockerfile text eol=lf
+**/Dockerfile text eol=lf
+*.dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+.dockerignore text eol=lf
+
+# Enforce LF for configuration files that may be mounted in containers
+*.env text eol=lf
+*.env.* text eol=lf
+*.conf text eol=lf
+*.config text eol=lf
+
+# Standard text files - let Git handle line endings per platform
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.json text
+*.md text
+*.yml text
+*.yaml text
+*.xml text
+*.html text
+*.css text
+*.scss text
+
+# Binary files - no line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.pt binary
+*.pth binary
+*.onnx binary

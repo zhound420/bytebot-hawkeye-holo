@@ -582,3 +582,28 @@ export const agentTools = [
   _setTaskStatusTool,
   _createTaskTool,
 ];
+
+/**
+ * Direct Vision Mode tools - excludes CV intermediate tools
+ *
+ * When directVisionMode is enabled, vision models get only native computer use tools:
+ * - screenshot, mouse, keyboard actions
+ * - NO computer_detect_elements or computer_click_element
+ *
+ * This gives models like Claude Opus 4 and GPT-4o direct control via their vision
+ * capabilities without Holo 1.5-7B intermediate processing.
+ */
+export const directVisionModeTools = agentTools.filter(
+  (tool) =>
+    tool.name !== 'computer_detect_elements' &&
+    tool.name !== 'computer_click_element',
+);
+
+/**
+ * Get tools based on task configuration
+ * @param directVisionMode - If true, exclude CV tools (Holo 1.5-7B detection)
+ * @returns Filtered tool array
+ */
+export function getToolsForTask(directVisionMode: boolean = false) {
+  return directVisionMode ? directVisionModeTools : agentTools;
+}

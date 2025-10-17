@@ -23,6 +23,7 @@ import { TasksGateway } from './tasks.gateway';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FileStorageService } from './file-storage.service';
+import * as os from 'os';
 
 const buildRunnableTaskFilter = (
   now: Date = new Date(),
@@ -47,6 +48,7 @@ const buildRunnableTaskFilter = (
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
+  private readonly workerId: string;
 
   constructor(
     readonly prisma: PrismaService,
@@ -56,7 +58,9 @@ export class TasksService {
     private readonly eventEmitter: EventEmitter2,
     private readonly fileStorageService: FileStorageService,
   ) {
-    this.logger.log('TasksService initialized');
+    // Generate unique worker ID for task locking
+    this.workerId = `${os.hostname()}-${process.pid}-${Date.now()}`;
+    this.logger.log(`TasksService initialized with worker ID: ${this.workerId}`);
   }
 
   async create(createTaskDto: CreateTaskDto): Promise<Task> {
@@ -75,6 +79,7 @@ export class TasksService {
           status: TaskStatus.PENDING,
           createdBy: createTaskDto.createdBy || Role.USER,
           model: createTaskDto.model,
+          directVisionMode: createTaskDto.directVisionMode || false,
           ...(createTaskDto.scheduledFor
             ? { scheduledFor: createTaskDto.scheduledFor }
             : {}),
@@ -178,6 +183,43 @@ export class TasksService {
     }
 
     return task;
+  }
+
+  /**
+   * Session Recovery: Find all tasks in RUNNING state
+   * Used during startup to detect tasks left in RUNNING state after crash/restart
+   */
+  async findRunningTasks(): Promise<Task[]> {
+    return this.prisma.task.findMany({
+      where: {
+        status: TaskStatus.RUNNING,
+      },
+      orderBy: {
+        updatedAt: 'asc', // Oldest first
+      },
+    });
+  }
+
+  /**
+   * Zombie Detection: Find tasks stuck in RUNNING state for too long
+   * @param thresholdMinutes - Tasks running longer than this are considered zombies
+   */
+  async findZombieTasks(thresholdMinutes: number): Promise<Task[]> {
+    const thresholdDate = new Date(
+      Date.now() - thresholdMinutes * 60 * 1000,
+    );
+
+    return this.prisma.task.findMany({
+      where: {
+        status: TaskStatus.RUNNING,
+        updatedAt: {
+          lt: thresholdDate, // Updated before threshold (stuck)
+        },
+      },
+      orderBy: {
+        updatedAt: 'asc', // Oldest first
+      },
+    });
   }
 
   async findAll(
@@ -413,5 +455,146 @@ export class TasksService {
     this.tasksGateway.emitTaskUpdate(taskId, updatedTask);
 
     return updatedTask;
+  }
+
+  /**
+   * Concurrency Support: Atomically acquire a lock on the next available task
+   * Uses database-level locking to prevent multiple workers from processing the same task
+   * @returns Task with lock acquired, or null if no tasks available
+   */
+  async acquireNextTask(): Promise<(Task & { files: File[] }) | null> {
+    const LOCK_TIMEOUT_MINUTES = 60; // Release stale locks after 60 minutes
+
+    try {
+      // Use a transaction with FOR UPDATE SKIP LOCKED for atomic lock acquisition
+      const task = await this.prisma.$transaction(async (tx) => {
+        // Find next runnable task that is either:
+        // 1. Not locked (lockedBy is null)
+        // 2. Has stale lock (lockedAt > 60 minutes ago)
+        const staleLockThreshold = new Date();
+        staleLockThreshold.setMinutes(
+          staleLockThreshold.getMinutes() - LOCK_TIMEOUT_MINUTES,
+        );
+
+        const availableTask = await tx.task.findFirst({
+          where: {
+            ...buildRunnableTaskFilter(),
+            status: {
+              in: [TaskStatus.RUNNING, TaskStatus.PENDING],
+            },
+            OR: [
+              { lockedBy: null }, // Not locked
+              { lockedAt: { lt: staleLockThreshold } }, // Stale lock
+            ],
+          },
+          orderBy: [
+            { executedAt: 'asc' },
+            { priority: 'desc' },
+            { queuedAt: 'asc' },
+            { createdAt: 'asc' },
+          ],
+          include: {
+            files: true,
+          },
+        });
+
+        if (!availableTask) {
+          return null;
+        }
+
+        // Atomically acquire lock
+        const lockedTask = await tx.task.update({
+          where: { id: availableTask.id },
+          data: {
+            lockedBy: this.workerId,
+            lockedAt: new Date(),
+          },
+          include: {
+            files: true,
+          },
+        });
+
+        this.logger.log(
+          `Worker ${this.workerId} acquired lock on task ${lockedTask.id}`,
+        );
+
+        return lockedTask;
+      });
+
+      return task;
+    } catch (error) {
+      this.logger.error(
+        `Failed to acquire task lock: ${error.message}`,
+        error.stack,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Release lock on a task
+   * Called when task completes or worker crashes
+   */
+  async releaseLock(taskId: string): Promise<void> {
+    try {
+      await this.prisma.task.update({
+        where: { id: taskId },
+        data: {
+          lockedBy: null,
+          lockedAt: null,
+        },
+      });
+
+      this.logger.debug(`Released lock on task ${taskId}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release lock on task ${taskId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get worker ID for this service instance
+   */
+  getWorkerId(): string {
+    return this.workerId;
+  }
+
+  /**
+   * Find tasks locked by this worker (for cleanup on shutdown)
+   */
+  async findTasksLockedByThisWorker(): Promise<Task[]> {
+    return this.prisma.task.findMany({
+      where: {
+        lockedBy: this.workerId,
+      },
+    });
+  }
+
+  /**
+   * Release all locks held by this worker (for graceful shutdown)
+   */
+  async releaseAllLocksForThisWorker(): Promise<number> {
+    try {
+      const result = await this.prisma.task.updateMany({
+        where: {
+          lockedBy: this.workerId,
+        },
+        data: {
+          lockedBy: null,
+          lockedAt: null,
+        },
+      });
+
+      this.logger.log(
+        `Released ${result.count} locks for worker ${this.workerId}`,
+      );
+      return result.count;
+    } catch (error) {
+      this.logger.error(
+        `Failed to release locks for worker ${this.workerId}: ${error.message}`,
+      );
+      return 0;
+    }
   }
 }

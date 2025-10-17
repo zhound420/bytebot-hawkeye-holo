@@ -48,6 +48,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     initialTaskId || null,
   );
   const [taskModel, setTaskModel] = useState<Model | null>(null);
+  const [directVisionMode, setDirectVisionMode] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
@@ -63,6 +64,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
         setTaskStatus(task.status);
         setControl(task.control);
         setTaskModel(task.model ?? null);
+        setDirectVisionMode(task.directVisionMode ?? false);
       }
     },
     [currentTaskId],
@@ -208,6 +210,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
             setTaskStatus(task.status); // Set the task status when loading
             setControl(task.control);
             setTaskModel(task.model ?? null);
+            setDirectVisionMode(task.directVisionMode ?? false);
 
             // Set grouped messages for chat UI
             setGroupedMessages(processedMessages);
@@ -372,6 +375,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     setInput,
     currentTaskId,
     taskModel,
+    directVisionMode,
     isLoading,
     isLoadingSession,
     isLoadingMoreMessages,

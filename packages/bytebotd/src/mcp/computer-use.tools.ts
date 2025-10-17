@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Tool } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import {
-  ElementDetectorService,
+  EnhancedVisualDetectorService,
+  CVActivityIndicatorService,
+  HoloClientService,
   DetectedElement,
   BoundingBox,
 } from '@bytebot/cv';
@@ -11,14 +13,17 @@ import { compressPngBase64Under1MB } from './compressor';
 
 @Injectable()
 export class ComputerUseTools {
-  private readonly elementDetector = new ElementDetectorService();
   private readonly detectedElements = new Map<
     string,
     { element: DetectedElement; timestamp: number }
   >();
   private readonly elementCacheTtlMs = 5 * 60 * 1000;
 
-  constructor(private readonly computerUse: ComputerUseService) {}
+  constructor(
+    private readonly computerUse: ComputerUseService,
+    private readonly visualDetector: EnhancedVisualDetectorService,
+    private readonly cvActivity: CVActivityIndicatorService,
+  ) {}
 
   private pruneDetectedElements(): void {
     const now = Date.now();
@@ -66,6 +71,50 @@ export class ComputerUseTools {
       centerX: region.x + region.width / 2,
       centerY: region.y + region.height / 2,
     };
+  }
+
+  /**
+   * Simple semantic matching to find elements by description
+   * Matches against element.text and element.description
+   */
+  private findElementByDescription(
+    elements: DetectedElement[],
+    description: string,
+  ): DetectedElement | null {
+    if (!elements || elements.length === 0) return null;
+
+    const searchTerm = description.toLowerCase().trim();
+
+    // Exact match first
+    for (const element of elements) {
+      const elementText = (element.text || '').toLowerCase();
+      const elementDesc = (element.description || '').toLowerCase();
+
+      if (elementText === searchTerm || elementDesc === searchTerm) {
+        return element;
+      }
+    }
+
+    // Partial match
+    for (const element of elements) {
+      const elementText = (element.text || '').toLowerCase();
+      const elementDesc = (element.description || '').toLowerCase();
+
+      if (elementText.includes(searchTerm) || elementDesc.includes(searchTerm)) {
+        return element;
+      }
+    }
+
+    // Reverse partial match (description contains element text)
+    for (const element of elements) {
+      const elementText = (element.text || '').toLowerCase();
+
+      if (elementText && searchTerm.includes(elementText)) {
+        return element;
+      }
+    }
+
+    return null;
   }
 
   @Tool({
@@ -117,28 +166,29 @@ export class ComputerUseTools {
 
       const searchRegion = region ? this.normalizeRegion(region) : undefined;
 
-      const detectionConfig = {
-        enableOCR: true,
-        enableTemplateMatching: false,
-        enableEdgeDetection: true,
-        confidenceThreshold: 0.5,
-        ...(searchRegion ? { searchRegion } : {}),
-      };
-
-      const elements = await this.elementDetector.detectElements(
+      // Use EnhancedVisualDetectorService with new options format
+      const detectionResult = await this.visualDetector.detectElements(
         buffer,
-        detectionConfig,
+        null, // no template matching
+        {
+          useOCR: true,
+          useHolo: true, // Enable OmniParser detection
+          ocrRegion: searchRegion,
+          confidenceThreshold: 0.5,
+          maxResults: 50,
+          combineResults: true,
+        },
       );
+
+      const elements = detectionResult.elements;
       this.cacheDetectedElements(elements);
 
       const trimmedDescription = description.trim();
 
       let resolvedElements: DetectedElement[] = elements;
       if (!includeAll) {
-        const match = await this.elementDetector.findElementByDescription(
-          elements,
-          trimmedDescription,
-        );
+        // Simple semantic matching - find elements by text/description
+        const match = this.findElementByDescription(elements, trimmedDescription);
         resolvedElements = match ? [match] : [];
       }
 
@@ -215,13 +265,15 @@ export class ComputerUseTools {
         };
       }
 
-      const clickTarget = await this.elementDetector.getClickCoordinates(
-        cached.element,
-      );
+      // Use center coordinates from detected element
+      const clickCoordinates = {
+        x: cached.element.coordinates.centerX,
+        y: cached.element.coordinates.centerY,
+      };
 
       await this.computerUse.action({
         action: 'click_mouse',
-        coordinates: clickTarget.coordinates,
+        coordinates: clickCoordinates,
         button: 'left',
         clickCount: 1,
         description: cached.element.description,
@@ -238,9 +290,9 @@ export class ComputerUseTools {
             text: JSON.stringify({
               success: true,
               element_id,
-              coordinates_used: clickTarget.coordinates,
+              coordinates_used: clickCoordinates,
               confidence: cached.element.confidence,
-              detection_method: clickTarget.method,
+              detection_method: cached.element.metadata?.detectionMethod || 'enhanced-visual',
               element_text: cached.element.text ?? null,
             }),
           },

@@ -539,6 +539,19 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         esac
     fi
     echo ""
+
+    # Export WINDOWS_ISO_URL for docker-compose.windows-prebaked.yml VERSION environment variable
+    # This ensures the correct ISO URL is used based on user's variant selection
+    if [[ "${USE_CACHED_ISO:-false}" == "true" ]] && [[ -n "${ISO_FILENAME:-}" ]]; then
+        if [[ "$ISO_FILENAME" == "nano11-25h2.iso" ]]; then
+            export WINDOWS_ISO_URL="https://archive.org/download/nano11_25h2/nano11%2025h2.iso"
+            echo -e "${YELLOW}Using Nano11 25H2 ISO URL for prebaked image${NC}"
+        else
+            export WINDOWS_ISO_URL="https://archive.org/download/tiny11-2311/tiny11%202311%20x64.iso"
+            echo -e "${GREEN}Using Tiny11 2311 ISO URL for prebaked image${NC}"
+        fi
+        echo ""
+    fi
 fi
 
 # Change to docker directory

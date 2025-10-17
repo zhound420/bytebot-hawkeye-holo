@@ -17,8 +17,9 @@ services:
       - "3389:3389"  # RDP access
       - "9990:9990"  # Bytebotd API
     environment:
-      # Tiny11 2311 configuration (stripped Windows 11 from archive.org)
-      - VERSION=https://archive.org/download/tiny11-2311/tiny11%202311%20x64.iso
+      # Tiny11 2311 or Nano11 25H2 configuration (auto-selected by start-stack.sh)
+      # WINDOWS_ISO_URL set dynamically based on user's ISO selection (Tiny11 or Nano11)
+      - VERSION=${WINDOWS_ISO_URL:-https://archive.org/download/tiny11-2311/tiny11%202311%20x64.iso}
       - RAM_SIZE=${WINDOWS_RAM_SIZE:-6G}
       - CPU_CORES=${WINDOWS_CPU_CORES:-4}
       - DISK_SIZE=${WINDOWS_DISK_SIZE:-50G}

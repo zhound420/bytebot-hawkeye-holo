@@ -25,8 +25,9 @@ services:
       - RESOLUTION=${WINDOWS_RESOLUTION:-1920x1080}
 
       # Time sync with host + Custom port forwarding for bytebotd (9990)
-      # QEMU hostfwd syntax: tcp::host_port-:guest_port
-      - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp::9990-:9990
+      # QEMU hostfwd syntax: tcp:bind_address:host_port-:guest_port
+      # Bind to 0.0.0.0 to allow connections from other Docker containers
+      - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp:0.0.0.0:9990-:9990
 
       # BTRFS compatibility (avoids O_DIRECT requirement)
       # Allows Windows containers to work on BTRFS without ext4 loop device

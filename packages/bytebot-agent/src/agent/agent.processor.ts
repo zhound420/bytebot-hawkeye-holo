@@ -2345,198 +2345,9 @@ ${loopResult.suggestion}
       }
       this.cacheDetectedElements(elements);
 
-      if (params.includeAll) {
-        // Record detection for telemetry (includeAll mode)
-        // Extract primary method from: elements metadata, or enhancedResult.methodsUsed
-        let primaryMethod = elements[0]?.metadata?.detectionMethod || 'unknown';
-        if (primaryMethod === 'unknown' && this.lastEnhancedResult?.methodsUsed?.[0]) {
-          primaryMethod = this.lastEnhancedResult.methodsUsed[0];
-        }
-
-        const detectionEntry: DetectionHistoryEntry = {
-          timestamp: new Date(),
-          description: params.description || '(all elements)',
-          elementsFound: elements.length,
-          primaryMethod,
-          cached: !!cachedElements,
-          duration: this.lastEnhancedResult?.performance?.totalTime || 0,
-          elements: elements.slice(0, 10).map(el => ({
-            id: el.id,
-            semanticDescription: el.metadata?.semantic_caption || el.text,
-            confidence: el.confidence,
-            coordinates: { x: el.coordinates.x, y: el.coordinates.y },
-          })),
-        };
-        this.cvActivityService.recordDetection(detectionEntry);
-
-        return {
-          elements,
-          count: elements.length,
-          totalDetected: elements.length,
-          includeAll: true,
-          description: params.description,
-        };
-      }
-
-      // Track top candidates for helpful feedback when no match found
-      const topCandidates: Array<{ element: any; score: number }> = [];
-
-      // Try semantic matching with visual synonym expansion
-      let matchingElement = null;
-      if (elements.length > 0) {
-        this.logger.debug(
-          `No exact match for "${params.description}", trying semantic matching with visual synonym expansion`
-        );
-
-        // Expand functional query to include visual synonyms
-        // Example: "extensions icon" → ["extensions", "icon", "puzzle", "piece", "addons", "plugins"]
-        const expandedKeywords = expandFunctionalQuery(
-          params.description,
-          this.currentApplicationContext
-        );
-
-        this.logger.debug(
-          `Expanded query keywords: ${expandedKeywords.join(', ')}`
-        );
-
-        // Find element with highest semantic match score and track top candidates
-        let bestMatch: any = null;
-        let bestScore = 0;
-
-        for (const element of elements) {
-          const elementText =
-            element.metadata?.semantic_caption ||
-            element.text ||
-            element.description ||
-            '';
-
-          // Use semantic scoring that considers visual↔functional mappings
-          const score = scoreSemanticMatch(
-            elementText,
-            params.description,
-            this.currentApplicationContext
-          );
-
-          // Track all candidates with non-zero scores
-          if (score > 0) {
-            topCandidates.push({ element, score });
-          }
-
-          if (score > bestScore && score >= 0.25) {
-            // Lowered threshold to 25% for better recall
-            bestMatch = element;
-            bestScore = score;
-          }
-        }
-
-        // Sort top candidates by score
-        topCandidates.sort((a, b) => b.score - a.score);
-
-        if (bestMatch) {
-          this.logger.debug(
-            `Found semantic match with ${Math.round(bestScore * 100)}% confidence: "${bestMatch.metadata?.semantic_caption || bestMatch.text}"`
-          );
-          matchingElement = bestMatch;
-        }
-      }
-
-      // If still no match found, ask primary model for visual description
-      // This is the final fallback before returning empty result
-      if (!matchingElement && params.description && elements.length > 0) {
-        this.logger.debug(
-          `No match found after all CV methods, asking primary model for visual description`
-        );
-
-        try {
-          const enrichedKeywords = await this.getVisualDescriptionFromLLM(
-            params.description,
-            this.currentApplicationContext
-          );
-
-          if (enrichedKeywords.length > 0) {
-            this.logger.debug(
-              `Retrying element matching with enriched keywords: ${enrichedKeywords.join(', ')}`
-            );
-
-            // Try matching again with enriched keywords
-            for (const element of elements) {
-              const elementText = (
-                element.metadata?.semantic_caption ||
-                element.text ||
-                element.description ||
-                ''
-              ).toLowerCase();
-
-              // Check if any enriched keyword matches
-              const matchCount = enrichedKeywords.filter(kw =>
-                elementText.includes(kw.toLowerCase())
-              ).length;
-
-              if (matchCount > 0) {
-                const score = matchCount / enrichedKeywords.length;
-                this.logger.debug(
-                  `Found match using LLM-enriched keywords with ${Math.round(score * 100)}% overlap: "${element.metadata?.semantic_caption || element.text}"`
-                );
-                matchingElement = element;
-
-                // Track that this element was found using cached keywords for feedback loop
-                this.elementCacheUsage.set(element.id, {
-                  elementDescription: params.description,
-                  applicationName: this.currentApplicationContext,
-                  usedCachedKeywords: true
-                });
-
-                // Record this as training data for caption fine-tuning
-                // The LLM provided better keywords than the visual caption alone
-                const visualCaption = element.metadata?.semantic_caption || element.text || '';
-                const cachedEntry = this.visualDescriptionCache.cache[this.currentApplicationContext]?.[params.description];
-
-                if (visualCaption && cachedEntry) {
-                  this.captionTrainingCollector.recordLLMCorrection(
-                    visualCaption,
-                    params.description,
-                    cachedEntry.description,
-                    enrichedKeywords,
-                    {
-                      application: this.currentApplicationContext,
-                      coordinates: {
-                        x: element.coordinates.x,
-                        y: element.coordinates.y,
-                        width: element.coordinates.width,
-                        height: element.coordinates.height
-                      }
-                    }
-                  );
-
-                  this.logger.debug(
-                    `📊 Recorded training data: visual="${visualCaption}" → functional="${params.description}"`
-                  );
-                }
-
-                break;
-              }
-            }
-          }
-        } catch (error) {
-          this.logger.warn(`Visual description fallback failed: ${error.message}`);
-          // Continue without LLM assistance
-        }
-      }
-
-      const matchingElements = matchingElement ? [matchingElement] : [];
-
-      // If no match and topCandidates is empty (all scores = 0), show top elements by confidence
-      let finalTopCandidates = topCandidates.slice(0, 10);
-      if (matchingElements.length === 0 && finalTopCandidates.length === 0 && elements.length > 0) {
-        this.logger.debug(
-          `Semantic matching returned no scores, showing top ${Math.min(10, elements.length)} elements by confidence`
-        );
-        // Sort by confidence and show top 10 as candidates with score 0
-        finalTopCandidates = elements
-          .sort((a, b) => b.confidence - a.confidence)
-          .slice(0, 10)
-          .map(el => ({ element: el, score: 0 }));
-      }
+      // SIMPLIFIED: Return all Holo elements directly - let the AI model choose
+      // No semantic matching, no filtering, no LLM fallback
+      // The model is smart enough to pick from a numbered SOM list
 
       // Record detection for telemetry
       // Extract primary method from: elements metadata, or enhancedResult.methodsUsed
@@ -2547,7 +2358,7 @@ ${loopResult.suggestion}
 
       const detectionEntry: DetectionHistoryEntry = {
         timestamp: new Date(),
-        description: params.description || '',
+        description: params.description || '(all elements)',
         elementsFound: elements.length,
         primaryMethod,
         cached: !!cachedElements,
@@ -2561,25 +2372,17 @@ ${loopResult.suggestion}
       };
       this.cvActivityService.recordDetection(detectionEntry);
 
-      // Record successful query pattern for learning feedback
-      if (matchingElements.length > 0 && params.description) {
-        const avgConfidence =
-          matchingElements.reduce((sum, el) => sum + el.confidence, 0) /
-          matchingElements.length;
-        this.recordSuccessfulPattern(
-          params.description,
-          avgConfidence,
-          this.currentApplicationContext
-        );
-      }
+      this.logger.debug(
+        `Returning all ${elements.length} detected elements with SOM numbering - model will choose`
+      );
 
+      // Return ALL elements - model chooses from SOM numbered list [0], [1], [2]...
       return {
-        elements: matchingElements,
-        count: matchingElements.length,
+        elements,
+        count: elements.length,
         totalDetected: elements.length,
-        includeAll: false,
+        includeAll: true,  // Signal that we're returning all elements
         description: params.description,
-        topCandidates: matchingElements.length === 0 ? finalTopCandidates : undefined,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

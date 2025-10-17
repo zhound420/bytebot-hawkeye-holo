@@ -13,18 +13,20 @@
     2. Extract package with 7za.exe (10-30s) or Expand-Archive fallback (1-2min)
     3. Install Node.js portable
     4. Create data directories
-    5. Create scheduled task for auto-start
+    5. Create startup shortcut for auto-start
     5.5. Configure Windows Firewall for port 9990
-    6. Start service immediately
+    5.7. Install applications (VS Code, Firefox, Thunderbird) with desktop icons
+    6. Wait for user login, then start service
     7. Wait for service to be ready
     8. Verify health check
     9. Check heartbeat file
     10. Start tray icon monitor
 
 .NOTES
-    Expected execution time: 30-60 seconds (with 7za.exe) or 60-120 seconds (fallback)
+    Expected execution time: 5-10 minutes (includes Node.js + 3 applications download/install)
     7za.exe is bundled in C:\OEM\ (no network dependency)
     Runs as SYSTEM user during first boot
+    Installs: VS Code, Firefox, Thunderbird (all with desktop shortcuts)
 #>
 
 [CmdletBinding()]
@@ -212,10 +214,9 @@ Write-Log "Step 4: Creating data directories..."
 
 Write-Log ""
 
-# Step 5: Create scheduled task for auto-start
-Write-Log "Step 5: Creating Windows Service (Scheduled Task)..."
+# Step 5: Create startup script for auto-start via Windows Startup folder
+Write-Log "Step 5: Creating Windows Startup Script..."
 
-$TaskName = $ServiceName
 $StartupScriptPath = Join-Path $BytebotdDir "start-service.ps1"
 $NodeExe = Join-Path $NodeInstallPath "node.exe"
 
@@ -268,50 +269,33 @@ try {
 }
 
 try {
-    # Delete existing task if present
-    Write-Log "Removing existing scheduled task if present..."
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    # Remove old scheduled task approach (if present)
+    Write-Log "Removing old scheduled task if present..."
+    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
 
     # Stop any running instances
     Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-    Write-Log "Creating scheduled task with PowerShell cmdlets..."
+    Write-Log "Creating startup shortcut for interactive desktop session..."
 
-    # Create scheduled task action (PowerShell execution)
-    $Action = New-ScheduledTaskAction `
-        -Execute "powershell.exe" `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+    # Create shortcut in Windows Startup folder (runs on user login with desktop access)
+    # This approach ensures bytebotd runs in the interactive desktop session where GUI automation works
+    $StartupFolder = [System.Environment]::GetFolderPath('Startup')
+    $ShortcutPath = Join-Path $StartupFolder "Bytebotd Desktop Agent.lnk"
 
-    # Create trigger (on boot)
-    $Trigger = New-ScheduledTaskTrigger -AtStartup
+    # Create WScript.Shell COM object to create shortcut
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+    $Shortcut.TargetPath = "powershell.exe"
+    $Shortcut.Arguments = "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+    $Shortcut.WorkingDirectory = $BytebotdDir
+    $Shortcut.Description = "Bytebot Desktop Daemon - AI agent computer control service"
+    $Shortcut.Save()
 
-    # Create principal (run as SYSTEM with highest privileges)
-    $Principal = New-ScheduledTaskPrincipal `
-        -UserId "NT AUTHORITY\SYSTEM" `
-        -LogonType ServiceAccount `
-        -RunLevel Highest
-
-    # Create settings (auto-restart on failure)
-    $Settings = New-ScheduledTaskSettingsSet `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable `
-        -RestartCount 3 `
-        -RestartInterval (New-TimeSpan -Minutes 1)
-
-    # Register scheduled task
-    Register-ScheduledTask `
-        -TaskName $TaskName `
-        -Action $Action `
-        -Trigger $Trigger `
-        -Principal $Principal `
-        -Settings $Settings `
-        -Description "Bytebot Desktop Daemon - AI agent computer control service" `
-        -Force | Out-Null
-
-    Write-Log "✓ Scheduled task created: $TaskName" "SUCCESS"
+    Write-Log "✓ Startup shortcut created: $ShortcutPath" "SUCCESS"
+    Write-Log "Bytebotd will auto-start when user logs in (interactive desktop session)" "SUCCESS"
 } catch {
-    Write-Log "ERROR: Failed to create scheduled task: $_" "ERROR"
+    Write-Log "ERROR: Failed to create startup shortcut: $_" "ERROR"
     exit 1
 }
 
@@ -342,12 +326,104 @@ try {
 
 Write-Log ""
 
-# Step 6: Start service
-Write-Log "Step 6: Starting Bytebotd service..."
+# Step 5.7: Install common applications (VS Code, Firefox, Thunderbird)
+Write-Log "Step 5.7: Installing common applications..."
+
+$PublicDesktop = "C:\Users\Public\Desktop"
+if (-not (Test-Path $PublicDesktop)) {
+    New-Item -ItemType Directory -Path $PublicDesktop -Force | Out-Null
+}
+
+# Install VS Code
+Write-Log "Downloading VS Code..."
+$VsCodeUrl = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
+$VsCodeInstaller = Join-Path $env:TEMP "VSCodeUserSetup.exe"
 
 try {
-    Start-ScheduledTask -TaskName $TaskName
-    Write-Log "✓ Service started" "SUCCESS"
+    Invoke-WebRequest -Uri $VsCodeUrl -OutFile $VsCodeInstaller -UseBasicParsing
+    Write-Log "Installing VS Code (silent mode)..."
+    Start-Process -FilePath $VsCodeInstaller -ArgumentList "/VERYSILENT /NORESTART /MERGETASKS=!runcode,desktopicon" -Wait
+    Remove-Item $VsCodeInstaller -Force -ErrorAction SilentlyContinue
+    Write-Log "✓ VS Code installed" "SUCCESS"
+} catch {
+    Write-Log "WARN: Failed to install VS Code: $_" "WARN"
+}
+
+# Install Firefox
+Write-Log "Downloading Firefox..."
+$FirefoxUrl = "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US"
+$FirefoxInstaller = Join-Path $env:TEMP "FirefoxSetup.exe"
+
+try {
+    Invoke-WebRequest -Uri $FirefoxUrl -OutFile $FirefoxInstaller -UseBasicParsing
+    Write-Log "Installing Firefox (silent mode)..."
+    Start-Process -FilePath $FirefoxInstaller -ArgumentList "/S /DesktopShortcut=true" -Wait
+    Remove-Item $FirefoxInstaller -Force -ErrorAction SilentlyContinue
+    Write-Log "✓ Firefox installed" "SUCCESS"
+} catch {
+    Write-Log "WARN: Failed to install Firefox: $_" "WARN"
+}
+
+# Install Thunderbird (Outlook alternative)
+Write-Log "Downloading Thunderbird..."
+$ThunderbirdUrl = "https://download.mozilla.org/?product=thunderbird-latest&os=win64&lang=en-US"
+$ThunderbirdInstaller = Join-Path $env:TEMP "ThunderbirdSetup.exe"
+
+try {
+    Invoke-WebRequest -Uri $ThunderbirdUrl -OutFile $ThunderbirdInstaller -UseBasicParsing
+    Write-Log "Installing Thunderbird (silent mode)..."
+    Start-Process -FilePath $ThunderbirdInstaller -ArgumentList "/S /DesktopShortcut=true" -Wait
+    Remove-Item $ThunderbirdInstaller -Force -ErrorAction SilentlyContinue
+    Write-Log "✓ Thunderbird installed" "SUCCESS"
+} catch {
+    Write-Log "WARN: Failed to install Thunderbird: $_" "WARN"
+}
+
+Write-Log "✓ Application installation complete" "SUCCESS"
+Write-Log ""
+
+# Step 6: Wait for user login and start service
+Write-Log "Step 6: Waiting for user login before starting service..."
+
+try {
+    # Wait for interactive user session (autologin should happen within 2 minutes)
+    $MaxLoginWait = 120  # 2 minutes maximum wait
+    $LoginCheckInterval = 5  # Check every 5 seconds
+    $ElapsedTime = 0
+    $UserLoggedIn = $false
+
+    Write-Log "Waiting for autologin to complete (max ${MaxLoginWait}s)..."
+
+    while ($ElapsedTime -lt $MaxLoginWait) {
+        # Check for active console session (Session ID 1 or 2 is typically the interactive desktop)
+        $ConsoleSessions = qwinsta | Select-String "Active|Console" | Select-String -NotMatch "services|Disc"
+
+        if ($ConsoleSessions) {
+            Write-Log "✓ User session detected" "SUCCESS"
+            $UserLoggedIn = $true
+            break
+        }
+
+        Start-Sleep -Seconds $LoginCheckInterval
+        $ElapsedTime += $LoginCheckInterval
+
+        if ($ElapsedTime % 20 -eq 0) {
+            Write-Log "Still waiting for login... (${ElapsedTime}s elapsed)"
+        }
+    }
+
+    if (-not $UserLoggedIn) {
+        Write-Log "WARN: Autologin timeout after ${MaxLoginWait}s, starting service anyway" "WARN"
+        Write-Log "Service may not have desktop access until user logs in" "WARN"
+    }
+
+    # Start the service in the user's session context
+    Write-Log "Starting Bytebotd service in interactive session..."
+    Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`"" `
+        -WorkingDirectory $BytebotdDir
+
+    Write-Log "✓ Service start initiated" "SUCCESS"
 } catch {
     Write-Log "ERROR: Failed to start service: $_" "ERROR"
     exit 1
@@ -432,7 +508,7 @@ Write-Log ""
 Write-Log "Bytebotd Desktop Agent is now running."
 Write-Log ""
 Write-Log "Service status:"
-Write-Log "  - Scheduled Task: $TaskName"
+Write-Log "  - Auto-start: Windows Startup folder (interactive desktop session)"
 Write-Log "  - Port: 9990"
 Write-Log "  - Logs: $LogDir"
 Write-Log "  - Heartbeat: $HeartbeatFile"

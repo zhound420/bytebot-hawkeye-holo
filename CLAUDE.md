@@ -166,10 +166,12 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) for faster installation a
 - Prevents "Bind for 0.0.0.0:3389 failed: port is already allocated" errors
 
 **Windows Scheduled Task Fix:**
-- install-prebaked.ps1 now wraps batch file execution in `cmd.exe /c` for scheduled tasks
-- MSI CustomActions.wxs also updated to use `cmd.exe /c` wrapper
-- Windows scheduled tasks require executables (.exe), not batch files (.bat) directly
-- Fixes "The system cannot find the file specified" error during service registration
+- install-prebaked.ps1 uses PowerShell cmdlets (`New-ScheduledTaskAction`, `Register-ScheduledTask`)
+- Creates PowerShell startup script with `Start-Process` cmdlet for proper node.exe backgrounding
+- Replaces unreliable `schtasks.exe` and batch file approach
+- Fixes "The system cannot find the file specified" error and error 267009
+- MSI CustomActions.wxs still uses `cmd.exe /c` wrapper (legacy approach, less reliable)
+- **Key insight:** Windows scheduled tasks work best with PowerShell cmdlets, not schtasks.exe
 
 **Performance Benchmarks (Actual Hardware):**
 

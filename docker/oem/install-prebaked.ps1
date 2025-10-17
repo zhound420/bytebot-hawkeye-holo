@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Installs Bytebotd Desktop Agent from pre-baked package (PowerShell-based installer)
@@ -9,15 +9,20 @@
     built entirely on Linux without WiX Toolset.
 
     Installation steps:
-    1. Extract package to C:\Program Files\Bytebot\
-    2. Rebuild Sharp module for Windows binaries
-    3. Create scheduled task for auto-start
-    4. Start service immediately
-    5. Set up tray icon
-    6. Verify health check
+    1. Verify package exists
+    2. Extract package with 7za.exe (10-30s) or Expand-Archive fallback (1-2min)
+    3. Install Node.js portable
+    4. Create data directories
+    5. Create scheduled task for auto-start
+    6. Start service immediately
+    7. Wait for service to be ready
+    8. Verify health check
+    9. Check heartbeat file
+    10. Start tray icon monitor
 
 .NOTES
-    Expected execution time: 30-40 seconds
+    Expected execution time: 30-60 seconds (with 7za.exe) or 60-120 seconds (fallback)
+    7za.exe is bundled in C:\OEM\ (no network dependency)
     Runs as SYSTEM user during first boot
 #>
 
@@ -78,6 +83,9 @@ Write-Log ""
 # Step 2: Extract package
 Write-Log "Step 2: Extracting package to $InstallRoot..."
 
+# Use local 7za.exe from OEM folder (bundled with installer)
+$SevenZipExe = "C:\OEM\7za.exe"
+
 if (Test-Path $InstallRoot) {
     Write-Log "Removing existing installation..." "WARN"
     Remove-Item -Recurse -Force $InstallRoot -ErrorAction SilentlyContinue
@@ -87,9 +95,30 @@ try {
     # Create install directory
     New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 
-    # Extract ZIP
-    Write-Log "Extracting ZIP archive (this may take 1-2 minutes)..."
-    Expand-Archive -Path $PackageZip -DestinationPath $InstallRoot -Force
+    # Extract ZIP (7za.exe multi-threaded or PowerShell fallback)
+    $ExtractionStart = Get-Date
+
+    if (Test-Path $SevenZipExe) {
+        Write-Log "Using 7za.exe multi-threaded extraction (10-30 seconds)..."
+        Write-Log "7za.exe location: $SevenZipExe"
+        $Result = & $SevenZipExe x -y "-o$InstallRoot" $PackageZip 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "WARN: 7za.exe extraction failed (exit code $LASTEXITCODE), falling back to Expand-Archive..." "WARN"
+            Expand-Archive -Path $PackageZip -DestinationPath $InstallRoot -Force
+            $ExtractionTime = ((Get-Date) - $ExtractionStart).TotalSeconds
+            Write-Log "✓ Expand-Archive completed in $([math]::Round($ExtractionTime, 1))s" "SUCCESS"
+        } else {
+            $ExtractionTime = ((Get-Date) - $ExtractionStart).TotalSeconds
+            Write-Log "✓ 7za.exe extraction completed in $([math]::Round($ExtractionTime, 1))s" "SUCCESS"
+        }
+    } else {
+        Write-Log "WARN: 7za.exe not found at $SevenZipExe, using Expand-Archive fallback..." "WARN"
+        Write-Log "Using Expand-Archive (this may take 1-2 minutes, slower fallback)..."
+        Expand-Archive -Path $PackageZip -DestinationPath $InstallRoot -Force
+        $ExtractionTime = ((Get-Date) - $ExtractionStart).TotalSeconds
+        Write-Log "✓ Expand-Archive completed in $([math]::Round($ExtractionTime, 1))s" "SUCCESS"
+    }
 
     # Move contents from bytebot subdirectory to root if needed
     $BytebotSubdir = Join-Path $InstallRoot "bytebot"
@@ -122,8 +151,17 @@ if (-not (Test-Path $NodeInstallPath)) {
         Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip -UseBasicParsing
         Write-Log "✓ Downloaded Node.js"
 
-        # Extract to Program Files
-        Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+        # Extract to Program Files (use local 7za.exe if available)
+        if (Test-Path $SevenZipExe) {
+            Write-Log "Extracting Node.js with 7za.exe..."
+            & $SevenZipExe x -y "-oC:\Program Files" $NodeZip 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "7za.exe failed, using Expand-Archive fallback..."
+                Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+            }
+        } else {
+            Expand-Archive -Path $NodeZip -DestinationPath "C:\Program Files" -Force
+        }
 
         # Rename extracted folder
         $ExtractedFolder = Join-Path "C:\Program Files" "node-$NodeVersion-win-x64"
@@ -177,30 +215,98 @@ Write-Log ""
 Write-Log "Step 5: Creating Windows Service (Scheduled Task)..."
 
 $TaskName = $ServiceName
-$StartScript = Join-Path $BytebotdDir "start-bytebotd.bat"
+$StartupScriptPath = Join-Path $BytebotdDir "start-service.ps1"
+$NodeExe = Join-Path $NodeInstallPath "node.exe"
 
-# Check if start script exists, create if missing
-if (-not (Test-Path $StartScript)) {
-    Write-Log "Creating start-bytebotd.bat..."
-    $BatchContent = @'
-@echo off
-cd /d "C:\Program Files\Bytebot\packages\bytebotd"
-node dist\main.js > "C:\Bytebot-Logs\bytebotd-stdout.log" 2>&1
-'@
-    Set-Content -Path $StartScript -Value $BatchContent
+Write-Log "PowerShell startup script: $StartupScriptPath"
+Write-Log "Node.js executable: $NodeExe"
+
+# Create PowerShell startup script using Start-Process (proper backgrounding)
+Write-Log "Creating PowerShell startup script..."
+
+$StartupScript = @"
+`$ErrorActionPreference = "SilentlyContinue"
+
+# Change to bytebotd directory
+Set-Location "C:\Program Files\Bytebot\packages\bytebotd"
+
+# Kill any existing node processes (prevent port conflicts)
+Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# Wait for port to be released
+Start-Sleep -Seconds 2
+
+# Start bytebotd with Start-Process (proper backgrounding)
+Start-Process -FilePath "$NodeExe" ``
+    -ArgumentList "dist\main.js" ``
+    -NoNewWindow ``
+    -RedirectStandardOutput "C:\Bytebot-Logs\bytebotd-stdout.log" ``
+    -RedirectStandardError "C:\Bytebot-Logs\bytebotd-stderr.log" ``
+    -WorkingDirectory "C:\Program Files\Bytebot\packages\bytebotd"
+
+# Give service time to start
+Start-Sleep -Seconds 5
+
+# Verify service started
+`$nodeProcess = Get-Process -Name node -ErrorAction SilentlyContinue
+if (`$nodeProcess) {
+    Write-Host "Bytebotd started successfully (PID: `$(`$nodeProcess.Id))"
+    exit 0
+} else {
+    Write-Host "ERROR: Bytebotd failed to start"
+    exit 1
+}
+"@
+
+try {
+    Set-Content -Path $StartupScriptPath -Value $StartupScript -Encoding UTF8 -Force -ErrorAction Stop
+    Write-Log "✓ PowerShell startup script created" "SUCCESS"
+} catch {
+    Write-Log "ERROR: Failed to create startup script: $_" "ERROR"
+    exit 1
 }
 
 try {
     # Delete existing task if present
-    schtasks /delete /tn "$TaskName" /f 2>&1 | Out-Null
+    Write-Log "Removing existing scheduled task if present..."
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-    # Create scheduled task
-    $TaskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$StartScript`""
-    $TaskTrigger = New-ScheduledTaskTrigger -AtStartup
-    $TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    $TaskPrincipal = New-ScheduledTaskPrincipal -UserID "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    # Stop any running instances
+    Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-    Register-ScheduledTask -TaskName $TaskName -Action $TaskAction -Trigger $TaskTrigger -Settings $TaskSettings -Principal $TaskPrincipal -Force | Out-Null
+    Write-Log "Creating scheduled task with PowerShell cmdlets..."
+
+    # Create scheduled task action (PowerShell execution)
+    $Action = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+
+    # Create trigger (on boot)
+    $Trigger = New-ScheduledTaskTrigger -AtStartup
+
+    # Create principal (run as SYSTEM with highest privileges)
+    $Principal = New-ScheduledTaskPrincipal `
+        -UserId "NT AUTHORITY\SYSTEM" `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+
+    # Create settings (auto-restart on failure)
+    $Settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1)
+
+    # Register scheduled task
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $Action `
+        -Trigger $Trigger `
+        -Principal $Principal `
+        -Settings $Settings `
+        -Description "Bytebot Desktop Daemon - AI agent computer control service" `
+        -Force | Out-Null
 
     Write-Log "✓ Scheduled task created: $TaskName" "SUCCESS"
 } catch {

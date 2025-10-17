@@ -267,9 +267,15 @@ set SERVICE_WRAPPER=%INSTALL_ROOT%\run-service.bat
   echo set LOG_FILE=%LOG_DIR%\bytebotd-service-%%date:~-4,4%%%%date:~-10,2%%%%date:~-7,2%%-%%time:~0,2%%%%time:~3,2%%%%time:~6,2%%.log
   echo set LOG_FILE=%%LOG_FILE: =0%%
   echo.
-  echo REM Hawkeye/Holo 1.5-7B environment variables
+  echo REM Hawkeye/Holo 1.5-7B environment variables - Load dynamic IP from container
+  echo if exist "C:\OEM\holo-config.bat" (
+  echo   call "C:\OEM\holo-config.bat"
+  echo   echo [%%date%% %%time%%] Holo URL: %%HOLO_URL%% ^>^> "%%LOG_FILE%%"
+  echo ^) else (
+  echo   echo [%%date%% %%time%%] WARNING: Holo config not found, using default ^>^> "%%LOG_FILE%%"
+  echo   set HOLO_URL=http://bytebot-holo:9989
+  echo ^)
   echo set BYTEBOT_CV_USE_HOLO=true
-  echo set HOLO_URL=http://bytebot-holo:9989
   echo set HOLO_TIMEOUT=120000
   echo set BYTEBOT_ENFORCE_CV_FIRST=true
   echo set BYTEBOT_GRID_OVERLAY=true

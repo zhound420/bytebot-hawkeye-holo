@@ -86,6 +86,8 @@ services:
     networks:
       - bytebot-network
     stop_grace_period: 2m
+    # Custom entrypoint to resolve Holo IP before starting Windows
+    entrypoint: ["/oem/docker-entrypoint-wrapper.sh"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8006 || exit 1"]
       interval: 30s

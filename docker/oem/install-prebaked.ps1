@@ -232,6 +232,24 @@ $StartupScript = @"
 # Change to bytebotd directory
 Set-Location "C:\Program Files\Bytebot\packages\bytebotd"
 
+# Load Holo IP configuration from container
+if (Test-Path "C:\OEM\holo-config.bat") {
+    `$holoConfigContent = Get-Content "C:\OEM\holo-config.bat"
+    foreach (`$line in `$holoConfigContent) {
+        if (`$line -match "set HOLO_URL=(.+)") {
+            `$env:HOLO_URL = `$matches[1]
+            Write-Host "Loaded Holo URL: `$(`$env:HOLO_URL)"
+        }
+    }
+} else {
+    Write-Host "WARNING: Holo config not found, using default"
+    `$env:HOLO_URL = "http://bytebot-holo:9989"
+}
+
+# Set Holo environment variables
+`$env:BYTEBOT_CV_USE_HOLO = "true"
+`$env:HOLO_TIMEOUT = "120000"
+
 # Kill any existing node processes (prevent port conflicts)
 Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
 

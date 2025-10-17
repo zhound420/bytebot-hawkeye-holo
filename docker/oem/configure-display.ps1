@@ -114,9 +114,9 @@ Write-Log ""
 
 # Step 3: Note about display configuration
 Write-Log "Step 3: Display configuration complete..."
-Write-Log "  - Resolution: Set via QEMU QXL driver (1280x960)"
+Write-Log "  - Resolution: Set via QEMU VirtIO GPU driver (defaults to 1280x720)"
 Write-Log "  - DPI: Standard 96 DPI (100% scaling)"
-Write-Log "  - Bytebotd will use 1280x960 resolution"
+Write-Log "  - Note: VirtIO GPU defaults to 720p (QXL would support 960p but not available)"
 
 Write-Log ""
 
@@ -128,7 +128,7 @@ Write-Log "  Duration: $([math]::Round($ConfigDuration.TotalSeconds, 1))s"
 Write-Log "========================================"
 Write-Log ""
 Write-Log "Configuration applied:"
-Write-Log "  - Resolution: 1280x960 (via QEMU QXL)"
+Write-Log "  - Resolution: 1280x720 (via QEMU VirtIO GPU, driver default)"
 Write-Log "  - DPI Scaling: 100% (96 DPI standard)"
 Write-Log "  - Log file: $LogFile"
 Write-Log ""

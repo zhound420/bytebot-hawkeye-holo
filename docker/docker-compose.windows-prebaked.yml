@@ -27,8 +27,9 @@ services:
       # Time sync with host + Custom port forwarding for bytebotd (9990)
       # QEMU hostfwd syntax: tcp:bind_address:host_port-:guest_port
       # Bind to 0.0.0.0 to allow connections from other Docker containers
-      # Note: QXL not available in dockur/windows QEMU. Using default virtio-vga.
-      # Resolution set via RESOLUTION env var and configure-display.ps1
+      # Note: QXL not available in dockur/windows QEMU. Using default VirtIO GPU.
+      # VirtIO GPU limitation: Defaults to 1280x720 regardless of RESOLUTION env var
+      # (QXL would support 1280x960, but qemu-system-modules-spice not installed)
       - ARGUMENTS=-rtc base=localtime -nic user,model=virtio-net-pci,hostfwd=tcp:0.0.0.0:9990-:9990
 
       # BTRFS compatibility (avoids O_DIRECT requirement)

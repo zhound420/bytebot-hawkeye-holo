@@ -14,6 +14,7 @@
     3. Install Node.js portable
     4. Create data directories
     5. Create scheduled task for auto-start
+    5.5. Configure Windows Firewall for port 9990
     6. Start service immediately
     7. Wait for service to be ready
     8. Verify health check
@@ -312,6 +313,31 @@ try {
 } catch {
     Write-Log "ERROR: Failed to create scheduled task: $_" "ERROR"
     exit 1
+}
+
+Write-Log ""
+
+# Step 5.5: Configure Windows Firewall
+Write-Log "Step 5.5: Configuring Windows Firewall..."
+
+try {
+    # Remove existing rule if present
+    Remove-NetFirewallRule -DisplayName "Bytebotd Desktop Agent" -ErrorAction SilentlyContinue
+
+    # Create firewall rule for port 9990 (allow inbound connections)
+    New-NetFirewallRule `
+        -DisplayName "Bytebotd Desktop Agent" `
+        -Direction Inbound `
+        -Protocol TCP `
+        -LocalPort 9990 `
+        -Action Allow `
+        -Profile Any `
+        -Description "Allow inbound connections to Bytebotd API on port 9990" | Out-Null
+
+    Write-Log "✓ Firewall rule created for port 9990" "SUCCESS"
+} catch {
+    Write-Log "WARN: Failed to create firewall rule: $_" "WARN"
+    Write-Log "You may need to manually allow port 9990" "WARN"
 }
 
 Write-Log ""

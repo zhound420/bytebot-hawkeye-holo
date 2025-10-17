@@ -15,7 +15,7 @@
     4. Create data directories
     5. Create startup shortcut for auto-start
     5.5. Configure Windows Firewall for port 9990
-    5.7. Install applications (VS Code, Firefox, Thunderbird) with desktop icons
+    5.7. Install applications (VS Code, Firefox) with desktop icons
     6. Wait for user login, then start service
     7. Wait for service to be ready
     8. Verify health check
@@ -23,10 +23,10 @@
     10. Start tray icon monitor
 
 .NOTES
-    Expected execution time: 5-10 minutes (includes Node.js + 3 applications download/install)
+    Expected execution time: 4-8 minutes (includes Node.js + 2 applications download/install)
     7za.exe is bundled in C:\OEM\ (no network dependency)
     Runs as SYSTEM user during first boot
-    Installs: VS Code, Firefox, Thunderbird (all with desktop shortcuts)
+    Installs: VS Code, Firefox (both with desktop shortcuts)
 #>
 
 [CmdletBinding()]
@@ -326,7 +326,7 @@ try {
 
 Write-Log ""
 
-# Step 5.7: Install common applications (VS Code, Firefox, Thunderbird)
+# Step 5.7: Install common applications (VS Code, Firefox)
 Write-Log "Step 5.7: Installing common applications..."
 
 $PublicDesktop = "C:\Users\Public\Desktop"
@@ -362,21 +362,6 @@ try {
     Write-Log "✓ Firefox installed" "SUCCESS"
 } catch {
     Write-Log "WARN: Failed to install Firefox: $_" "WARN"
-}
-
-# Install Thunderbird (Outlook alternative)
-Write-Log "Downloading Thunderbird..."
-$ThunderbirdUrl = "https://download.mozilla.org/?product=thunderbird-latest&os=win64&lang=en-US"
-$ThunderbirdInstaller = Join-Path $env:TEMP "ThunderbirdSetup.exe"
-
-try {
-    Invoke-WebRequest -Uri $ThunderbirdUrl -OutFile $ThunderbirdInstaller -UseBasicParsing
-    Write-Log "Installing Thunderbird (silent mode)..."
-    Start-Process -FilePath $ThunderbirdInstaller -ArgumentList "/S /DesktopShortcut=true" -Wait
-    Remove-Item $ThunderbirdInstaller -Force -ErrorAction SilentlyContinue
-    Write-Log "✓ Thunderbird installed" "SUCCESS"
-} catch {
-    Write-Log "WARN: Failed to install Thunderbird: $_" "WARN"
 }
 
 Write-Log "✓ Application installation complete" "SUCCESS"

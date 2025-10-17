@@ -17,6 +17,12 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
+  - model_name: claude-haiku-4.5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
   - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
@@ -94,6 +100,19 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
+  # OpenAI GPT Image models (Image Generation)
+  - model_name: gpt-image-1
+    litellm_params:
+      model: openai/gpt-image-1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gpt-image-1-mini
+    litellm_params:
+      model: openai/gpt-image-1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: true
   # OpenAI o-series reasoning models
   - model_name: o3
     litellm_params:
@@ -196,6 +215,18 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
+  - model_name: qwen3-vl-8b-instruct
+    litellm_params:
+      model: openrouter/qwen/qwen3-vl-8b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: qwen3-vl-8b-thinking
+    litellm_params:
+      model: openrouter/qwen/qwen3-vl-8b-thinking
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
   - model_name: openrouter-claude-3.5-sonnet
     litellm_params:
       model: openrouter/anthropic/claude-3.5-sonnet
@@ -268,6 +299,12 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
+  - model_name: openrouter-claude-haiku-4.5
+    litellm_params:
+      model: openrouter/anthropic/claude-haiku-4-5
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
   - model_name: openrouter-mistral-large
     litellm_params:
       model: openrouter/mistralai/mistral-large
@@ -299,6 +336,19 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
+  # OpenAI GPT-5 Image series (Combined text + image generation)
+  - model_name: openrouter-gpt-5-image
+    litellm_params:
+      model: openrouter/openai/gpt-5-image
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: openrouter-gpt-5-image-mini
+    litellm_params:
+      model: openrouter/openai/gpt-5-image-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: true
   # DeepSeek V3 series
   - model_name: openrouter-deepseek-chat-v3.1
     litellm_params:
@@ -362,6 +412,13 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
+  # inclusionAI Ling series (Trillion-parameter sparse models)
+  - model_name: openrouter-ling-1t
+    litellm_params:
+      model: openrouter/inclusionai/ling-1t
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      supports_vision: false
   # Local LMStudio models - commented out (inaccessible from Docker container)
   # Uncomment if LMStudio is running and accessible at http://192.168.4.250:1234
   # - model_name: local-lmstudio-ui-tars-72b-dpo

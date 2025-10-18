@@ -71,19 +71,22 @@ class Holo15:
 
             # Fix for decoder_config.to_dict() bug in transformers 4.49.0+
             # Load config and ensure decoder_config is a proper config object
-            from transformers import AutoConfig, PretrainedConfig
+            from transformers import AutoConfig
+            from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
             config = AutoConfig.from_pretrained(
                 self.model_repo,
                 trust_remote_code=settings.trust_remote_code,
                 cache_dir=str(settings.cache_dir) if settings.cache_models else None,
             )
 
-            # Convert dict configs to PretrainedConfig objects if needed
+            # Convert dict configs to proper config objects (CRITICAL for text generation)
+            # text_config must be Qwen2Config, not generic PretrainedConfig
             if hasattr(config, 'text_config') and isinstance(config.text_config, dict):
-                config.text_config = PretrainedConfig.from_dict(config.text_config)
+                config.text_config = Qwen2Config(**config.text_config)
 
             if hasattr(config, 'vision_config') and isinstance(config.vision_config, dict):
-                config.vision_config = PretrainedConfig.from_dict(config.vision_config)
+                from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import Qwen2_5_VLVisionConfig
+                config.vision_config = Qwen2_5_VLVisionConfig(**config.vision_config)
 
             # Load model with fixed config
             model = AutoModelForImageTextToText.from_pretrained(

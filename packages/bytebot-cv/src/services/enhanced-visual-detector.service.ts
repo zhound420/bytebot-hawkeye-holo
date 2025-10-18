@@ -201,7 +201,7 @@ export class EnhancedVisualDetectorService {
       device: 'loading',  // Will be updated after response
       performance_profile: performanceProfile,
       performanceProfile: performanceProfile,  // Alias for UI compatibility
-      quantization: 'Q4_K_M',  // Default quantization
+      quantization: 'bfloat16',  // Transformers uses bfloat16, not GGUF Q4_K_M
     });
 
     try {
@@ -243,7 +243,7 @@ export class EnhancedVisualDetectorService {
         performanceProfile: response.profile || options.holoPerformanceProfile || 'balanced',  // Alias
         processing_time_ms: response.processing_time_ms,
         processingTimeMs: response.processing_time_ms,  // Alias
-        quantization: 'Q4_K_M',  // Default quantization
+        quantization: 'bfloat16',  // Transformers uses bfloat16, not GGUF Q4_K_M
         detection_status: response.count > 0
           ? `Found ${response.count} element${response.count !== 1 ? 's' : ''}`
           : 'No elements found',

@@ -215,6 +215,26 @@ export class EnhancedVisualDetectorService {
         throw new Error('Holo 1.5-7B service is not responding');
       }
 
+      // Record detection request details
+      this.cvActivity.recordDetectionRequest(activityId, {
+        userPrompt: options.holoTask || 'Multi-element UI scan',
+        modelConfig: {
+          detectMultiple: !options.holoTask,
+          includeCaptions: options.holoCaptions ?? true,
+          minConfidence: options.holoConfidence ?? 0.3,
+          maxDetections: options.maxResults,
+          performanceProfile: options.holoPerformanceProfile || 'balanced',
+        },
+      });
+
+      // Update pipeline: starting inference
+      this.cvActivity.updatePipelineStage(activityId, {
+        stage: 'inference',
+        progress: 50,
+        currentStep: 'Running Holo 1.5-7B inference',
+        timing: {},
+      });
+
       // Call Holo 1.5-7B service with Buffer
       // Use task-specific mode if task is provided, otherwise multi-element scan
       const response = await this.holoClient.parseScreenshot(screenshotBuffer, {
@@ -226,6 +246,29 @@ export class EnhancedVisualDetectorService {
         returnRawOutputs: process.env.HOLO_DEBUG_RAW === 'true',
         performanceProfile: options.holoPerformanceProfile,
       });
+
+      // Update pipeline: parsing complete
+      this.cvActivity.updatePipelineStage(activityId, {
+        stage: 'complete',
+        progress: 100,
+        currentStep: 'Detection complete',
+        timing: {
+          resizeMs: response.timing?.resize_ms,
+          inferenceMs: response.timing?.inference_ms,
+          parseMs: response.timing?.parse_ms,
+          totalMs: response.timing?.total_ms || response.processing_time_ms,
+        },
+      });
+
+      // Record model response (if raw outputs available)
+      if (response.raw_output) {
+        this.cvActivity.recordModelResponse(activityId, {
+          rawOutput: response.raw_output,
+          outputLength: response.output_length || response.raw_output.length,
+          parseStatus: (response.parse_status as 'success' | 'error') || 'success',
+          parseError: response.parse_error,
+        });
+      }
 
       // Update metadata with device info for UI display
       this.cvActivity.updateMethodMetadata(activityId, {
@@ -271,6 +314,16 @@ export class EnhancedVisualDetectorService {
           task_caption: element.caption,
         }
       }));
+
+      // Record detected elements with enhanced metadata
+      this.cvActivity.recordDetectedElements(activityId, response.elements.map((element, index) => ({
+        bbox: element.bbox,
+        center: element.center,
+        confidence: element.confidence,
+        type: element.type,
+        caption: element.caption || '',
+        somNumber: element.element_id,
+      })));
 
       this.cvActivity.stopMethod(activityId, true, elements);
 

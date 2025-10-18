@@ -34,6 +34,7 @@ class NavigateResponse(BaseModel):
     processing_time_ms: float = Field(..., description="Inference time in milliseconds")
     image_size: Dict[str, int] = Field(..., description="Original image dimensions")
     device: str = Field(..., description="Device used for inference")
+    timing: Optional[Dict[str, float]] = Field(None, description="Detailed timing breakdown")
 
 
 class ParseRequest(BaseModel):
@@ -86,6 +87,11 @@ class ParseResponse(BaseModel):
     min_confidence: Optional[float] = Field(None, description="Confidence threshold applied")
     som_image: Optional[str] = Field(None, description="Base64 encoded Set-of-Mark annotated image")
     model: str = Field("holo-1.5-7b-transformers", description="Source model identifier")
+    timing: Optional[dict[str, float]] = Field(None, description="Detailed timing breakdown")
+    raw_output: Optional[str] = Field(None, description="Raw model output (debug mode only)")
+    output_length: Optional[int] = Field(None, description="Length of raw output")
+    parse_status: Optional[str] = Field(None, description="Parse status: success or error")
+    parse_error: Optional[str] = Field(None, description="Parse error message if applicable")
 
 
 class HealthResponse(BaseModel):
@@ -318,7 +324,7 @@ async def navigate(request: NavigateRequest = Body(...)):
         model = get_model()
 
         # Run navigation
-        navigation_step = model.navigate(
+        navigation_step, timing_data = model.navigate(
             image_array=image,
             task=request.task,
             step=request.step,
@@ -327,14 +333,25 @@ async def navigate(request: NavigateRequest = Body(...)):
         processing_time_ms = (time.time() - start_time) * 1000
 
         # Convert NavigationStep to response format
-        return NavigateResponse(
-            note=navigation_step.note,
-            thought=navigation_step.thought,
-            action=navigation_step.action.model_dump(),  # Pydantic v2
-            processing_time_ms=processing_time_ms,
-            image_size={"width": image.shape[1], "height": image.shape[0]},
-            device=settings.device,
-        )
+        response_data = {
+            "note": navigation_step.note,
+            "thought": navigation_step.thought,
+            "action": navigation_step.action.model_dump(),  # Pydantic v2
+            "processing_time_ms": processing_time_ms,
+            "image_size": {"width": image.shape[1], "height": image.shape[0]},
+            "device": settings.device,
+        }
+
+        # Add timing breakdown if available
+        if timing_data:
+            response_data["timing"] = {
+                "resize_ms": timing_data.get('resize_ms'),
+                "inference_ms": timing_data.get('inference_ms'),
+                "parse_ms": timing_data.get('parse_ms'),
+                "total_ms": processing_time_ms,
+            }
+
+        return NavigateResponse(**response_data)
 
     except HTTPException:
         raise

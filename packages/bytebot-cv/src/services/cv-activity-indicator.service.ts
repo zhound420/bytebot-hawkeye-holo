@@ -2,12 +2,59 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter } from 'events';
 import { HoloClientService } from './holo-client.service';
 
+export type InferencePipelineStage = 'resizing' | 'encoding' | 'inference' | 'parsing' | 'complete' | 'error';
+
+export interface InferencePipeline {
+  stage: InferencePipelineStage;
+  progress: number; // 0-100
+  currentStep: string;
+  timing: {
+    resizeMs?: number;
+    inferenceMs?: number;
+    parseMs?: number;
+    totalMs?: number;
+  };
+}
+
+export interface RequestDetails {
+  systemPrompt?: string;
+  userPrompt?: string;
+  modelConfig?: Record<string, any>;
+  imageInfo?: {
+    original: string;
+    resized: string;
+    scaleFactors: Record<string, number>;
+  };
+}
+
+export interface ModelResponse {
+  rawOutput: string;
+  outputLength: number;
+  tokenEstimate?: number;
+  parseStatus: 'success' | 'error';
+  parseError?: string;
+}
+
+export interface EnhancedElementMetadata {
+  bbox: number[];
+  center: number[];
+  confidence: number;
+  type: string;
+  caption: string;
+  somNumber?: number;
+}
+
 export interface CVMethodActivity {
   method: string;
   active: boolean;
   startTime?: number;
   duration?: number;
   metadata?: Record<string, any>;
+  // Enhanced transparency fields
+  pipeline?: InferencePipeline;
+  request?: RequestDetails;
+  response?: ModelResponse;
+  elements?: EnhancedElementMetadata[];
 }
 
 export interface DetectionHistoryEntry {
@@ -410,6 +457,50 @@ export class CVActivityIndicatorService extends EventEmitter {
     } catch (error) {
       this.stopMethod(activityId, false, { error: error.message });
       throw error;
+    }
+  }
+
+  /**
+   * Update inference pipeline stage for an active method
+   */
+  updatePipelineStage(activityId: string, pipeline: InferencePipeline): void {
+    const activity = this.activeMethods.get(activityId);
+    if (activity) {
+      activity.pipeline = pipeline;
+      this.emit('activityUpdate', this.getSnapshot());
+    }
+  }
+
+  /**
+   * Record detection request details
+   */
+  recordDetectionRequest(activityId: string, request: RequestDetails): void {
+    const activity = this.activeMethods.get(activityId);
+    if (activity) {
+      activity.request = request;
+      this.emit('activityUpdate', this.getSnapshot());
+    }
+  }
+
+  /**
+   * Record model response and parse status
+   */
+  recordModelResponse(activityId: string, response: ModelResponse): void {
+    const activity = this.activeMethods.get(activityId);
+    if (activity) {
+      activity.response = response;
+      this.emit('activityUpdate', this.getSnapshot());
+    }
+  }
+
+  /**
+   * Record detected elements with enhanced metadata
+   */
+  recordDetectedElements(activityId: string, elements: EnhancedElementMetadata[]): void {
+    const activity = this.activeMethods.get(activityId);
+    if (activity) {
+      activity.elements = elements;
+      this.emit('activityUpdate', this.getSnapshot());
     }
   }
 

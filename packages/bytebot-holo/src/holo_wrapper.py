@@ -288,7 +288,7 @@ class Holo15:
         image_array: np.ndarray,
         task: str,
         step: int = 1,
-    ) -> NavigationStep:
+    ) -> tuple[NavigationStep, Dict[str, Any]]:
         """
         Main navigation function - analyze screenshot and return next action.
 
@@ -298,24 +298,45 @@ class Holo15:
             step: Current step number
 
         Returns:
-            NavigationStep with note, thought, and action
+            Tuple of (NavigationStep, timing_dict) with detailed timing breakdown
         """
+        timing = {}
+
         # Convert to PIL Image
+        start = time.time()
         pil_image = Image.fromarray(np.uint8(image_array))
+        timing['convert_ms'] = (time.time() - start) * 1000
 
         # Apply smart resize
+        start = time.time()
         resized_image, scale_factors = self._smart_resize_image(pil_image)
+        timing['resize_ms'] = (time.time() - start) * 1000
 
         # Create navigation prompt
+        start = time.time()
         messages = self.get_navigation_prompt(task, resized_image, step)
+        timing['prompt_ms'] = (time.time() - start) * 1000
 
         # Run inference
+        start = time.time()
         output_str = self.run_inference(messages, resized_image)
+        timing['inference_ms'] = (time.time() - start) * 1000
+        timing['raw_output'] = output_str
+        timing['output_length'] = len(output_str)
 
         # Parse NavigationStep from output
-        navigation_step = self._parse_navigation_step(output_str, scale_factors)
+        start = time.time()
+        try:
+            navigation_step = self._parse_navigation_step(output_str, scale_factors)
+            timing['parse_ms'] = (time.time() - start) * 1000
+            timing['parse_status'] = 'success'
+        except Exception as e:
+            timing['parse_ms'] = (time.time() - start) * 1000
+            timing['parse_status'] = 'error'
+            timing['parse_error'] = str(e)
+            raise
 
-        return navigation_step
+        return navigation_step, timing
 
     def _parse_navigation_step(
         self,
@@ -433,7 +454,7 @@ class Holo15:
 
             try:
                 # Run navigation with this prompt
-                navigation_step = self.navigate(
+                navigation_step, _ = self.navigate(
                     image_array=image_array,
                     task=prompt,
                     step=prompt_idx + 1,
@@ -586,15 +607,23 @@ class Holo15:
         profile_key = (performance_profile or 'balanced').lower()
 
         elements = []
+        timing_data = {}
+        raw_output = None
+        parse_status = 'success'
+        parse_error = None
 
         if task:
             # Single element mode: localize specific task
             print(f"  Single-element mode: task='{task}'")
-            navigation_step = self.navigate(
+            navigation_step, timing_data = self.navigate(
                 image_array=image_array,
                 task=task,
                 step=1,
             )
+
+            raw_output = timing_data.get('raw_output')
+            parse_status = timing_data.get('parse_status', 'success')
+            parse_error = timing_data.get('parse_error')
 
             action = navigation_step.action
 
@@ -644,6 +673,23 @@ class Holo15:
             "max_detections": effective_max,
             "min_confidence": min_confidence if min_confidence is not None else 0.3,
         }
+
+        # Add detailed timing breakdown if available
+        if timing_data:
+            result["timing"] = {
+                "resize_ms": timing_data.get('resize_ms'),
+                "inference_ms": timing_data.get('inference_ms'),
+                "parse_ms": timing_data.get('parse_ms'),
+                "total_ms": round(processing_time, 2),
+            }
+
+        # Add raw output and parse status if requested
+        if return_raw_outputs and raw_output:
+            result["raw_output"] = raw_output
+            result["output_length"] = len(raw_output)
+            result["parse_status"] = parse_status
+            if parse_error:
+                result["parse_error"] = parse_error
 
         if som_image:
             result["som_image"] = som_image

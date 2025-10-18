@@ -204,6 +204,17 @@ export interface HoloResponse {
   icon_detected?: number; // Number of icon elements detected
   text_detected?: number; // Number of text elements in final result
   interactable_count?: number; // Number of interactable elements
+  // Enhanced transparency fields (new)
+  timing?: {
+    resize_ms?: number;
+    inference_ms?: number;
+    parse_ms?: number;
+    total_ms?: number;
+  };
+  raw_output?: string; // Raw model output (debug mode only)
+  output_length?: number; // Length of raw output
+  parse_status?: 'success' | 'error'; // Parse status
+  parse_error?: string; // Parse error message if applicable
 }
 
 /**

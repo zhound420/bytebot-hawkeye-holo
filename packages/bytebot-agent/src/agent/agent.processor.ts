@@ -1393,6 +1393,48 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             }
           }
 
+          // Screenshot Loop Prevention for Non-Vision Models
+          if (isScreenshotToolUseBlock(block) && this.currentModel && !supportsVision(this.currentModel)) {
+            // Count recent screenshot calls in the last 5 messages
+            const recentMessages = await this.messagesService.findEvery(taskId);
+            const lastFiveMessages = recentMessages.slice(-5);
+
+            const screenshotCalls = lastFiveMessages.filter(msg => {
+              if (msg.role !== Role.ASSISTANT) return false;
+              const blocks = Array.isArray(msg.content) ? (msg.content as any[]) : [];
+              return blocks.some((block: any) =>
+                block.type === 'tool_use' && block.name === 'computer_screenshot'
+              );
+            }).length;
+
+            if (screenshotCalls >= 2) {
+              // Block third+ screenshot call for non-vision models
+              this.logger.warn(`Screenshot loop blocked for non-vision model (${screenshotCalls} calls in last 5 messages)`);
+              generatedToolResults.push({
+                type: MessageContentType.ToolResult,
+                tool_use_id: block.id,
+                content: [
+                  {
+                    type: MessageContentType.Text,
+                    text: `❌ BLOCKED: You've called computer_screenshot ${screenshotCalls} times already.
+
+⚠️ YOU CANNOT SEE SCREENSHOTS - they appear as text to you.
+
+**Required workflow:**
+1. computer_detect_elements({ description: "target element", includeAll: true })
+   → This returns a TEXT LIST of UI elements with coordinates
+2. computer_click_element({ element_id: "0" })
+   → Click the element from the list
+
+Taking more screenshots will NOT help. Use computer_detect_elements to find UI elements instead.`,
+                  },
+                ],
+                is_error: true,
+              });
+              continue;
+            }
+          }
+
           const result = await handleComputerToolUse(block, this.logger);
 
           // Inject SOM (Set-of-Mark) annotated image if available

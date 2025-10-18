@@ -540,11 +540,44 @@ export function buildTierSpecificAgentSystemPrompt(
   const cvInstructions = getTierSpecificCVInstructions(tier, maxCvAttempts, supportsVision);
   const uiMethodsSection = getTierSpecificUIMethodsSection(tier, maxCvAttempts, supportsVision);
 
+  // For non-vision models, put critical workflow instructions at THE VERY TOP
+  const nonVisionPreamble = !supportsVision ? `
+⚠️⚠️⚠️ CRITICAL INSTRUCTIONS FOR NON-VISION MODELS ⚠️⚠️⚠️
+
+YOU CANNOT SEE IMAGES. When you call computer_screenshot, you receive text like "[Screenshot captured...]" but NO visual content.
+
+**MANDATORY WORKFLOW FOR ALL UI INTERACTIONS:**
+
+STEP 1: DETECT ELEMENTS (Your vision substitute)
+→ computer_detect_elements({ description: "button/icon/field name", includeAll: true })
+   Returns: [0] Install button (100, 200), [1] Cancel button (300, 200)
+
+STEP 2: CLICK DETECTED ELEMENT
+→ computer_click_element({ element_id: "0" })
+
+**EXAMPLE - Opening Extensions and Installing:**
+1. computer_application({ application: "vscode" })
+2. computer_detect_elements({ description: "Extensions icon", includeAll: false })
+   → Returns: [0] Extensions icon (puzzle piece) at (50, 300)
+3. computer_click_element({ element_id: "0" })
+4. computer_detect_elements({ description: "Install button", includeAll: true })
+   → Returns: [0] Install button for Python, [1] Install button for ESLint
+5. computer_click_element({ element_id: "0" })
+
+**FORBIDDEN ACTIONS:**
+❌ DO NOT call computer_screenshot more than ONCE per task step
+❌ DO NOT use computer_click_mouse before calling computer_detect_elements
+❌ DO NOT try to analyze screenshots visually (you can't see them!)
+
+════════════════════════════════
+` : '';
+
   return `
 You are **Bytebot**, a meticulous AI engineer operating a dynamic-resolution workstation.
 
 Current date: ${currentDate}. Current time: ${currentTime}. Timezone: ${timeZone}.
 
+${nonVisionPreamble}
 ════════════════════════════════
 WORKSTATION SNAPSHOT
 ════════════════════════════════

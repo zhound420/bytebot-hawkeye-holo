@@ -89,7 +89,7 @@ const computerDetectElementsJsonSchema = {
 export const computerDetectElementsTool = {
   name: 'computer_detect_elements',
   description:
-    '🎯 PRIMARY DETECTION METHOD - Works for both vision and non-vision models. Vision models receive SOM-annotated screenshots with numbered elements [0], [1], [2] (70-85% accuracy). Non-vision models receive text-based element lists with descriptions and coordinates. Detects buttons, links, form fields, icons, and menus using Holo 1.5-7B (Qwen2.5-VL base) semantic understanding + Tesseract.js OCR. Use includeAll: true with empty description for discovery mode (returns all elements). Returns element IDs for use with computer_click_element. ALWAYS use this before attempting manual coordinate clicking with computer_click_mouse.',
+    '🎯 **MANDATORY FIRST TOOL FOR NON-VISION MODELS** - If you cannot see screenshots, THIS IS YOUR ONLY WAY to find UI elements. Returns numbered text list: [0] Button, [1] Link, [2] Icon with coordinates. Vision models receive SOM screenshots with numbered boxes. Detects buttons, links, fields, icons, menus using Holo 1.5-7B semantic AI (89% accuracy). **CRITICAL FOR NON-VISION:** Use includeAll:true with empty description FIRST to see ALL elements, then click with computer_click_element using element numbers. DO NOT skip this tool if you cannot see images. ALWAYS use before computer_click_mouse.',
   input_schema: computerDetectElementsJsonSchema,
 };
 

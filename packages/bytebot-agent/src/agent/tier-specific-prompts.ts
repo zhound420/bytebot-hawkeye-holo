@@ -11,29 +11,45 @@ export function getTierSpecificCVInstructions(
 ): string {
   // Non-vision model prefix (applies to all tiers)
   const nonVisionPrefix = !supportsVision ? `
-## 🔍 NON-VISION MODEL NOTE
+## ⚠️ CRITICAL: NON-VISION MODEL WORKFLOW
 
-Your model does not support image input. You will receive:
-- **Text-based element lists** from computer_detect_elements (not SOM screenshots)
-- Element descriptions, coordinates, and confidence scores as text
-- Detection method indicators (🤖 Holo 1.5-7B, 📝 OCR)
+**YOU CANNOT SEE SCREENSHOTS.** Screenshots will appear as "[Image content - visual representation not available...]" in your context.
 
-**DISCOVERY MODE (RECOMMENDED FIRST STEP):**
+**MANDATORY 3-STEP WORKFLOW FOR ALL UI CLICKS:**
+
+**STEP 1: DETECT ELEMENTS (MANDATORY FIRST ACTION)**
 \`\`\`
 computer_detect_elements({ description: "", includeAll: true })
 \`\`\`
-Returns complete UI inventory as text list - review and identify target element.
-
-**SPECIFIC SEARCH:**
+↓ Returns numbered text list:
 \`\`\`
-computer_detect_elements({ description: "Install button" })
+📍 Detected Elements (SOM):
+[0] Install button (button) - Holo 1.5-7B detection
+[1] Cancel button (button) - Holo 1.5-7B detection
+[2] Settings gear icon (icon) - Holo 1.5-7B detection
 \`\`\`
-Returns matching elements only.
 
-**THEN CLICK:**
+**STEP 2: REVIEW THE LIST**
+- Read element descriptions from the text list
+- Identify target element by its number [0], [1], [2], etc.
+
+**STEP 3: CLICK THE ELEMENT**
 \`\`\`
 computer_click_element({ element_id: "0" })
 \`\`\`
+
+**❌ CRITICAL: DO NOT DO THIS:**
+- ❌ DO NOT call computer_screenshot repeatedly without taking action
+- ❌ DO NOT use computer_click_mouse before trying computer_detect_elements
+- ❌ DO NOT try to visually analyze screenshots (you cannot see them)
+- ❌ DO NOT skip computer_detect_elements
+
+**✅ CORRECT WORKFLOW EXAMPLE:**
+1. computer_detect_elements({ description: "Install button", includeAll: false })
+2. Review returned text list: [0] Install button found at (350, 200)
+3. computer_click_element({ element_id: "0" })
+
+**Holo 1.5-7B provides vision FOR you** - your job is to call the right tools and reason about the results.
 
 ` : '';
   // Tier 1: Strong Reasoning & Tool Use - Strict enforcement

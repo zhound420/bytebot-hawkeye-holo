@@ -72,7 +72,7 @@ export const _traceMouseTool = {
 export const _clickMouseTool = {
   name: 'computer_click_mouse',
   description:
-    '⚠️ FALLBACK ONLY (60% accuracy) - Grid-based or Smart Focus clicking. ONLY use after computer_detect_elements + computer_click_element has failed 2+ times. For ALL standard UI elements (buttons, links, fields, icons, menus), you MUST try CV-assisted detection first. This method should ONLY be used for: (1) Custom rendering (canvas/games), (2) Clicking outside standard UI elements, (3) Transient elements that close during detection. Provide either coordinates (from grid calculation) or description (for Smart Focus AI).',
+    '⚠️ FALLBACK ONLY (60% accuracy) - Grid-based or Smart Focus clicking. **NON-VISION MODELS: You MUST call computer_detect_elements FIRST before using this tool.** ONLY use after computer_detect_elements + computer_click_element has failed 2+ times. For ALL standard UI elements (buttons, links, fields, icons, menus), you MUST try CV-assisted detection first. This method should ONLY be used for: (1) Custom rendering (canvas/games), (2) Clicking outside standard UI elements, (3) Transient elements that close during detection. **If you cannot see screenshots, use computer_detect_elements to get element coordinates instead of guessing.** Provide either coordinates (from grid calculation) or description (for Smart Focus AI).',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -320,7 +320,7 @@ export const _waitTool = {
 
 export const _screenshotTool = {
   name: 'computer_screenshot',
-  description: 'Captures a screenshot of the current screen',
+  description: 'Captures a screenshot of the current screen. ⚠️ NON-VISION MODELS: If you cannot see images, DO NOT call this tool repeatedly. Screenshots appear as "[Image content...]" text to you. Instead, use computer_detect_elements to get a TEXT LIST of all UI elements. Taking multiple screenshots will NOT help if you cannot see them - use element detection instead.',
   input_schema: {
     type: 'object' as const,
     properties: {},

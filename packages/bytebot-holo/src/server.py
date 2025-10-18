@@ -132,9 +132,30 @@ async def lifespan(app: FastAPI):
             print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
     print("=" * 60)
     print("")
-    print("⚡ Lazy loading enabled: Model loads on first request")
-    print("   First request: ~1-3 min (model download + loading)")
-    print("   Subsequent requests: ~2-4s per inference")
+    print("🔄 Pre-loading Holo 1.5-7B model to GPU...")
+    print("   This may take 1-3 minutes on first startup (model download)")
+    print("")
+
+    import time
+    start_time = time.time()
+    try:
+        model = get_model()  # Trigger eager model loading
+        load_time = time.time() - start_time
+
+        print(f"✓ Model loaded successfully in {load_time:.1f}s")
+        print(f"✓ Ready for instant inference (~2-4s per request)")
+
+        # Show GPU memory usage after loading
+        if torch.cuda.is_available() and settings.device == "cuda":
+            mem_allocated = torch.cuda.memory_allocated(0) / (1024 ** 3)
+            mem_reserved = torch.cuda.memory_reserved(0) / (1024 ** 3)
+            print(f"✓ GPU Memory: {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
+    except Exception as e:
+        print(f"✗ Model loading failed: {e}")
+        import traceback
+        traceback.print_exc()
+        print("   Service will continue with lazy loading fallback")
+
     print("")
     print("=" * 60)
     print("Service ready!")

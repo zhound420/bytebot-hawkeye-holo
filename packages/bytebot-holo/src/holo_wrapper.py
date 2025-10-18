@@ -69,9 +69,26 @@ class Holo15:
                 cache_dir=str(settings.cache_dir) if settings.cache_models else None,
             )
 
-            # Load model
+            # Fix for decoder_config.to_dict() bug in transformers 4.49.0+
+            # Load config and ensure decoder_config is a proper config object
+            from transformers import AutoConfig, PretrainedConfig
+            config = AutoConfig.from_pretrained(
+                self.model_repo,
+                trust_remote_code=settings.trust_remote_code,
+                cache_dir=str(settings.cache_dir) if settings.cache_models else None,
+            )
+
+            # Convert dict configs to PretrainedConfig objects if needed
+            if hasattr(config, 'text_config') and isinstance(config.text_config, dict):
+                config.text_config = PretrainedConfig.from_dict(config.text_config)
+
+            if hasattr(config, 'vision_config') and isinstance(config.vision_config, dict):
+                config.vision_config = PretrainedConfig.from_dict(config.vision_config)
+
+            # Load model with fixed config
             model = AutoModelForImageTextToText.from_pretrained(
                 self.model_repo,
+                config=config,
                 torch_dtype=self.torch_dtype,
                 trust_remote_code=settings.trust_remote_code,
                 cache_dir=str(settings.cache_dir) if settings.cache_models else None,

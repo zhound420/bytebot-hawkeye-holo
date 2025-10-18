@@ -1338,6 +1338,118 @@ export class ComputerUseService {
     );
   }
 
+  /**
+   * Find the full path to a Windows application executable
+   * Uses registry lookup and common installation paths
+   */
+  private async findWindowsApplicationPath(
+    executableName: string,
+    appName: Application,
+  ): Promise<string> {
+    const execAsync = promisify(exec);
+
+    // System executables (always in PATH)
+    const systemExecutables = ['cmd.exe', 'explorer.exe', 'powershell.exe'];
+    if (systemExecutables.includes(executableName.toLowerCase())) {
+      return executableName;
+    }
+
+    // Try Windows App Paths registry (both HKLM and HKCU)
+    const registryPaths = [
+      `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${executableName}`,
+      `HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${executableName}`,
+    ];
+
+    for (const regPath of registryPaths) {
+      try {
+        const { stdout } = await execAsync(
+          `reg query "${regPath}" /ve`,
+          { timeout: 2000 },
+        );
+        // Parse registry output: "(Default)    REG_SZ    C:\Path\To\App.exe"
+        const match = stdout.match(/REG_SZ\s+(.+)/);
+        if (match && match[1]) {
+          const path = match[1].trim();
+          this.logger.debug(
+            `Found ${executableName} in registry: ${path}`,
+          );
+          return path;
+        }
+      } catch (error: any) {
+        // Registry key not found, try next
+        this.logger.debug(
+          `Registry path not found: ${regPath}`,
+        );
+      }
+    }
+
+    // Try common installation paths based on application
+    const commonPaths: Record<string, string[]> = {
+      vscode: [
+        `${process.env.LOCALAPPDATA}\\Programs\\Microsoft VS Code\\Code.exe`,
+        `${process.env.ProgramFiles}\\Microsoft VS Code\\Code.exe`,
+        `${process.env['ProgramFiles(x86)']}\\Microsoft VS Code\\Code.exe`,
+      ],
+      firefox: [
+        `${process.env.ProgramFiles}\\Mozilla Firefox\\firefox.exe`,
+        `${process.env['ProgramFiles(x86)']}\\Mozilla Firefox\\firefox.exe`,
+      ],
+      '1password': [
+        `${process.env.LOCALAPPDATA}\\1Password\\1Password.exe`,
+        `${process.env.ProgramFiles}\\1Password\\1Password.exe`,
+      ],
+      thunderbird: [
+        `${process.env.ProgramFiles}\\Mozilla Thunderbird\\thunderbird.exe`,
+        `${process.env['ProgramFiles(x86)']}\\Mozilla Thunderbird\\thunderbird.exe`,
+      ],
+    };
+
+    const paths = commonPaths[appName] || [];
+    for (const path of paths) {
+      try {
+        // Check if file exists using PowerShell Test-Path (more reliable than fs.existsSync in Windows containers)
+        const { stdout } = await execAsync(
+          `powershell -Command "Test-Path '${path}'"`,
+          { timeout: 2000 },
+        );
+        if (stdout.trim().toLowerCase() === 'true') {
+          this.logger.debug(
+            `Found ${executableName} at common path: ${path}`,
+          );
+          return path;
+        }
+      } catch (error: any) {
+        // Path doesn't exist, try next
+      }
+    }
+
+    // Last resort: try 'where' command (searches PATH)
+    try {
+      const { stdout } = await execAsync(
+        `where ${executableName}`,
+        { timeout: 2000 },
+      );
+      const path = stdout.trim().split('\n')[0]; // Take first result
+      if (path) {
+        this.logger.debug(
+          `Found ${executableName} via 'where' command: ${path}`,
+        );
+        return path;
+      }
+    } catch (error: any) {
+      // 'where' failed
+      this.logger.debug(
+        `'where' command failed for ${executableName}`,
+      );
+    }
+
+    // Fallback: return original executable name (will likely fail but let PowerShell error)
+    this.logger.warn(
+      `Could not find full path for ${executableName}, using name as-is (may fail)`,
+    );
+    return executableName;
+  }
+
   private async applicationWindows(action: ApplicationAction): Promise<void> {
     const execAsync = promisify(exec);
 
@@ -1437,22 +1549,54 @@ export class ComputerUseService {
     );
 
     try {
-      const command = commandMap[action.application];
+      const executableName = commandMap[action.application];
+
+      // Find full path to executable
+      const fullPath = await this.findWindowsApplicationPath(
+        executableName,
+        action.application,
+      );
+
+      this.logger.log(
+        `Resolved path for ${executableName}: ${fullPath}`,
+      );
 
       // Special handling for directory (open File Explorer)
       if (action.application === 'directory') {
-        await execAsync(`start ${command}`, { timeout: 5000 });
+        await execAsync(`start ${fullPath}`, { timeout: 5000 });
       } else {
         // Use Start-Process to launch with WindowStyle Maximized
+        // Escape path for PowerShell (handle spaces and special chars)
+        const escapedPath = fullPath.replace(/'/g, "''");
         await execAsync(
-          `powershell -Command "Start-Process '${command}' -WindowStyle Maximized"`,
+          `powershell -Command "Start-Process '${escapedPath}' -WindowStyle Maximized"`,
           { timeout: 10000 },
         );
       }
 
-      this.logger.log(
-        `Application ${action.application} launched successfully`,
-      );
+      // Verify the process actually started (wait 2 seconds then check)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      try {
+        const { stdout } = await execAsync(
+          `powershell -Command "Get-Process -Name '${processMap[action.application]}' -ErrorAction SilentlyContinue | Select-Object -First 1"`,
+          { timeout: 3000 },
+        );
+
+        if (stdout.trim().length > 0) {
+          this.logger.log(
+            `✓ Application ${action.application} launched successfully and verified`,
+          );
+        } else {
+          this.logger.warn(
+            `Application ${action.application} may not have started - process not found after launch`,
+          );
+        }
+      } catch (verifyError: any) {
+        this.logger.warn(
+          `Could not verify ${action.application} started: ${verifyError.message}`,
+        );
+      }
     } catch (error: any) {
       this.logger.error(
         `Failed to launch ${action.application}: ${error.message || String(error)}`,

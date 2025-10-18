@@ -194,6 +194,23 @@ if [[ "$TARGET_OS_FROM_FLAG" == "false" ]]; then
         fi
         echo ""
     fi
+
+    # If macOS selected, ask about pre-baked image
+    if [[ "$TARGET_OS" == "macos" ]]; then
+        echo -e "${BLUE}Use pre-baked macOS image?${NC}"
+        echo "  • Pre-baked: 30-60 seconds startup (96% faster)"
+        echo "  • Runtime:   One-time manual setup + 5-8 min automated install"
+        echo "  • Note: macOS requires one-time Setup Assistant completion (Apple licensing)"
+        read -p "Use pre-baked image? [Y/n] " -n 1 -r PREBAKED_CHOICE
+        echo ""
+        if [[ ! $PREBAKED_CHOICE =~ ^[Nn]$ ]]; then
+            USE_PREBAKED=true
+            echo -e "${GREEN}✓ Using pre-baked image${NC}"
+        else
+            echo -e "${YELLOW}✓ Using runtime installation${NC}"
+        fi
+        echo ""
+    fi
 fi
 
 # Validate TARGET_OS
@@ -554,87 +571,106 @@ if [[ "$TARGET_OS" == "windows" ]]; then
     fi
 fi
 
-# macOS-specific: Prepare installer package and OEM files
+# macOS-specific: Prepare prebaked image or installer package
 if [[ "$TARGET_OS" == "macos" ]]; then
     # Get script directory and project root
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-    echo -e "${BLUE}Preparing macOS automated installation...${NC}"
-    echo ""
-
-    # Check if macOS package already exists
-    if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
-        PACKAGE_SIZE=$(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1)
-        echo -e "${YELLOW}macOS installer package already exists (${PACKAGE_SIZE})${NC}"
-        echo -e "${BLUE}Using existing package from previous build${NC}"
-        echo -e "${BLUE}To force rebuild: rm -rf docker/macos-installer${NC}"
-        echo ""
-    else
-        echo -e "${BLUE}Building macOS installer package...${NC}"
+    if [[ "$USE_PREBAKED" == "true" ]]; then
+        echo -e "${BLUE}Using pre-baked macOS image (96% faster startup)${NC}"
         echo ""
 
-        # Run the package build script
-        if [[ -f "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh" ]]; then
-            bash "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
-        else
-            echo -e "${RED}✗ macOS package build script not found${NC}"
+        # Check if pre-baked image exists
+        if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "bytebot-macos-prebaked:latest"; then
+            echo -e "${YELLOW}⚠ Pre-baked image not found${NC}"
             echo ""
-            echo "Expected: $PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
+            echo "To create the prebaked image, you must first run:"
+            echo -e "  ${CYAN}./scripts/build-macos-prebaked-image.sh${NC}"
+            echo ""
+            echo "This requires ONE-TIME manual Setup Assistant completion (~10-15 minutes)."
+            echo "After that, the prebaked image boots in 30-60 seconds."
+            echo ""
+            read -p "Build pre-baked image now? [Y/n] " -n 1 -r BUILD_CHOICE
+            echo ""
+            if [[ ! $BUILD_CHOICE =~ ^[Nn]$ ]]; then
+                bash "$PROJECT_ROOT/scripts/build-macos-prebaked-image.sh"
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}✗ Failed to build pre-baked image${NC}"
+                    echo ""
+                    echo "Fallback to runtime installation:"
+                    echo -e "  ${BLUE}./scripts/start-stack.sh --os macos${NC}"
+                    exit 1
+                fi
+            else
+                echo -e "${YELLOW}Cannot start without prebaked image. Exiting.${NC}"
+                echo ""
+                echo "Run this to build the prebaked image first:"
+                echo -e "  ${CYAN}./scripts/build-macos-prebaked-image.sh${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${GREEN}✓ Pre-baked image found${NC}"
+        fi
+
+        echo -e "${BLUE}Startup time: ~30-60 seconds (vs 10-15 minutes with runtime installation)${NC}"
+        echo ""
+
+    else
+        echo -e "${BLUE}Preparing macOS runtime installation...${NC}"
+        echo ""
+
+        # Check if macOS package already exists
+        if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
+            PACKAGE_SIZE=$(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1)
+            echo -e "${YELLOW}macOS installer package already exists (${PACKAGE_SIZE})${NC}"
+            echo -e "${BLUE}Using existing package from previous build${NC}"
+            echo -e "${BLUE}To force rebuild: rm -rf docker/macos-installer${NC}"
+            echo ""
+        else
+            echo -e "${BLUE}Building macOS installer package...${NC}"
+            echo ""
+
+            # Run the package build script
+            if [[ -f "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh" ]]; then
+                bash "$PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
+            else
+                echo -e "${RED}✗ macOS package build script not found${NC}"
+                echo ""
+                echo "Expected: $PROJECT_ROOT/scripts/build-macos-prebaked-package.sh"
+                exit 1
+            fi
+        fi
+
+        # Copy installation files to shared directory
+        echo -e "${BLUE}Copying installation files to shared directory...${NC}"
+
+        # Ensure shared directory exists
+        mkdir -p "$PROJECT_ROOT/docker/shared"
+
+        # Copy first-time setup script (new prebaked workflow)
+        if [[ -f "$PROJECT_ROOT/scripts/setup-macos-first-time.sh" ]]; then
+            cp "$PROJECT_ROOT/scripts/setup-macos-first-time.sh" "$PROJECT_ROOT/docker/shared/"
+            chmod +x "$PROJECT_ROOT/docker/shared/setup-macos-first-time.sh"
+            echo -e "${GREEN}  ✓ First-time setup script copied${NC}"
+        fi
+
+        # Copy package tarball
+        if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
+            cp "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" "$PROJECT_ROOT/docker/shared/"
+            echo -e "${GREEN}  ✓ Package tarball copied${NC}"
+        else
+            echo -e "${RED}✗ Package tarball not found${NC}"
             exit 1
         fi
+
+        echo -e "${GREEN}✓ Installation files ready${NC}"
+        echo ""
+        echo -e "${BLUE}Files available in macOS VM at /shared/:${NC}"
+        echo "  • setup-macos-first-time.sh (bootstrap script - run after Setup Assistant)"
+        echo "  • bytebotd-macos-prebaked.tar.gz ($(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1))"
+        echo ""
     fi
-
-    # Copy OEM files and package to shared directory
-    echo -e "${BLUE}Copying installation files to shared directory...${NC}"
-
-    # Ensure shared directory exists
-    mkdir -p "$PROJECT_ROOT/docker/shared"
-
-    # Copy installer script
-    if [[ -f "$PROJECT_ROOT/docker/oem/install-macos-prebaked.sh" ]]; then
-        cp "$PROJECT_ROOT/docker/oem/install-macos-prebaked.sh" "$PROJECT_ROOT/docker/shared/"
-        chmod +x "$PROJECT_ROOT/docker/shared/install-macos-prebaked.sh"
-        echo -e "${GREEN}  ✓ Installer script copied${NC}"
-    else
-        echo -e "${RED}✗ Installer script not found at docker/oem/install-macos-prebaked.sh${NC}"
-        exit 1
-    fi
-
-    # Copy LaunchDaemon plist
-    if [[ -f "$PROJECT_ROOT/docker/oem/com.bytebot.firstboot.plist" ]]; then
-        cp "$PROJECT_ROOT/docker/oem/com.bytebot.firstboot.plist" "$PROJECT_ROOT/docker/shared/"
-        echo -e "${GREEN}  ✓ LaunchDaemon plist copied${NC}"
-    else
-        echo -e "${RED}✗ LaunchDaemon plist not found at docker/oem/com.bytebot.firstboot.plist${NC}"
-        exit 1
-    fi
-
-    # Copy package tarball
-    if [[ -f "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" ]]; then
-        cp "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" "$PROJECT_ROOT/docker/shared/"
-        echo -e "${GREEN}  ✓ Package tarball copied${NC}"
-    else
-        echo -e "${RED}✗ Package tarball not found${NC}"
-        exit 1
-    fi
-
-    # setup-macos.sh should already exist in docker/shared/
-    if [[ ! -f "$PROJECT_ROOT/docker/shared/setup-macos.sh" ]]; then
-        echo -e "${YELLOW}⚠ Bootstrap script not found, will use manual setup${NC}"
-    else
-        chmod +x "$PROJECT_ROOT/docker/shared/setup-macos.sh"
-        echo -e "${GREEN}  ✓ Bootstrap script ready${NC}"
-    fi
-
-    echo -e "${GREEN}✓ Installation files ready${NC}"
-    echo ""
-    echo -e "${BLUE}Files available in macOS VM at /shared/:${NC}"
-    echo "  • setup-macos.sh (bootstrap script - run this first)"
-    echo "  • install-macos-prebaked.sh (automated installer)"
-    echo "  • com.bytebot.firstboot.plist (LaunchDaemon)"
-    echo "  • bytebotd-macos-prebaked.tar.gz ($(du -sh "$PROJECT_ROOT/docker/macos-installer/bytebotd-macos-prebaked.tar.gz" | cut -f1))"
-    echo ""
 fi
 
 # Change to docker directory
@@ -653,8 +689,13 @@ if [[ -f ".env" ]]; then
         fi
         DESKTOP_SERVICE="bytebot-windows"
     elif [[ "$TARGET_OS" == "macos" ]]; then
-        COMPOSE_FILE="docker-compose.macos.yml"
-        echo -e "${BLUE}Using: macOS Stack${NC}"
+        if [[ "$USE_PREBAKED" == "true" ]]; then
+            COMPOSE_FILE="docker-compose.macos-prebaked.yml"
+            echo -e "${BLUE}Using: macOS Stack (Pre-baked Image)${NC}"
+        else
+            COMPOSE_FILE="docker-compose.macos.yml"
+            echo -e "${BLUE}Using: macOS Stack (Runtime Installation)${NC}"
+        fi
         DESKTOP_SERVICE="bytebot-macos"
     else
         # Check if using proxy or standard stack for Linux
@@ -989,21 +1030,36 @@ if [[ "$TARGET_OS" == "windows" ]]; then
         echo ""
     fi
 elif [[ "$TARGET_OS" == "macos" ]]; then
-    echo -e "${BLUE}macOS Automated Installation:${NC}"
-    echo "  1. Wait for macOS to boot (first-time: ~5-10 minutes)"
-    echo "  2. Access macOS at http://localhost:8006 or vnc://localhost:5900"
-    echo "  3. Open Terminal and run ONE command:"
-    echo -e "     ${CYAN}sudo bash /shared/setup-macos.sh${NC}"
-    echo ""
-    echo "  The bootstrap script will:"
-    echo "  • Install LaunchDaemon for auto-start"
-    echo "  • Run the installer (5-8 minutes)"
-    echo "  • Set up bytebotd service"
-    echo ""
-    echo "  After installation:"
-    echo "  • Bytebotd will be available at http://localhost:9990"
-    echo "  • Auto-starts on future boots"
-    echo ""
+    if [[ "$USE_PREBAKED" == "true" ]]; then
+        echo -e "${BLUE}Pre-baked macOS Image Starting:${NC}"
+        echo "  • Expected startup: 30-60 seconds (96% faster!)"
+        echo "  • Bytebotd starts automatically via LaunchAgent"
+        echo "  • Monitor progress at http://localhost:8006"
+        echo "  • Bytebotd will be available at http://localhost:9990 when complete"
+        echo ""
+    else
+        echo -e "${BLUE}macOS Runtime Installation:${NC}"
+        echo "  1. Wait for macOS to boot (first-time: ~5-10 minutes)"
+        echo "  2. Access macOS at http://localhost:8006 or vnc://localhost:5900"
+        echo "  3. Complete Setup Assistant manually (~5 minutes):"
+        echo "     • Select region and keyboard"
+        echo "     • SKIP Migration Assistant, Apple ID, iCloud"
+        echo "     • Create user: docker/docker"
+        echo "     • SKIP Analytics, Screen Time, Siri"
+        echo "  4. Open Terminal and run ONE command:"
+        echo -e "     ${CYAN}sudo bash /shared/setup-macos-first-time.sh${NC}"
+        echo ""
+        echo "  The setup script will:"
+        echo "  • Install Homebrew and Node.js (~3-5 minutes)"
+        echo "  • Extract and configure bytebotd (~2-3 minutes)"
+        echo "  • Set up LaunchAgent for auto-start"
+        echo ""
+        echo "  After installation:"
+        echo "  • Bytebotd will be available at http://localhost:9990"
+        echo "  • Auto-starts on future boots"
+        echo "  • Total time: ~10-15 minutes (one-time only)"
+        echo ""
+    fi
 fi
 echo "View logs:"
 echo -e "  ${BLUE}docker compose -f docker/$COMPOSE_FILE logs -f${NC}"

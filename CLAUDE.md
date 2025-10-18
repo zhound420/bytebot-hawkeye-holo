@@ -163,47 +163,84 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) or **Nano11 25H2** (minim
 - Actual: 1280x720 (VirtIO GPU limitation - QXL not available in dockur/windows)
 - 40px difference minimal impact on AI models
 
-### macOS Container (Optional)
+### macOS Container (Sonoma/Sequoia)
 
 Run Bytebot with a macOS Sonoma/Sequoia desktop environment:
 
 ```bash
-# Start macOS stack (Apple Hardware Only - licensing requirements)
+# Prebaked image (96% faster startup, recommended)
+./scripts/start-stack.sh --os macos --prebaked
+
+# Runtime installation (one-time manual setup required)
 ./scripts/start-stack.sh --os macos
 ```
 
 **System Requirements:**
-- **Apple Hardware Only** (iMac, Mac mini, MacBook, Mac Studio, Mac Pro - licensing requirements)
+- **Apple Hardware Only** (iMac, Mac mini, MacBook, Mac Studio, Mac Pro - Apple licensing)
 - KVM support, 8GB+ RAM, 64GB+ disk space
 
-**Setup Process:**
-1. **macOS installer package built automatically** (~150MB with ARM64 binaries)
-   - Builds packages on Linux host (shared, bytebot-cv, bytebotd)
-   - Pre-installs macOS-native sharp binaries (@img/sharp-darwin-arm64)
-   - Creates TAR.GZ package at `docker/macos-installer/bytebotd-macos-prebaked.tar.gz`
-2. Stack starts macOS container (5-10 minutes for first boot)
-3. **One-command automated installation** via `setup-macos.sh`:
-   - Access macOS at `http://localhost:8006` or `vnc://localhost:5900`
-   - Open Terminal inside macOS
-   - Run: `sudo bash /shared/setup-macos.sh`
-4. **Automated installation** via `install-macos-prebaked.sh`:
-   - Installs Homebrew package manager
-   - Installs Node.js 20 via Homebrew
-   - Extracts installer package to `/Users/Shared/bytebot`
-   - Creates LaunchAgent for bytebotd auto-start
-   - Sets up LaunchDaemon for future auto-installs
-5. **Total time: 5-8 minutes** (Homebrew + Node.js installation)
+**Why Prebaked?**
+- 🚀 **96% faster startup**: 30-60 seconds vs 10-15 minutes
+- ✅ **Zero manual steps** after initial creation
+- 🔄 **Reusable image** across deployments
+- ⚠️ **One-time Setup Assistant** completion required (Apple licensing constraint)
 
-**LaunchDaemon Auto-Start:**
-- Bootstrap script installs LaunchDaemon on first run
-- Bytebotd auto-starts via LaunchAgent on subsequent boots
-- LaunchDaemon self-deletes after successful installation
+**Prebaked Image Workflow:**
+
+Creating the prebaked image (one-time setup):
+1. Run: `./scripts/build-macos-prebaked-image.sh`
+2. Script starts fresh macOS container (~5-10 min boot)
+3. **Manual Setup Assistant completion required** (~5 minutes):
+   - Access macOS at `http://localhost:8006` or `vnc://localhost:5900`
+   - Complete Setup Assistant (region, keyboard, user account)
+   - **SKIP**: Migration Assistant, Apple ID, iCloud, Analytics, Siri
+   - Create user account: `docker` / `docker`
+4. After reaching desktop, run in Terminal:
+   ```bash
+   sudo bash /shared/setup-macos-first-time.sh
+   ```
+5. Automated installation completes (~5-8 minutes):
+   - Installs Homebrew + Node.js 20
+   - Extracts bytebotd packages to `/Users/Shared/bytebot`
+   - Creates LaunchAgent for auto-start
+   - Verifies bytebotd health
+6. Script commits container to prebaked image: `bytebot-macos-prebaked:latest`
+7. Total time: **10-15 minutes** (one-time only)
+
+Using the prebaked image (subsequent deployments):
+```bash
+./scripts/start-stack.sh --os macos --prebaked
+```
+- Boots in 30-60 seconds
+- Bytebotd starts automatically via LaunchAgent
+- Ready to use immediately
+
+**Runtime Installation Workflow:**
+
+For deployments without prebaked image:
+1. **macOS installer package built automatically** (~150MB with ARM64 binaries)
+   - Builds packages on host (shared, bytebot-cv, bytebotd)
+   - Pre-installs macOS-native sharp binaries (@img/sharp-darwin-arm64)
+   - Creates TAR.GZ at `docker/macos-installer/bytebotd-macos-prebaked.tar.gz`
+2. Container starts (~5-10 minutes first boot)
+3. **Manual Setup Assistant completion** (~5 minutes) - same as prebaked workflow
+4. Run in Terminal: `sudo bash /shared/setup-macos-first-time.sh`
+5. Automated installation (~5-8 minutes) - same as prebaked workflow
+6. Total time: **10-15 minutes** (every deployment)
+
+**Why Setup Assistant Cannot Be Bypassed:**
+- Apple licensing requires interactive EULA acceptance
+- macOS has no equivalent to Windows `autounattend.xml`
+- `.AppleSetupDone` bypass no longer works on macOS 14+
+- LaunchDaemons run AFTER Setup Assistant (chicken-and-egg problem)
+- **Solution**: Docker commit approach (industry best practice)
 
 **Troubleshooting:**
-- **Check logs**: `/Users/Shared/bytebot-logs/install-prebaked.log` and `bytebotd.log`
-- **Bootstrap script**: Located at `/shared/setup-macos.sh` in macOS VM
+- **Check logs**: `/Users/Shared/bytebot-logs/first-time-setup.log` and `bytebotd.log`
+- **Prebaked image missing**: Run `./scripts/build-macos-prebaked-image.sh`
 - **Rebuild package**: `rm -rf docker/macos-installer && ./scripts/build-macos-prebaked-package.sh`
-- **Fresh start**: Delete volume (`docker volume rm docker_bytebot-macos-storage`) then restart
+- **Fresh start (runtime)**: Delete volume (`docker volume rm docker_bytebot-macos-storage`)
+- **Fresh start (prebaked)**: Rebuild image with `--skip-test` to avoid test container
 
 **Ports:**
 - `8006` - Web-based viewer

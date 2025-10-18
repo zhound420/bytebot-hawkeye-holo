@@ -447,6 +447,14 @@ class Holo15:
         # Use profile-specific max_tokens if provided, otherwise fall back to global setting
         effective_max_tokens = max_tokens if max_tokens is not None else settings.max_new_tokens
 
+        # Debug logging to track token budget (helps diagnose multi-element detection issues)
+        if max_tokens is None:
+            print(f"⚠ WARNING: max_tokens not provided, using global default: {effective_max_tokens} tokens")
+            print(f"   For multi-element detection, recommended: 256+ tokens (SPEED), 512+ (BALANCED), 1024+ (QUALITY)")
+        elif effective_max_tokens < 256:
+            print(f"⚠ WARNING: max_tokens={effective_max_tokens} is very low for multi-element detection")
+            print(f"   Recommended minimum: 256 tokens (current may only support 1-2 elements)")
+
         completion_kwargs = {
             "messages": messages,
             "max_tokens": effective_max_tokens,

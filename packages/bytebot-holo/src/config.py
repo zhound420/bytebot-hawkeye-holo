@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     mmproj_n_gpu_layers: Optional[int] = None  # Auto-tuned based on device
 
     # Holo 1.5 inference settings
-    max_new_tokens: int = 64  # Reduced for faster inference (was 128)
+    max_new_tokens: int = 256  # Minimum for multi-element detection (64 was too low - only 1-2 elements)
     temperature: float = 0.0  # Greedy decoding for consistency
     top_p: Optional[float] = None  # Disabled with temperature=0.0
     max_retries: int = 0  # Disabled by default for speed (was 2)

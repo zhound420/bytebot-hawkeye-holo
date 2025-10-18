@@ -215,7 +215,7 @@ class Holo15:
         self,
         messages: List[Dict[str, Any]],
         image: Image.Image,
-        max_new_tokens: int = 128,
+        max_new_tokens: Optional[int] = None,
     ) -> str:
         """
         Run inference using the official transformers pipeline.
@@ -223,12 +223,16 @@ class Holo15:
         Args:
             messages: Message list from get_navigation_prompt()
             image: Resized PIL Image
-            max_new_tokens: Maximum tokens to generate
+            max_new_tokens: Maximum tokens to generate (default: settings.max_new_tokens)
 
         Returns:
             Raw model output string
         """
         start_time = time.time()
+
+        # Use settings value if not provided (256-1024 depending on profile)
+        if max_new_tokens is None:
+            max_new_tokens = settings.max_new_tokens
 
         # Apply chat template to messages
         text_prompt = self.processor.apply_chat_template(

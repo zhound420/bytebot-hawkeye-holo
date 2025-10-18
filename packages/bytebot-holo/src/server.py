@@ -99,6 +99,16 @@ class HealthResponse(BaseModel):
     gpu_memory_used_gb: Optional[float] = None
 
 
+class GPUInfoResponse(BaseModel):
+    """GPU information response."""
+    device_type: str = Field(..., description="Device type: cuda, mps, or cpu")
+    gpu_name: Optional[str] = Field(None, description="GPU device name")
+    memory_total_mb: Optional[int] = Field(None, description="Total GPU memory in MB")
+    memory_used_mb: Optional[int] = Field(None, description="Used GPU memory in MB")
+    memory_free_mb: Optional[int] = Field(None, description="Free GPU memory in MB")
+    memory_utilization_percent: Optional[float] = Field(None, description="Memory utilization percentage")
+
+
 # Lifespan event handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -225,6 +235,38 @@ async def health_check():
         gpu_name=gpu_name,
         gpu_memory_total_gb=gpu_memory_total,
         gpu_memory_used_gb=gpu_memory_used,
+    )
+
+
+@app.get("/gpu-info", response_model=GPUInfoResponse)
+async def gpu_info():
+    """GPU information endpoint for client telemetry."""
+    device_type = settings.device
+    gpu_name = None
+    memory_total_mb = None
+    memory_used_mb = None
+    memory_free_mb = None
+    memory_utilization_percent = None
+
+    if torch.cuda.is_available() and settings.device == "cuda":
+        gpu_name = torch.cuda.get_device_name(0)
+        props = torch.cuda.get_device_properties(0)
+        total_bytes = props.total_memory
+        used_bytes = torch.cuda.memory_allocated(0)
+        free_bytes = total_bytes - used_bytes
+
+        memory_total_mb = int(total_bytes / (1024 ** 2))
+        memory_used_mb = int(used_bytes / (1024 ** 2))
+        memory_free_mb = int(free_bytes / (1024 ** 2))
+        memory_utilization_percent = round((used_bytes / total_bytes) * 100, 2) if total_bytes > 0 else 0.0
+
+    return GPUInfoResponse(
+        device_type=device_type,
+        gpu_name=gpu_name,
+        memory_total_mb=memory_total_mb,
+        memory_used_mb=memory_used_mb,
+        memory_free_mb=memory_free_mb,
+        memory_utilization_percent=memory_utilization_percent,
     )
 
 

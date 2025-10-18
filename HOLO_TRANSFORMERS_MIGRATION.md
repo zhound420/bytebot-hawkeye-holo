@@ -113,8 +113,19 @@ Response:
 }
 ```
 
-**Backward Compatibility:**
-The legacy `/parse` endpoint still works! It internally uses the new navigation system but returns the old element format.
+**Backward Compatibility (RESTORED):**
+The `/parse` endpoint fully supports the old API! After initial migration broke compatibility,
+we restored full multi-element detection, SOM generation, and all parameters:
+- `detect_multiple`: Multi-element mode with UI detection prompts
+- `include_som`: Set-of-Mark annotated images with numbered boxes [0], [1], [2]...
+- `performance_profile`: SPEED/BALANCED/QUALITY
+- `max_detections`, `min_confidence`: Detection control
+
+**Implementation:**
+- Single-element mode: One navigate() call if `task` provided
+- Multi-element mode: Multiple navigate() calls with UI prompts
+- SOM generation: PIL-based numbered box annotations
+- Returns full response: elements, count, som_image, profile
 
 **Backup:** `server.py.backup` (old server preserved)
 
@@ -150,12 +161,19 @@ async navigate(
 ```
 
 **Backward Compatibility:**
-The existing `parseScreenshot()` method still works! It calls the legacy `/parse` endpoint which benefits from the new implementation.
+The existing `parseScreenshot()` method works with the FULL API! Multi-element detection, SOM images, and all parameters are supported.
 
 ### Phase 5: Agent Integration ✅
-**Status:** Backward compatible via `/parse` endpoint
+**Status:** Fully backward compatible via restored `/parse` endpoint
 
-The enhanced-visual-detector continues using `parseScreenshot()`, which now internally uses the new transformers implementation. **No agent code changes required!**
+The enhanced-visual-detector continues using `parseScreenshot()`, which now uses the transformers implementation
+with full support for:
+- **Multi-element detection** (bytebotd expects multiple elements)
+- **SOM images** (bytebot-agent expects som_image field for 70-85% accuracy)
+- **Performance profiles** (SPEED/BALANCED/QUALITY)
+- **All original parameters**
+
+**No agent code changes required!**
 
 Future enhancement: Agent can optionally use `navigate()` directly for full NavigationStep capabilities.
 

@@ -345,7 +345,7 @@ class Settings(BaseSettings):
     model_config = {
         "env_prefix": "HOLO_",
         "env_file": ".env",
-        "protected_namespaces": ()  # Disable protected namespace warning for model_dtype
+        "protected_namespaces": ()  # Disable protected namespace warning
     }
 
 
@@ -436,7 +436,7 @@ else:
 
 # Print Holo 1.5 configuration
 print(f"→ Model: Holo 1.5-7B (Qwen2.5-VL base)")
-print(f"  Dtype: {settings.model_dtype}, Max tokens: {settings.max_new_tokens}")
+print(f"  Dtype: {settings.torch_dtype}, Max tokens: {settings.max_new_tokens}")
 print(f"  Detection prompts: {len(settings.detection_prompts)} prompts")
 print(f"  Click box size: {settings.click_box_size}px, Dedup radius: {settings.deduplication_radius}px")
 print(f"  Performance profile: {settings.active_profile}")

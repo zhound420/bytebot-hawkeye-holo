@@ -735,6 +735,65 @@ else
 fi
 echo ""
 
+# Pre-download Holo 1.5-7B model for Apple Silicon (better UX)
+if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+
+    # Only pre-download if model not already cached
+    if [[ ! -d "$MODEL_CACHE" ]] || [[ $(find "$MODEL_CACHE" -type f \( -name "*.bin" -o -name "*.safetensors" \) 2>/dev/null | wc -l) -lt 1 ]]; then
+        echo -e "${BLUE}Step 6.5: Pre-downloading Holo 1.5-7B model (~14GB)...${NC}"
+        echo "  This improves first-run experience (vs blocking on first API call)"
+        echo ""
+
+        cd packages/bytebot-holo
+
+        if [[ -d "venv" ]]; then
+            source venv/bin/activate
+
+            python3 << 'PYEOF'
+import sys
+print("Downloading Holo 1.5-7B transformers model (~14GB)...")
+print("This may take 10-20 minutes depending on internet speed...")
+print("")
+
+try:
+    from transformers import AutoProcessor, AutoModelForImageTextToText
+
+    print("→ Downloading processor...")
+    AutoProcessor.from_pretrained('Hcompany/Holo1.5-7B')
+    print("✓ Processor downloaded")
+
+    print("→ Downloading model (this is the large part)...")
+    AutoModelForImageTextToText.from_pretrained('Hcompany/Holo1.5-7B', torch_dtype='auto')
+    print("✓ Model downloaded and cached")
+    print("")
+    print("Model cache location: ~/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B")
+
+except Exception as e:
+    print(f"✗ Download failed: {e}", file=sys.stderr)
+    print("Model will be downloaded on first API request instead", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}✓ Holo 1.5-7B model pre-downloaded${NC}"
+            else
+                echo -e "${YELLOW}⚠ Pre-download failed, will download on first use${NC}"
+            fi
+
+            deactivate
+        else
+            echo -e "${YELLOW}⚠ venv not found, skipping pre-download${NC}"
+        fi
+
+        cd ../..
+        echo ""
+    else
+        echo -e "${GREEN}✓ Holo 1.5-7B model already cached (skipping download)${NC}"
+        echo ""
+    fi
+fi
+
 # Start Holo 1.5-7B for Apple Silicon (native with MPS GPU)
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
     echo -e "${BLUE}Step 7: Starting native Holo 1.5-7B (Apple Silicon with MPS GPU)...${NC}"

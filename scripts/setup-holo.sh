@@ -10,11 +10,25 @@ NC='\033[0m' # No Color
 
 # Parse command line arguments
 FORCE_REINSTALL=false
+CLEAN_CACHE=false
 for arg in "$@"; do
   case $arg in
     --force|-f)
       FORCE_REINSTALL=true
       shift
+      ;;
+    --clean|-c)
+      CLEAN_CACHE=true
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --force, -f    Force reinstall (remove venv and cache)"
+      echo "  --clean, -c    Clean model cache and re-download"
+      echo "  --help, -h     Show this help message"
+      exit 0
       ;;
   esac
 done
@@ -77,6 +91,22 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     # Check if already set up (venv + transformers model cached)
     MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
+
+    # Check if clean cache requested
+    if [[ "$CLEAN_CACHE" == "true" ]]; then
+        echo -e "${YELLOW}Cleaning Holo model cache...${NC}"
+        if [[ -d "$MODEL_CACHE" ]]; then
+            CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
+            CACHE_SIZE_GB=$(echo "scale=1; $CACHE_SIZE_MB/1024" | bc)
+            echo "  Removing $CACHE_SIZE_GB GB cached model at:"
+            echo "  $MODEL_CACHE"
+            rm -rf "$MODEL_CACHE"
+            echo -e "${GREEN}✓ Cache cleaned${NC}"
+        else
+            echo "  No cache found at $MODEL_CACHE"
+        fi
+        echo ""
+    fi
 
     # Check if force reinstall requested
     if [[ "$FORCE_REINSTALL" == "true" ]]; then

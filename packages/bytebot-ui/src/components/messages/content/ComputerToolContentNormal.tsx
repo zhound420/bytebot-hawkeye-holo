@@ -37,6 +37,13 @@ function ToolDetailsNormal({ block }: { block: ComputerToolUseContentBlock }) {
   const baseClasses =
     "rounded-md border border-border bg-muted px-1 py-0.5 text-[12px] text-muted-foreground";
 
+  // Helper to handle keys parameter (array or string from model)
+  const formatKeys = (keys: string | string[], separator: string): string => {
+    if (Array.isArray(keys)) return keys.join(separator);
+    if (typeof keys === 'string') return keys;
+    return String(keys);
+  };
+
   return (
     <>
       {isComputerDetectElementsToolUseBlock(block) && (
@@ -74,7 +81,7 @@ function ToolDetailsNormal({ block }: { block: ComputerToolUseContentBlock }) {
 
       {/* Text for type and key actions */}
       {(isTypeKeysToolUseBlock(block) || isPressKeysToolUseBlock(block)) && (
-        <p className={baseClasses}>{String(block.input.keys.join(" + "))}</p>
+        <p className={baseClasses}>{formatKeys(block.input.keys, " + ")}</p>
       )}
 
       {(isTypeTextToolUseBlock(block) || isPasteTextToolUseBlock(block)) && (

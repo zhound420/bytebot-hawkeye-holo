@@ -23,12 +23,19 @@ function ToolDetailsTakeOver({ block }: { block: ComputerToolUseContentBlock }) 
   const baseClasses =
     "rounded-md border border-border bg-muted px-1 py-0.5 text-xs text-primary";
 
+  // Helper to handle keys parameter (array or string from model)
+  const formatKeys = (keys: string | string[], separator: string): string => {
+    if (Array.isArray(keys)) return keys.join(separator);
+    if (typeof keys === 'string') return keys;
+    return String(keys);
+  };
+
   return (
     <>
       {/* Text for type and key actions */}
       {(isTypeKeysToolUseBlock(block) || isPressKeysToolUseBlock(block)) && (
         <p className={baseClasses}>
-          {String(block.input.keys.join("+"))}
+          {formatKeys(block.input.keys, "+")}
         </p>
       )}
       

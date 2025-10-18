@@ -2,6 +2,48 @@
 
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { InferencePipelineView } from "./InferencePipelineView";
+import { ModelOutputViewer } from "./ModelOutputViewer";
+
+interface InferencePipeline {
+  stage: 'resizing' | 'encoding' | 'inference' | 'parsing' | 'complete' | 'error';
+  progress: number; // 0-100
+  currentStep: string;
+  timing: {
+    resizeMs?: number;
+    inferenceMs?: number;
+    parseMs?: number;
+    totalMs?: number;
+  };
+}
+
+interface RequestDetails {
+  systemPrompt?: string;
+  userPrompt?: string;
+  modelConfig?: Record<string, unknown>;
+  imageInfo?: {
+    original: string;
+    resized: string;
+    scaleFactors: Record<string, number>;
+  };
+}
+
+interface ModelResponse {
+  rawOutput: string;
+  outputLength: number;
+  tokenEstimate?: number;
+  parseStatus: 'success' | 'error';
+  parseError?: string;
+}
+
+interface EnhancedElementMetadata {
+  bbox: number[];
+  center: number[];
+  confidence: number;
+  type: string;
+  caption: string;
+  somNumber?: number;
+}
 
 interface HoloMethodMetadata {
   task_description?: string;
@@ -29,6 +71,11 @@ interface CVMethodActivity {
   startTime?: number;
   duration?: number;
   metadata?: HoloMethodMetadata;
+  // Enhanced transparency fields
+  pipeline?: InferencePipeline;
+  request?: RequestDetails;
+  response?: ModelResponse;
+  elements?: EnhancedElementMetadata[];
 }
 
 interface CVActivitySnapshot {
@@ -512,28 +559,28 @@ export function CVActivityIndicator({ className, compact = false, inline = false
                    activity?.holoDevice;
 
   return (
-    <div className={cn("rounded-lg border border-border bg-card px-2 py-1.5", className)}>
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1">
-            <h3 className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className={cn("rounded-lg border border-border bg-card px-3 py-2", className)}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {hasHolo ? "AI Computer Vision" : "CV Detection"}
             </h3>
             {hasHolo && (
-              <span className={cn("text-[9px] font-medium flex items-center gap-0.5", deviceBadge.color)}>
-                <span>{deviceBadge.icon}</span>
+              <span className={cn("text-xs font-medium flex items-center gap-1", deviceBadge.color)}>
+                <span className="text-sm">{deviceBadge.icon}</span>
                 <span>{deviceBadge.label}</span>
               </span>
             )}
           </div>
           {activity?.gpuName && (
-            <div className="text-[8px] font-medium text-foreground">
+            <div className="text-xs font-medium text-foreground">
               {activity.gpuName}
             </div>
           )}
           {activity?.gpuMemoryTotalMB && (
-            <div className="flex flex-col gap-0.5">
-              <div className="text-[8px] text-muted-foreground">
+            <div className="flex flex-col gap-1">
+              <div className="text-xs text-muted-foreground">
                 {formatMemory(activity.gpuMemoryUsedMB)} / {formatMemory(activity.gpuMemoryTotalMB)}
               </div>
               {/* GPU Memory Progress Bar */}
@@ -560,23 +607,23 @@ export function CVActivityIndicator({ className, compact = false, inline = false
             </div>
           )}
         </div>
-        <span className="text-[9px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground font-medium">
           {activity?.totalActiveCount} {activity?.totalActiveCount === 1 ? "method" : "methods"}
         </span>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {activity?.activeMethods?.map((method) => {
           const detail = activity?.methodDetails?.[method];
           const displayName = methodDisplayNames[method] || method;
           const color = methodColors[method] || "bg-gray-500";
 
           return (
-            <div key={method} className="flex items-center gap-1">
-              <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", color)} />
-              <span className="text-[10px] font-medium">{displayName}</span>
+            <div key={method} className="flex items-center gap-2">
+              <div className={cn("h-2 w-2 rounded-full animate-pulse", color)} />
+              <span className="text-xs font-medium">{displayName}</span>
               {detail?.startTime && (
-                <span className="text-[9px] text-muted-foreground ml-auto">
+                <span className="text-xs text-muted-foreground ml-auto">
                   {Math.round((Date.now() - detail.startTime) / 100) / 10}s
                 </span>
               )}
@@ -585,24 +632,56 @@ export function CVActivityIndicator({ className, compact = false, inline = false
         })}
       </div>
 
+      {/* Inference Pipeline View */}
+      {Object.values(activity?.methodDetails || {}).some(detail => detail?.pipeline) && (
+        <div className="mt-2">
+          {Object.entries(activity?.methodDetails || {}).map(([methodId, detail]) => {
+            if (!detail?.pipeline) return null;
+            return (
+              <InferencePipelineView
+                key={methodId}
+                pipeline={detail.pipeline}
+                compact={true}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Model Output Viewer */}
+      {Object.values(activity?.methodDetails || {}).some(detail => detail?.response || detail?.request) && (
+        <div className="mt-2">
+          {Object.entries(activity?.methodDetails || {}).map(([methodId, detail]) => {
+            if (!detail?.response && !detail?.request) return null;
+            return (
+              <ModelOutputViewer
+                key={methodId}
+                response={detail.response}
+                request={detail.request}
+              />
+            );
+          })}
+        </div>
+      )}
+
       {activity && activity.performance.totalMethodsExecuted > 0 && (
-        <div className="mt-1.5 pt-1.5 border-t border-border">
-          <div className="grid grid-cols-3 gap-1 text-[9px]">
+        <div className="mt-2 pt-2 border-t border-border">
+          <div className="grid grid-cols-3 gap-2 text-xs">
             <div>
               <div className="text-muted-foreground">Avg</div>
-              <div className="font-medium">
+              <div className="font-semibold text-foreground">
                 {Math.round(activity.performance.averageProcessingTime)}ms
               </div>
             </div>
             <div>
               <div className="text-muted-foreground">Total</div>
-              <div className="font-medium">
+              <div className="font-semibold text-foreground">
                 {activity.performance.totalMethodsExecuted}
               </div>
             </div>
             <div>
               <div className="text-muted-foreground">Success</div>
-              <div className="font-medium">
+              <div className="font-semibold text-foreground">
                 {Math.round(activity.performance.successRate * 100)}%
               </div>
             </div>

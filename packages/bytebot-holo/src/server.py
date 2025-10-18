@@ -1,8 +1,9 @@
-"""FastAPI server for Holo 1.5-7B UI localization service."""
+"""FastAPI server for Holo 1.5-7B UI navigation service (transformers)."""
 
 import io
 import base64
-from typing import Optional
+import time
+from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 import numpy as np
 from PIL import Image
@@ -11,138 +12,54 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+import torch
 
-from .config import settings
-from . import holo_wrapper
+from .config import settings, NavigationStep, ActionSpace
 from .holo_wrapper import get_model
 
 
-# GPU Info Helper
-def get_gpu_info() -> dict:
-    """Get GPU information including name and memory stats."""
-    import torch
-    import subprocess
-
-    gpu_info = {
-        "gpu_name": None,
-        "gpu_memory_total_mb": None,
-        "gpu_memory_used_mb": None,
-        "gpu_memory_free_mb": None,
-    }
-
-    try:
-        if torch.cuda.is_available() and settings.device == "cuda":
-            # Get GPU name
-            gpu_info["gpu_name"] = torch.cuda.get_device_name(0)
-
-            # Use nvidia-smi for accurate memory tracking (includes llama.cpp GGUF allocations)
-            # PyTorch's memory tracking only sees PyTorch tensors, not llama.cpp CUDA allocations
-            try:
-                result = subprocess.run(
-                    ['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits'],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    memory_used_str, total_memory_str = result.stdout.strip().split(',')
-                    memory_used = int(memory_used_str.strip())
-                    total_memory = int(total_memory_str.strip())
-
-                    gpu_info["gpu_memory_total_mb"] = total_memory
-                    gpu_info["gpu_memory_used_mb"] = memory_used
-                    gpu_info["gpu_memory_free_mb"] = total_memory - memory_used
-                else:
-                    raise Exception("nvidia-smi returned no data")
-            except Exception as smi_error:
-                # Fallback to PyTorch (less accurate for llama.cpp but better than nothing)
-                print(f"Warning: nvidia-smi failed ({smi_error}), falling back to PyTorch memory tracking")
-                total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
-                memory_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
-                memory_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
-                memory_used = max(memory_allocated, memory_reserved)
-
-                gpu_info["gpu_memory_total_mb"] = int(total_memory)
-                gpu_info["gpu_memory_used_mb"] = int(memory_used)
-                gpu_info["gpu_memory_free_mb"] = int(total_memory - memory_used)
-
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and settings.device == "mps":
-            # Apple Silicon - MPS doesn't provide detailed memory info
-            import platform
-            gpu_info["gpu_name"] = f"Apple {platform.machine()}"
-            # MPS memory management is automatic, no direct API for stats
-
-        elif settings.device == "cpu":
-            import platform
-            gpu_info["gpu_name"] = f"CPU ({platform.processor() or platform.machine()})"
-
-    except Exception as e:
-        print(f"Warning: Could not get GPU info: {e}")
-
-    return gpu_info
+# Request/Response Models
+class NavigateRequest(BaseModel):
+    """Request model for navigation endpoint."""
+    image: str = Field(..., description="Base64 encoded screenshot")
+    task: str = Field(..., description="Task to complete (e.g., 'Find the search bar')")
+    step: int = Field(1, ge=1, description="Current step number")
 
 
-# Pydantic models for request/response
-class ParseRequest(BaseModel):
-    """Request model for screenshot parsing with Holo 1.5-7B."""
+class NavigateResponse(BaseModel):
+    """Response model for navigation endpoint."""
+    note: str = Field(..., description="Observation from screenshot")
+    thought: str = Field(..., description="Reasoning about next action")
+    action: Dict[str, Any] = Field(..., description="Next action to take")
+    processing_time_ms: float = Field(..., description="Inference time in milliseconds")
+    image_size: Dict[str, int] = Field(..., description="Original image dimensions")
+    device: str = Field(..., description="Device used for inference")
+
+
+class LegacyParseRequest(BaseModel):
+    """Legacy request for backward compatibility with old /parse endpoint."""
     image: str = Field(..., description="Base64 encoded image")
-    task: Optional[str] = Field(None, description="Specific task instruction for single-element mode")
-    detect_multiple: bool = Field(True, description="Detect multiple elements using various prompts")
-    include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
-    max_detections: Optional[int] = Field(
-        None,
-        ge=1,
-        le=200,
-        description="Optional cap on returned detections to limit token usage",
-    )
-    min_confidence: Optional[float] = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Minimum confidence threshold for returned detections",
-    )
-    return_raw_outputs: bool = Field(
-        False,
-        description="Include raw model outputs for debugging (increases payload size)",
-    )
-    performance_profile: Optional[str] = Field(
-        None,
-        description="Override the active performance profile for this request",
-    )
+    task: Optional[str] = Field(None, description="Task description")
 
 
-class ElementDetection(BaseModel):
-    """Detected UI element."""
+class LegacyElementDetection(BaseModel):
+    """Legacy element format for backward compatibility."""
     bbox: list[int] = Field(..., description="Bounding box [x, y, width, height]")
     center: list[int] = Field(..., description="Center point [x, y]")
-    confidence: float = Field(..., description="Detection confidence score")
-    type: str = Field(..., description="Element type ('text' or 'icon')")
-    caption: Optional[str] = Field(None, description="Element caption/description")
-    interactable: Optional[bool] = Field(None, description="Whether element is interactable/clickable")
-    content: Optional[str] = Field(None, description="OCR text or caption content")
-    source: Optional[str] = Field(None, description="Detection source (box_ocr_content_ocr or box_yolo_content_yolo)")
-    element_id: Optional[int] = Field(None, description="Element index for SOM mapping")
-    raw_output: Optional[str] = Field(None, description="Raw model output segment that produced this detection")
-    task: Optional[str] = Field(None, description="Original task instruction associated with the detection")
+    confidence: float = Field(default=0.85, description="Detection confidence")
+    type: str = Field(default="clickable", description="Element type")
+    caption: Optional[str] = Field(None, description="Element description")
+    element_id: int = Field(..., description="Element index")
 
 
-class ParseResponse(BaseModel):
-    """Response model for screenshot parsing."""
-    elements: list[ElementDetection]
+class LegacyParseResponse(BaseModel):
+    """Legacy response for backward compatibility."""
+    elements: list[LegacyElementDetection]
     count: int
     processing_time_ms: float
-    image_size: dict[str, int]
+    image_size: Dict[str, int]
     device: str
-    profile: Optional[str] = Field(None, description="Performance profile applied for this response")
-    max_detections: Optional[int] = Field(None, description="Effective detection cap used")
-    min_confidence: Optional[float] = Field(None, description="Confidence threshold applied")
-    som_image: Optional[str] = Field(None, description="Base64 encoded Set-of-Mark annotated image")
-    ocr_detected: Optional[int] = Field(None, description="Number of OCR text elements detected")
-    icon_detected: Optional[int] = Field(None, description="Number of icon elements detected")
-    text_detected: Optional[int] = Field(None, description="Number of text elements in final result")
-    interactable_count: Optional[int] = Field(None, description="Number of interactable elements")
-    raw_model_outputs: Optional[list[str]] = Field(None, description="Raw Holo model outputs for debugging/traceability")
-    model: str = Field("holo-1.5-7b", description="Source model identifier")
+    model: str = Field(default="holo-1.5-7b-transformers")
 
 
 class HealthResponse(BaseModel):
@@ -150,63 +67,42 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     device: str
-    models_loaded: bool
-    gpu_name: Optional[str] = Field(None, description="GPU device name (e.g., 'NVIDIA GeForce RTX 4090')")
-    gpu_memory_total_mb: Optional[int] = Field(None, description="Total GPU memory in MB")
-    gpu_memory_used_mb: Optional[int] = Field(None, description="Used GPU memory in MB")
-    gpu_memory_free_mb: Optional[int] = Field(None, description="Free GPU memory in MB")
+    backend: str
+    gpu_name: Optional[str] = None
+    gpu_memory_total_gb: Optional[float] = None
+    gpu_memory_used_gb: Optional[float] = None
 
 
-class ModelStatusResponse(BaseModel):
-    """Model status response."""
-    icon_detector: dict
-    caption_model: dict
-    weights_path: str
-
-
-class GPUInfoResponse(BaseModel):
-    """GPU information response."""
-    device_type: str = Field(..., description="Device type: cuda, mps, or cpu")
-    gpu_name: Optional[str] = Field(None, description="GPU device name")
-    memory_total_mb: Optional[int] = Field(None, description="Total GPU memory in MB")
-    memory_used_mb: Optional[int] = Field(None, description="Used GPU memory in MB")
-    memory_free_mb: Optional[int] = Field(None, description="Free GPU memory in MB")
-    memory_utilization_percent: Optional[float] = Field(None, description="Memory utilization percentage")
-
-
-# Lifespan event handler (replaces deprecated on_event)
+# Lifespan event handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # Startup
-    import torch
-
-    print("=" * 50)
-    print("Bytebot Holo 1.5-7B Service Starting (GGUF)")
-    print("=" * 50)
+    print("=" * 60)
+    print("Bytebot Holo 1.5-7B Navigation Service Starting")
+    print("=" * 60)
+    print(f"Backend: HuggingFace Transformers (official implementation)")
     print(f"Device: {settings.device}")
+    print(f"Model: {settings.model_repo}")
+    print(f"Dtype: {settings.torch_dtype}")
     print(f"Port: {settings.port}")
-    print(f"Model repo: {settings.model_repo}")
-    print(f"Configured model file: {settings.model_filename}")
-    print(f"Configured projector: {settings.mmproj_filename}")
     print("")
-    print("Backend: llama-cpp-python with GPU acceleration")
-    print(f"  PyTorch Version: {torch.__version__}")
-    print(f"  CUDA Available: {torch.cuda.is_available()}")
+    print(f"PyTorch Version: {torch.__version__}")
+    print(f"CUDA Available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        print(f"  CUDA Version: {torch.version.cuda}")
-        print(f"  GPU Count: {torch.cuda.device_count()}")
+        print(f"CUDA Version: {torch.version.cuda}")
+        print(f"GPU Count: {torch.cuda.device_count()}")
         for i in range(torch.cuda.device_count()):
-            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
-    print("=" * 50)
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    print("=" * 60)
     print("")
-    print("⚡ Lazy loading enabled: Model will load on first API request")
-    print("   First request will take 1-3 minutes (model download + loading)")
-    print("   Subsequent requests will be fast (~1-3s per detection)")
+    print("⚡ Lazy loading enabled: Model loads on first request")
+    print("   First request: ~1-3 min (model download + loading)")
+    print("   Subsequent requests: ~2-4s per inference")
     print("")
-    print("=" * 50)
+    print("=" * 60)
     print("Service ready!")
-    print("=" * 50)
+    print("=" * 60)
 
     yield
 
@@ -214,18 +110,18 @@ async def lifespan(app: FastAPI):
     print("Shutting down Holo 1.5-7B service...")
 
 
-# Create FastAPI app with lifespan
+# Create FastAPI app
 app = FastAPI(
-    title="Bytebot Holo 1.5-7B Service",
-    description="Holo 1.5-7B UI localization for precision element targeting",
-    version="1.0.0",
+    title="Bytebot Holo 1.5-7B Navigation Service",
+    description="Official transformers-based Holo 1.5-7B for UI navigation and localization",
+    version="2.0.0",
     lifespan=lifespan
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -250,7 +146,7 @@ def decode_image(image_data: str) -> np.ndarray:
         # Decode base64
         image_bytes = base64.b64decode(image_data)
 
-        # Convert to PIL Image
+        # Open with PIL
         image = Image.open(io.BytesIO(image_bytes))
 
         # Convert to RGB if needed
@@ -261,25 +157,23 @@ def decode_image(image_data: str) -> np.ndarray:
         return np.array(image)
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image data: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid image data: {str(e)}"
+        )
 
 
 @app.get("/", response_model=dict)
 async def root():
     """Root endpoint."""
-    model = get_model()
     return {
-        "service": "Bytebot Holo 1.5-7B (GGUF)",
-        "model_repo": model.model_repo,
-        "model": model.model_filename,
-        "quantization": model.dtype,
-        "version": "1.0.0",
-        "status": "running",
+        "service": "Bytebot Holo 1.5-7B Navigation",
+        "version": "2.0.0",
+        "backend": "transformers",
         "endpoints": {
-            "parse": "/parse",
-            "parse_upload": "/parse/upload",
-            "health": "/health",
-            "models": "/models/status"
+            "navigate": "POST /navigate - Main navigation endpoint (official format)",
+            "parse": "POST /parse - Legacy localization endpoint (backward compatibility)",
+            "health": "GET /health - Service health check",
         }
     }
 
@@ -287,88 +181,45 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    # Check if model is already loaded (don't trigger loading)
-    models_loaded = holo_wrapper._model_instance is not None
+    gpu_name = None
+    gpu_memory_total = None
+    gpu_memory_used = None
 
-    # Get GPU information (doesn't require model)
-    gpu_info = get_gpu_info()
+    if torch.cuda.is_available() and settings.device == "cuda":
+        gpu_name = torch.cuda.get_device_name(0)
+        props = torch.cuda.get_device_properties(0)
+        gpu_memory_total = props.total_memory / (1024 ** 3)  # Convert to GB
+        gpu_memory_used = torch.cuda.memory_allocated(0) / (1024 ** 3)
 
     return HealthResponse(
-        status="healthy",  # Service is always healthy if FastAPI is running
-        version="1.0.0",
+        status="healthy",
+        version="2.0.0",
         device=settings.device,
-        models_loaded=models_loaded,
-        **gpu_info  # Include GPU info fields
+        backend="transformers",
+        gpu_name=gpu_name,
+        gpu_memory_total_gb=gpu_memory_total,
+        gpu_memory_used_gb=gpu_memory_used,
     )
 
 
-@app.get("/models/status", response_model=ModelStatusResponse)
-async def model_status():
-    """Get model status and information."""
-    try:
-        model = get_model()
-
-        return ModelStatusResponse(
-            icon_detector={
-                "loaded": True,
-                "type": "Holo 1.5-7B",
-                "path": model.model_name,
-                "quantization": model.dtype
-            },
-            caption_model={
-                "loaded": True,
-                "type": "Qwen2.5-VL-7B (base)",
-                "path": model.model_name,
-                "device": model.device,
-                "dtype": str(model.dtype)
-            },
-            weights_path=model.model_name
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
-
-
-@app.get("/gpu-info", response_model=GPUInfoResponse)
-async def gpu_info():
-    """Get GPU information including device name and memory stats."""
-    gpu_info = get_gpu_info()
-
-    # Calculate memory utilization percentage
-    memory_util = None
-    if gpu_info["gpu_memory_total_mb"] and gpu_info["gpu_memory_used_mb"]:
-        memory_util = (gpu_info["gpu_memory_used_mb"] / gpu_info["gpu_memory_total_mb"]) * 100
-
-    return GPUInfoResponse(
-        device_type=settings.device,
-        gpu_name=gpu_info["gpu_name"],
-        memory_total_mb=gpu_info["gpu_memory_total_mb"],
-        memory_used_mb=gpu_info["gpu_memory_used_mb"],
-        memory_free_mb=gpu_info["gpu_memory_free_mb"],
-        memory_utilization_percent=memory_util
-    )
-
-
-@app.post("/parse", response_model=ParseResponse)
-async def parse_screenshot(request: ParseRequest = Body(...)):
+@app.post("/navigate", response_model=NavigateResponse)
+async def navigate(request: NavigateRequest = Body(...)):
     """
-    Parse UI screenshot using Holo 1.5-7B localization.
+    Main navigation endpoint using official Holo 1.5 format.
 
-    Supports two modes:
-    1. Single-element mode (task provided): Localize specific element
-    2. Multi-element mode (detect_multiple=True): Detect multiple elements using prompts
+    Analyzes screenshot and returns next action with reasoning.
 
     Args:
-        request: ParseRequest with base64 image and options
+        request: NavigateRequest with image, task, and step
 
     Returns:
-        ParseResponse with detected elements and optional SOM annotated image
+        NavigateResponse with note, thought, and action
     """
     try:
-        # Log incoming request
-        print(f"→ Parse request: task={'Yes' if request.task else 'No'}, "
-              f"detect_multiple={request.detect_multiple}, "
-              f"profile={request.performance_profile or 'default'}, "
-              f"max_detections={request.max_detections or 'auto'}")
+        start_time = time.time()
+
+        # Log request
+        print(f"→ Navigate request: task='{request.task}', step={request.step}")
 
         # Decode image
         image = decode_image(request.image)
@@ -377,99 +228,139 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
         # Get model
         model = get_model()
 
-        # Use Holo 1.5-7B localization
-        result = model.parse_screenshot(
-            image,
+        # Run navigation
+        navigation_step = model.navigate(
+            image_array=image,
             task=request.task,
-            detect_multiple=request.detect_multiple,
-            include_som=request.include_som,
-            max_detections=request.max_detections,
-            min_confidence=request.min_confidence,
-            return_raw_outputs=request.return_raw_outputs,
-            performance_profile=request.performance_profile,
+            step=request.step,
         )
 
-        result["model"] = "holo-1.5-7b"
+        processing_time_ms = (time.time() - start_time) * 1000
 
-        return ParseResponse(**result)
+        # Convert NavigationStep to response format
+        return NavigateResponse(
+            note=navigation_step.note,
+            thought=navigation_step.thought,
+            action=navigation_step.action.model_dump(),  # Pydantic v2
+            processing_time_ms=processing_time_ms,
+            image_size={"width": image.shape[1], "height": image.shape[0]},
+            device=settings.device,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"✗ Parse error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
+        print(f"✗ Navigation error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Navigation error: {str(e)}")
 
 
-@app.post("/parse/upload", response_model=ParseResponse)
-async def parse_screenshot_upload(
-    file: UploadFile = File(...),
-    task: Optional[str] = None,
-    detect_multiple: bool = True,
-    include_som: bool = True,
-    max_detections: Optional[int] = None,
-    min_confidence: Optional[float] = None,
-    return_raw_outputs: bool = False,
-    performance_profile: Optional[str] = None,
-):
+@app.post("/parse", response_model=LegacyParseResponse)
+async def parse_legacy(request: LegacyParseRequest = Body(...)):
     """
-    Parse UI screenshot from file upload using Holo 1.5-7B.
+    Legacy parse endpoint for backward compatibility.
+
+    Translates navigation output to old element detection format.
 
     Args:
-        file: Uploaded image file
-        task: Specific task instruction for single-element mode
-        detect_multiple: Detect multiple elements using various prompts
-        include_som: Generate Set-of-Mark annotated image
-        (other parameters deprecated but maintained for compatibility)
+        request: LegacyParseRequest with image and optional task
 
     Returns:
-        ParseResponse with detected elements and optional SOM annotated image
+        LegacyParseResponse with detected elements
     """
     try:
-        # Read image file
-        image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes))
+        start_time = time.time()
 
-        # Convert to RGB if needed
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+        # Use default task if none provided
+        task = request.task or "Identify all interactive UI elements"
 
-        # Convert to numpy array
-        image_array = np.array(image)
+        print(f"→ Legacy parse request: task='{task}'")
+
+        # Decode image
+        image = decode_image(request.image)
 
         # Get model
         model = get_model()
 
-        # Use Holo 1.5-7B localization
-        result = model.parse_screenshot(
-            image_array,
+        # Run navigation
+        navigation_step = model.navigate(
+            image_array=image,
             task=task,
-            detect_multiple=detect_multiple,
-            include_som=include_som,
-            max_detections=max_detections,
-            min_confidence=min_confidence,
-            return_raw_outputs=return_raw_outputs,
-            performance_profile=performance_profile,
+            step=1,
         )
 
-        result["model"] = "holo-1.5-7b"
+        processing_time_ms = (time.time() - start_time) * 1000
 
-        return ParseResponse(**result)
+        # Translate navigation action to legacy element format
+        elements = []
+
+        action = navigation_step.action
+
+        # Only create element if action has coordinates
+        if hasattr(action, 'x') and hasattr(action, 'y'):
+            if action.x is not None and action.y is not None:
+                # Create element from action coordinates
+                element = LegacyElementDetection(
+                    bbox=[action.x - 20, action.y - 20, 40, 40],  # 40x40 box around center
+                    center=[action.x, action.y],
+                    confidence=0.85,  # Default confidence
+                    type="clickable",
+                    caption=getattr(action, 'element', navigation_step.thought),
+                    element_id=0,
+                )
+                elements.append(element)
+
+        return LegacyParseResponse(
+            elements=elements,
+            count=len(elements),
+            processing_time_ms=processing_time_ms,
+            image_size={"width": image.shape[1], "height": image.shape[0]},
+            device=settings.device,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"✗ Legacy parse error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Parse error: {str(e)}")
+
+
+@app.post("/parse/upload", response_model=LegacyParseResponse)
+async def parse_upload_legacy(
+    file: UploadFile = File(...),
+    task: Optional[str] = None,
+):
+    """
+    Legacy parse upload endpoint for backward compatibility.
+
+    Args:
+        file: Uploaded image file
+        task: Optional task description
+
+    Returns:
+        LegacyParseResponse with detected elements
+    """
+    try:
+        # Read image file
+        image_bytes = await file.read()
+
+        # Encode to base64
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+        # Call main parse endpoint
+        request = LegacyParseRequest(image=image_b64, task=task)
+        return await parse_legacy(request)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
-
-
-def main():
-    """Run the FastAPI server."""
-    uvicorn.run(
-        "src.server:app",
-        host=settings.host,
-        port=settings.port,
-        workers=settings.workers,
-        reload=False,
-        log_level="info"
-    )
+        print(f"✗ Upload parse error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        workers=settings.workers,
+    )

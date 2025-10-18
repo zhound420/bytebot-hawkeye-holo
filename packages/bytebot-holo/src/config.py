@@ -1,10 +1,167 @@
 """Configuration management for Holo 1.5-7B service."""
 
 from pathlib import Path
-from typing import Literal, Optional, List, Dict, Any
-from pydantic import Field
+from typing import Literal, Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
+
+# ============================================================================
+# Official Holo 1.5 Navigation Schemas (from HuggingFace demo)
+# ============================================================================
+
+class ClickElementAction(BaseModel):
+    """Click at absolute coordinates of a web element with its description"""
+    action: Literal["click_element"] = Field(description="Click at absolute coordinates of a web element")
+    element: str = Field(description="text description of the element")
+    x: int = Field(description="The x coordinate, number of pixels from the left edge.")
+    y: int = Field(description="The y coordinate, number of pixels from the top edge.")
+
+    def log(self):
+        return f"I have clicked on the element '{self.element}' at absolute coordinates {self.x}, {self.y}"
+
+
+class WriteElementAction(BaseModel):
+    """Write content at absolute coordinates of a web element identified by its description, then press Enter."""
+    action: Literal["write_element_abs"] = Field(description="Write content at absolute coordinates of a web page")
+    content: str = Field(description="Content to write")
+    element: str = Field(description="Text description of the element")
+    x: int = Field(description="The x coordinate, number of pixels from the left edge.")
+    y: int = Field(description="The y coordinate, number of pixels from the top edge.")
+
+    def log(self):
+        return f"I have written '{self.content}' in the element '{self.element}' at absolute coordinates {self.x}, {self.y}"
+
+
+class ScrollAction(BaseModel):
+    """Scroll action with no required element"""
+    action: Literal["scroll"] = Field(description="Scroll the page or a specific element")
+    direction: Literal["down", "up", "left", "right"] = Field(description="The direction to scroll in")
+
+    def log(self):
+        return f"I have scrolled {self.direction}"
+
+
+class GoBackAction(BaseModel):
+    """Action to navigate back in browser history"""
+    action: Literal["go_back"] = Field(description="Navigate to the previous page")
+
+    def log(self):
+        return "I have gone back to the previous page"
+
+
+class RefreshAction(BaseModel):
+    """Action to refresh the current page"""
+    action: Literal["refresh"] = Field(description="Refresh the current page")
+
+    def log(self):
+        return "I have refreshed the page"
+
+
+class GotoAction(BaseModel):
+    """Action to go to a particular URL"""
+    action: Literal["goto"] = Field(description="Goto a particular URL")
+    url: str = Field(description="A url starting with http:// or https://")
+
+    def log(self):
+        return f"I have navigated to the URL {self.url}"
+
+
+class WaitAction(BaseModel):
+    """Action to wait for a particular amount of time"""
+    action: Literal["wait"] = Field(description="Wait for a particular amount of time")
+    seconds: int = Field(default=2, ge=0, le=10, description="The number of seconds to wait")
+
+    def log(self):
+        return f"I have waited for {self.seconds} seconds"
+
+
+class RestartAction(BaseModel):
+    """Restart the task from the beginning."""
+    action: Literal["restart"] = "restart"
+
+    def log(self):
+        return "I have restarted the task from the beginning"
+
+
+class AnswerAction(BaseModel):
+    """Return a final answer to the task. This is the last action to call in an episode."""
+    action: Literal["answer"] = "answer"
+    content: str = Field(description="The answer content")
+
+    def log(self):
+        return f"I have answered the task with '{self.content}'"
+
+
+# Union of all possible actions
+ActionSpace = Union[
+    ClickElementAction,
+    WriteElementAction,
+    ScrollAction,
+    GoBackAction,
+    RefreshAction,
+    WaitAction,
+    RestartAction,
+    AnswerAction,
+    GotoAction,
+]
+
+
+class NavigationStep(BaseModel):
+    """
+    Official Holo 1.5 navigation output format.
+    Includes observation, reasoning, and structured action.
+    """
+    note: str = Field(
+        default="",
+        description="Task-relevant information extracted from the previous observation. Keep empty if no new info.",
+    )
+    thought: str = Field(description="Reasoning about next steps (<4 lines)")
+    action: ActionSpace = Field(description="Next action to take")
+
+
+# Official SYSTEM_PROMPT from HuggingFace Holo1.5-Navigation demo
+# This is the exact prompt used in the official implementation
+OFFICIAL_SYSTEM_PROMPT = """Imagine you are a robot browsing the web, just like humans. Now you need to complete a task.
+In each iteration, you will receive an Observation that includes the last screenshots of a web browser and the current memory of the agent.
+You have also information about the step that the agent is trying to achieve to solve the task.
+Carefully analyze the visual information to identify what to do, then follow the guidelines to choose the following action.
+You should detail your thought (i.e. reasoning steps) before taking the action.
+Also detail in the notes field of the action the extracted information relevant to solve the task.
+Once you have enough information in the notes to answer the task, return an answer action with the detailed answer in the notes field.
+This will be evaluated by an evaluator and should match all the criteria or requirements of the task.
+Guidelines:
+- store in the notes all the relevant information to solve the task that fulfill the task criteria. Be precise
+- Use both the task and the step information to decide what to do
+- if you want to write in a text field and the text field already has text, designate the text field by the text it contains and its type
+- If there is a cookies notice, always accept all the cookies first
+- The observation is the screenshot of the current page and the memory of the agent.
+- If you see relevant information on the screenshot to answer the task, add it to the notes field of the action.
+- If there is no relevant information on the screenshot to answer the task, add an empty string to the notes field of the action.
+- If you see buttons that allow to navigate directly to relevant information, like jump to ... or go to ... , use them to navigate faster.
+- In the answer action, give as many details a possible relevant to answering the task.
+- if you want to write, don't click before. Directly use the write action
+- to write, identify the web element which is type and the text it already contains
+- If you want to use a search bar, directly write text in the search bar
+- Don't scroll too much. Don't scroll if the number of scrolls is greater than 3
+- Don't scroll if you are at the end of the webpage
+- Only refresh if you identify a rate limit problem
+- If you are looking for a single flights, click on round-trip to select 'one way'
+- Never try to login, enter email or password. If there is a need to login, then go back.
+- If you are facing a captcha on a website, try to solve it.
+- if you have enough information in the screenshot and in the notes to answer the task, return an answer action with the detailed answer in the notes field
+- The current date is {timestamp}.
+# <output_json_format>
+# ```json
+# {output_format}
+# ```
+# </output_json_format>
+"""
+
+
+# ============================================================================
+# Legacy Configuration (for backward compatibility)
+# ============================================================================
 
 # Multi-element detection prompts - used in discovery mode for comprehensive UI scanning
 # Optimized based on official Qwen2.5-VL examples and Holo 1.5-7B best practices (2025 research)
@@ -112,20 +269,17 @@ class Settings(BaseSettings):
     # Device settings (auto = auto-detect, cuda = NVIDIA, mps = Apple Silicon, cpu = CPU)
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
 
-    # Model repository + quantization controls
-    model_repo: str = "mradermacher/Holo1.5-7B-GGUF"
-    model_filename: str = "Holo1.5-7B.Q4_K_M.gguf"
-    mmproj_filename: str = "mmproj-Q8_0.gguf"
-    model_path: Optional[Path] = None  # Absolute path to pre-downloaded GGUF model
-    mmproj_path: Optional[Path] = None  # Absolute path to projector file
+    # Model repository (official HuggingFace transformers model)
+    model_repo: str = "Hcompany/Holo1.5-7B"
     cache_models: bool = True
-    cache_dir: Path = Path.home() / ".cache" / "bytebot" / "holo"
-    model_dtype: str = "bfloat16"  # float16, float32, bfloat16 (recommended for Holo)
-    n_ctx: int = 4096  # Reduced context for faster inference (was 8192)
-    n_threads: Optional[int] = None
-    n_batch: Optional[int] = 512  # Optimal batch size for MPS/CUDA
-    n_gpu_layers: Optional[int] = None  # Auto-tuned based on device
-    mmproj_n_gpu_layers: Optional[int] = None  # Auto-tuned based on device
+    cache_dir: Path = Path.home() / ".cache" / "huggingface"  # Standard HF cache
+
+    # Model dtype for transformers (bfloat16 recommended for accuracy + efficiency)
+    # - bfloat16: Best accuracy, requires CUDA 12.1+ or Apple Silicon
+    # - float16: Faster but less accurate, works on older GPUs
+    # - float32: Maximum accuracy, highest VRAM usage
+    torch_dtype: Literal["auto", "bfloat16", "float16", "float32"] = "bfloat16"
+    trust_remote_code: bool = True  # Required for Holo 1.5 custom model code
 
     # Holo 1.5 inference settings
     max_new_tokens: int = 256  # Minimum for multi-element detection (64 was too low - only 1-2 elements)

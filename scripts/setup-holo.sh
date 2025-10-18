@@ -33,7 +33,7 @@ echo "  OS: $OS"
 echo "  Architecture: $ARCH"
 echo ""
 
-# Function to validate GGUF model cache is complete
+# Function to validate transformers model cache is complete
 validate_model_cache() {
     local cache_dir="$1"
 
@@ -42,17 +42,17 @@ validate_model_cache() {
         return 1
     fi
 
-    # Check cache size (should be at least 5GB for GGUF Q4_K_M model + mmproj)
+    # Check cache size (should be at least 13GB for transformers bfloat16 model)
     local cache_size_mb=$(du -sm "$cache_dir" 2>/dev/null | awk '{print $1}' || echo "0")
-    if [[ $cache_size_mb -lt 5000 ]]; then
-        echo -e "${YELLOW}⚠ Incomplete cache detected: ${cache_size_mb}MB (expected ~6,000MB for GGUF)${NC}" >&2
+    if [[ $cache_size_mb -lt 13000 ]]; then
+        echo -e "${YELLOW}⚠ Incomplete cache detected: ${cache_size_mb}MB (expected ~14,000MB for transformers)${NC}" >&2
         return 1
     fi
 
-    # Check for GGUF model files (both model and mmproj)
-    local gguf_files=$(find "$cache_dir" -type f -name "*.gguf" 2>/dev/null | wc -l)
-    if [[ $gguf_files -lt 2 ]]; then
-        echo -e "${YELLOW}⚠ Missing GGUF files (found ${gguf_files}, expected 2: model + mmproj)${NC}" >&2
+    # Check for transformers model files (pytorch or safetensors)
+    local model_files=$(find "$cache_dir" -type f \( -name "pytorch_model*.bin" -o -name "model*.safetensors" \) 2>/dev/null | wc -l)
+    if [[ $model_files -lt 1 ]]; then
+        echo -e "${YELLOW}⚠ Missing transformers model files${NC}" >&2
         return 1
     fi
 
@@ -75,8 +75,8 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo -e "${YELLOW}→ Native setup recommended for GPU acceleration (MPS)${NC}"
     echo ""
 
-    # Check if already set up (venv + GGUF model cached)
-    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF"
+    # Check if already set up (venv + transformers model cached)
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
 
     # Check if force reinstall requested
     if [[ "$FORCE_REINSTALL" == "true" ]]; then
@@ -91,11 +91,11 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     # Validate existing setup
     if [[ -d "packages/bytebot-holo/venv" ]] && validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
-        echo -e "${GREEN}✓ Holo 1.5-7B GGUF already set up${NC}"
+        echo -e "${GREEN}✓ Holo 1.5-7B (transformers) already set up${NC}"
         echo ""
         echo "Setup includes:"
         echo "  ✓ Python environment (venv)"
-        echo "  ✓ GGUF model cached (~6 GB at ~/.cache/huggingface/)"
+        echo "  ✓ Transformers model cached (~14 GB at ~/.cache/huggingface/)"
         echo ""
         # Show actual cache size
         CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
@@ -112,15 +112,15 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     elif [[ -d "packages/bytebot-holo/venv" ]]; then
         echo -e "${YELLOW}⚠ Partial setup detected${NC}"
         echo "  ✓ Python environment exists"
-        echo "  ✗ GGUF model not cached or incomplete"
+        echo "  ✗ Transformers model not cached or incomplete"
         echo ""
 
         # Show diagnostic info
         if [[ -d "$MODEL_CACHE" ]]; then
             CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
-            echo "  Current cache size: ${CACHE_SIZE_MB}MB (expected: ~6,000MB for GGUF)"
-            GGUF_COUNT=$(find "$MODEL_CACHE" -type f -name "*.gguf" 2>/dev/null | wc -l | tr -d ' ')
-            echo "  GGUF files: $GGUF_COUNT (expected: 2 - model + mmproj)"
+            echo "  Current cache size: ${CACHE_SIZE_MB}MB (expected: ~14,000MB for transformers)"
+            MODEL_COUNT=$(find "$MODEL_CACHE" -type f \( -name "pytorch_model*.bin" -o -name "model*.safetensors" \) 2>/dev/null | wc -l | tr -d ' ')
+            echo "  Model files: $MODEL_COUNT (expected: 1+)"
         fi
 
         echo ""
@@ -156,11 +156,11 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     pip install -r requirements.txt
     fi  # End of SKIP_VENV_CREATION check
 
-    # Note about GGUF model auto-download
-    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--mradermacher--Holo1.5-7B-GGUF"
+    # Note about transformers model auto-download
+    MODEL_CACHE="$HOME/.cache/huggingface/hub/models--Hcompany--Holo1.5-7B"
     if validate_model_cache "$MODEL_CACHE" 2>/dev/null; then
         echo ""
-        echo -e "${GREEN}✓ GGUF model already cached${NC}"
+        echo -e "${GREEN}✓ Transformers model already cached${NC}"
         echo "  Location: $MODEL_CACHE"
         CACHE_SIZE_MB=$(du -sm "$MODEL_CACHE" 2>/dev/null | awk '{print $1}' || echo "0")
         CACHE_SIZE_GB=$(echo "scale=1; $CACHE_SIZE_MB/1024" | bc)
@@ -169,22 +169,22 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         echo ""
     else
         echo ""
-        echo -e "${BLUE}GGUF Model Download${NC}"
-        echo "  Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M quantization)"
-        echo "  Size: ~6 GB (model + mmproj)"
+        echo -e "${BLUE}Transformers Model Download${NC}"
+        echo "  Model: Hcompany/Holo1.5-7B (bfloat16)"
+        echo "  Size: ~14 GB"
         echo "  Location: ~/.cache/huggingface/"
         echo ""
-        echo -e "${YELLOW}Note: GGUF models download automatically on first run${NC}"
-        echo "  llama-cpp-python will download the model when you start the service"
-        echo "  This may take 5-15 minutes depending on your internet speed"
+        echo -e "${YELLOW}Note: Transformers models download automatically on first run${NC}"
+        echo "  HuggingFace transformers will download the model when you start the service"
+        echo "  This may take 10-20 minutes depending on your internet speed"
         echo ""
 
         # Check disk space first
         available_gb=$(df -g . 2>/dev/null | tail -1 | awk '{print $4}' || echo "999")
-        if [ "$available_gb" != "999" ] && [ "$available_gb" -lt 15 ]; then
-            echo -e "${YELLOW}⚠ Warning: Less than 15GB free disk space${NC}"
+        if [ "$available_gb" != "999" ] && [ "$available_gb" -lt 20 ]; then
+            echo -e "${YELLOW}⚠ Warning: Less than 20GB free disk space${NC}"
             echo "  Available: ${available_gb}GB"
-            echo "  Recommended: 15GB (model + cache + overhead)"
+            echo "  Recommended: 20GB (model + cache + overhead)"
             read -p "Continue anyway? [y/N] " -n 1 -r
             echo ""
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -233,14 +233,14 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
     echo ""
     echo "Next steps:"
     echo ""
-    echo "1. Start Holo 1.5-7B GGUF (native with Apple Silicon MPS GPU):"
+    echo "1. Start Holo 1.5-7B (native with Apple Silicon MPS GPU):"
     echo -e "   ${BLUE}./scripts/start-holo.sh${NC}"
     echo ""
     echo "2. In another terminal, start Docker stack:"
     echo -e "   ${BLUE}./scripts/start-stack.sh${NC}"
     echo ""
-    echo "Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M - 4.8GB)"
-    echo "Performance: ~1.5-2.5s per inference with MPS GPU 🚀"
+    echo "Model: Hcompany/Holo1.5-7B (transformers bfloat16 - ~14GB)"
+    echo "Performance: ~2-4s per inference with MPS GPU 🚀"
     echo ""
 
 elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
@@ -266,14 +266,14 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     echo ""
     echo "Next step:"
     echo ""
-    echo "Start the full Docker stack (includes Holo 1.5-7B GGUF):"
+    echo "Start the full Docker stack (includes Holo 1.5-7B transformers):"
     echo -e "   ${BLUE}./scripts/start-stack.sh${NC}"
     echo ""
-    echo "Model: mradermacher/Holo1.5-7B-GGUF (Q4_K_M - 4.8GB)"
+    echo "Model: Hcompany/Holo1.5-7B (transformers bfloat16 - ~14GB)"
     if command -v nvidia-smi &> /dev/null; then
-        echo "Performance: ~0.8-1.5s per inference with CUDA GPU 🚀"
+        echo "Performance: ~2-4s per inference with CUDA GPU 🚀"
     else
-        echo "Performance: ~8-15s per inference with CPU"
+        echo "Performance: ~15-30s per inference with CPU"
     fi
     echo ""
 else

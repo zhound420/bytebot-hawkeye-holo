@@ -3,20 +3,17 @@ uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 huggingface-hub==0.26.2
 Pillow==10.4.0
-torch>=2.0.0
+torch>=2.1.0
 numpy>=1.24.0
 pydantic==2.9.0
 pydantic-settings==2.6.0
 
-# llama-cpp-python for GGUF quantized models
-# Supports CUDA (NVIDIA), Metal (Apple Silicon), and CPU backends
-llama-cpp-python>=0.3.0
+# Transformers for official Holo 1.5 implementation
+# Uses AutoModelForImageTextToText and AutoProcessor from HuggingFace
+transformers>=4.40.0
+accelerate>=0.25.0
 
-# Note: For GPU acceleration, llama-cpp-python will auto-detect:
-# - CUDA on NVIDIA GPUs (Linux/Windows)
-# - Metal on Apple Silicon (macOS)
-# - Falls back to CPU if no GPU available
-#
-# To force specific backend, set CMAKE_ARGS before install:
-# export CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python  # NVIDIA
-# export CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python # Apple Silicon
+# Note: For optimal performance, ensure you have:
+# - NVIDIA GPU: CUDA 12.1+ for bfloat16 support
+# - Apple Silicon: PyTorch with MPS support
+# - Minimum 14GB VRAM recommended for full bfloat16 model

@@ -4,14 +4,10 @@ FROM python:3.12-slim
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
-# Install system dependencies (including build tools for llama-cpp-python)
+# Install system dependencies (minimal for transformers)
 RUN apt-get update && apt-get install -y \
-    git \
     wget \
     curl \
-    build-essential \
-    cmake \
-    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install minimal CUDA runtime libraries when targeting NVIDIA GPUs
@@ -42,33 +38,21 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
         pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121; \
     fi
 
-# Install llama-cpp-python with CUDA support for amd64, CPU-only for arm64
-# This will compile llama.cpp with GPU acceleration on supported platforms
-RUN if [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
-        echo "Installing llama-cpp-python CUDA wheel (cu121)..."; \
-        pip install --no-cache-dir --prefer-binary \
-            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 \
-            llama-cpp-python>=0.3.0 || { \
-            echo "⚠ CUDA wheel install failed, falling back to source build"; \
-            CMAKE_ARGS="-DGGML_CUDA=on -DLLAMA_VISION=on" pip install --no-cache-dir llama-cpp-python>=0.3.0 || { \
-                echo "⚠ CUDA build failed, falling back to CPU-only llama-cpp-python"; \
-                pip install --no-cache-dir llama-cpp-python>=0.3.0; \
-            }; \
-        }; \
-    else \
-        echo "Installing llama-cpp-python for ARM64 (CPU-only)"; \
-        pip install --no-cache-dir llama-cpp-python>=0.3.0; \
-    fi
-
-# Install remaining requirements
+# Install transformers and dependencies from requirements.txt
+# transformers>=4.40.0 provides official Holo 1.5-7B support
+# accelerate>=0.25.0 for efficient model loading
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Verify transformers installation
+RUN python -c "import transformers; print(f'✓ Transformers {transformers.__version__} installed')"
 
 # Copy application code and runtime scripts
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY pyproject.toml .
 
-# Create cache directory for HuggingFace models (GGUF files will be cached here)
+# Create cache directory for HuggingFace models (transformers will cache models here)
+# Holo 1.5-7B model (~14GB) will be downloaded on first API request
 RUN mkdir -p /root/.cache/huggingface
 
 # Expose port

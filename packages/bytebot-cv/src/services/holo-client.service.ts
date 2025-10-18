@@ -1,5 +1,155 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+// ============================================================================
+// Official Holo 1.5 Navigation Types (from transformers implementation)
+// ============================================================================
+
+/**
+ * Action types for NavigationStep
+ */
+export type ActionType =
+  | 'click_element'
+  | 'write_element_abs'
+  | 'scroll'
+  | 'go_back'
+  | 'refresh'
+  | 'goto'
+  | 'wait'
+  | 'restart'
+  | 'answer';
+
+/**
+ * Base interface for all actions
+ */
+export interface BaseAction {
+  action: ActionType;
+}
+
+/**
+ * Click action - click at specific coordinates
+ */
+export interface ClickElementAction extends BaseAction {
+  action: 'click_element';
+  element: string; // Description of element
+  x: number; // X coordinate (pixels from left)
+  y: number; // Y coordinate (pixels from top)
+}
+
+/**
+ * Write action - type text at specific coordinates
+ */
+export interface WriteElementAction extends BaseAction {
+  action: 'write_element_abs';
+  content: string; // Text to write
+  element: string; // Description of element
+  x: number;
+  y: number;
+}
+
+/**
+ * Scroll action
+ */
+export interface ScrollAction extends BaseAction {
+  action: 'scroll';
+  direction: 'up' | 'down' | 'left' | 'right';
+}
+
+/**
+ * Go back action
+ */
+export interface GoBackAction extends BaseAction {
+  action: 'go_back';
+}
+
+/**
+ * Refresh action
+ */
+export interface RefreshAction extends BaseAction {
+  action: 'refresh';
+}
+
+/**
+ * Navigate to URL action
+ */
+export interface GotoAction extends BaseAction {
+  action: 'goto';
+  url: string;
+}
+
+/**
+ * Wait action
+ */
+export interface WaitAction extends BaseAction {
+  action: 'wait';
+  seconds: number; // Duration to wait (0-10)
+}
+
+/**
+ * Restart action
+ */
+export interface RestartAction extends BaseAction {
+  action: 'restart';
+}
+
+/**
+ * Answer action - return final answer
+ */
+export interface AnswerAction extends BaseAction {
+  action: 'answer';
+  content: string; // The answer
+}
+
+/**
+ * Union of all possible actions
+ */
+export type Action =
+  | ClickElementAction
+  | WriteElementAction
+  | ScrollAction
+  | GoBackAction
+  | RefreshAction
+  | GotoAction
+  | WaitAction
+  | RestartAction
+  | AnswerAction;
+
+/**
+ * Official Holo 1.5 NavigationStep format
+ */
+export interface NavigationStep {
+  note: string; // Observation from screenshot
+  thought: string; // Reasoning about next action
+  action: Action; // Next action to take
+}
+
+/**
+ * Navigation API request
+ */
+export interface NavigateRequest {
+  image: string; // Base64 encoded screenshot
+  task: string; // Task to complete
+  step?: number; // Current step number (default: 1)
+}
+
+/**
+ * Navigation API response
+ */
+export interface NavigateResponse {
+  note: string;
+  thought: string;
+  action: Action;
+  processing_time_ms: number;
+  image_size: {
+    width: number;
+    height: number;
+  };
+  device: string;
+}
+
+// ============================================================================
+// Legacy Types (for backward compatibility)
+// ============================================================================
+
 /**
  * Universal element types for cross-detection compatibility
  */
@@ -506,6 +656,88 @@ export class HoloClientService {
       throw error;
     } finally {
       // Resume GPU polling after detection completes (Phase 2.3)
+      this.detectionInProgress = false;
+    }
+  }
+
+  /**
+   * Navigate using official Holo 1.5 transformers implementation
+   *
+   * This is the new navigation endpoint that returns note, thought, and action
+   * using the official format from the HuggingFace demo.
+   *
+   * @param imageBuffer - Screenshot as Buffer
+   * @param task - Task to complete (e.g., "Find the search bar")
+   * @param step - Current step number (default: 1)
+   * @returns NavigateResponse with note, thought, and action
+   */
+  async navigate(
+    imageBuffer: Buffer,
+    task: string,
+    step: number = 1,
+  ): Promise<NavigateResponse> {
+    if (!this.enabled) {
+      throw new Error('Holo 1.5-7B is disabled');
+    }
+
+    const startTime = Date.now();
+
+    // Pause GPU polling during detection
+    this.detectionInProgress = true;
+
+    try {
+      // Convert buffer to base64
+      const base64Image = imageBuffer.toString('base64');
+
+      // Create request body for navigation API
+      const requestBody: NavigateRequest = {
+        image: base64Image,
+        task,
+        step,
+      };
+
+      // Send request to Holo 1.5-7B navigation endpoint
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      const response = await fetch(`${this.baseUrl}/navigate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Holo 1.5-7B navigation failed: ${response.status} ${errorText}`,
+        );
+      }
+
+      const result: NavigateResponse = await response.json();
+
+      const elapsed = Date.now() - startTime;
+
+      // Log navigation result
+      this.logger.log(
+        `Holo 1.5-7B navigation: action="${result.action.action}" ` +
+        `(thought: "${result.thought.substring(0, 50)}...") ` +
+        `in ${elapsed}ms (service: ${result.processing_time_ms}ms)`,
+      );
+
+      return result;
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      this.logger.error(
+        `Holo 1.5-7B navigation error after ${elapsed}ms: ${error.message}`,
+      );
+      throw error;
+    } finally {
+      // Resume GPU polling
       this.detectionInProgress = false;
     }
   }

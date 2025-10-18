@@ -727,35 +727,35 @@ cd ../..
 echo ""
 
 # Setup Holo 1.5-7B if needed
-echo -e "${BLUE}Step 6: Setting up Holo 1.5-7B...${NC}"
+echo -e "${BLUE}Step 6: Setting up Holo 1.5-7B (transformers backend)...${NC}"
 if [ -f "scripts/setup-holo.sh" ]; then
     ./scripts/setup-holo.sh
 else
-    echo -e "${YELLOW}⚠ OmniParser setup script not found, skipping${NC}"
+    echo -e "${YELLOW}⚠ Holo 1.5-7B setup script not found, skipping${NC}"
 fi
 echo ""
 
-# Start OmniParser for Apple Silicon (native with MPS GPU)
+# Start Holo 1.5-7B for Apple Silicon (native with MPS GPU)
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
     echo -e "${BLUE}Step 7: Starting native Holo 1.5-7B (Apple Silicon with MPS GPU)...${NC}"
     if [ -f "scripts/start-holo.sh" ]; then
         ./scripts/start-holo.sh
         echo ""
-        echo "Waiting for OmniParser to be ready..."
+        echo "Waiting for Holo 1.5-7B to be ready..."
         sleep 3
 
-        # Verify OmniParser is running
+        # Verify Holo 1.5-7B is running
         if curl -s http://localhost:9989/health > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ OmniParser running natively on port 9989${NC}"
+            echo -e "${GREEN}✓ Holo 1.5-7B running natively on port 9989${NC}"
         else
-            echo -e "${YELLOW}⚠ OmniParser may not be ready yet${NC}"
+            echo -e "${YELLOW}⚠ Holo 1.5-7B may not be ready yet${NC}"
         fi
     else
-        echo -e "${YELLOW}⚠ OmniParser start script not found${NC}"
+        echo -e "${YELLOW}⚠ Holo 1.5-7B start script not found${NC}"
     fi
     echo ""
 else
-    echo -e "${BLUE}Step 7: OmniParser will run in Docker container${NC}"
+    echo -e "${BLUE}Step 7: Holo 1.5-7B will run in Docker container${NC}"
     if [[ "$PLATFORM" == "Windows (WSL)" ]] || [[ "$PLATFORM" == "Linux" ]]; then
         echo -e "${BLUE}(CUDA GPU acceleration if available)${NC}"
     fi
@@ -975,7 +975,7 @@ echo -e "${BLUE}Service Health Check:${NC}"
 
 services=("bytebot-ui:9992" "bytebot-agent:9991" "$DESKTOP_SERVICE:9990")
 if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    services+=("OmniParser:9989")
+    services+=("Holo 1.5-7B:9989")
 fi
 
 all_healthy=true
@@ -1017,9 +1017,9 @@ else
     echo "  • Desktop:   http://localhost:9990"
 fi
 if [[ "$ARCH" == "arm64" ]] && [[ "$PLATFORM" == "macOS" ]]; then
-    echo "  • OmniParser: http://localhost:9989 (native with MPS GPU)"
+    echo "  • Holo 1.5-7B: http://localhost:9989 (native with MPS GPU)"
 else
-    echo "  • OmniParser: http://localhost:9989 (Docker, CUDA if available)"
+    echo "  • Holo 1.5-7B: http://localhost:9989 (Docker, CUDA if available)"
 fi
 
 echo ""
@@ -1031,7 +1031,7 @@ echo ""
 echo "View logs:"
 echo -e "  ${BLUE}docker compose -f docker/$COMPOSE_FILE logs -f${NC}"
 echo ""
-echo "Test OmniParser:"
+echo "Test Holo 1.5-7B:"
 echo -e "  ${BLUE}curl http://localhost:9989/health${NC}"
 echo ""
 echo "Stop stack:"

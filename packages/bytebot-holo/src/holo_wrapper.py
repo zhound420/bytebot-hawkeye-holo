@@ -1,5 +1,7 @@
 """Holo 1.5-7B model wrapper using official transformers implementation."""
 
+import base64
+import io
 import json
 import time
 from datetime import datetime
@@ -366,6 +368,263 @@ class Holo15:
 
                 action.x = original_x
                 action.y = original_y
+
+    def detect_multiple_elements(
+        self,
+        image_array: np.ndarray,
+        max_detections: int = 20,
+        max_new_tokens: int = 256,
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect multiple UI elements using various detection prompts.
+
+        Uses navigate() with different UI-specific prompts to find:
+        - Clickable elements (buttons, links, icons)
+        - Input fields
+        - Text labels
+        - Interactive controls
+
+        Args:
+            image_array: Screenshot as numpy array
+            max_detections: Maximum elements to return
+            max_new_tokens: Token limit per inference
+
+        Returns:
+            List of detected elements with bbox, center, confidence, caption
+        """
+        # Standard UI detection prompts
+        detection_prompts = [
+            "Locate the most prominent clickable button or link",
+            "Find the main text input field or search box",
+            "Identify the primary navigation menu or tab bar",
+            "Locate an important icon or interactive element",
+        ]
+
+        elements = []
+        seen_locations = []  # Track seen coordinates to avoid duplicates
+
+        for prompt_idx, prompt in enumerate(detection_prompts):
+            if len(elements) >= max_detections:
+                break
+
+            try:
+                # Run navigation with this prompt
+                navigation_step = self.navigate(
+                    image_array=image_array,
+                    task=prompt,
+                    step=prompt_idx + 1,
+                )
+
+                action = navigation_step.action
+
+                # Only process actions with coordinates
+                if hasattr(action, 'x') and hasattr(action, 'y'):
+                    if action.x is not None and action.y is not None:
+                        # Check for duplicates (within 10 pixels)
+                        is_duplicate = False
+                        for seen_x, seen_y in seen_locations:
+                            if abs(action.x - seen_x) < 10 and abs(action.y - seen_y) < 10:
+                                is_duplicate = True
+                                break
+
+                        if not is_duplicate:
+                            # Create element detection in old format
+                            element = {
+                                "bbox": [action.x - 20, action.y - 20, 40, 40],  # 40x40 box
+                                "center": [action.x, action.y],
+                                "confidence": 0.75,  # Default confidence for transformers
+                                "type": "clickable",
+                                "caption": getattr(action, 'element', navigation_step.thought[:50]),
+                                "element_id": len(elements),
+                            }
+
+                            elements.append(element)
+                            seen_locations.append((action.x, action.y))
+
+                            print(f"  Detected element {len(elements)}: {element['caption'][:30]}... at ({action.x}, {action.y})")
+
+            except Exception as e:
+                print(f"  Detection prompt failed: {prompt[:40]}... - {str(e)}")
+                continue
+
+        return elements
+
+    def generate_som_image(
+        self,
+        image: Image.Image,
+        elements: List[Dict[str, Any]],
+    ) -> str:
+        """
+        Generate Set-of-Mark annotated image with numbered bounding boxes.
+
+        Draws RED boxes with WHITE numbered labels [0], [1], [2]...
+
+        Args:
+            image: PIL Image
+            elements: List of detected elements with 'center' and 'bbox'
+
+        Returns:
+            Base64 encoded PNG image with SOM annotations
+        """
+        from PIL import ImageDraw, ImageFont
+
+        # Create a copy to draw on
+        annotated = image.copy()
+        draw = ImageDraw.Draw(annotated)
+
+        # Try to load a font, fall back to default if unavailable
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+        except:
+            font = ImageFont.load_default()
+
+        for idx, element in enumerate(elements):
+            # Get bounding box
+            bbox = element.get("bbox", None)
+            center = element.get("center", None)
+
+            if bbox:
+                x, y, w, h = bbox
+                # Draw red rectangle
+                draw.rectangle(
+                    [(x, y), (x + w, y + h)],
+                    outline="red",
+                    width=2,
+                )
+
+                # Draw label background (white box)
+                label = f"[{idx}]"
+                # For default font, estimate text size
+                text_width = len(label) * 10
+                text_height = 18
+
+                label_x = x
+                label_y = max(0, y - text_height - 2)
+
+                draw.rectangle(
+                    [(label_x, label_y), (label_x + text_width, label_y + text_height)],
+                    fill="white",
+                    outline="red",
+                    width=1,
+                )
+
+                # Draw label text
+                draw.text(
+                    (label_x + 2, label_y),
+                    label,
+                    fill="red",
+                    font=font,
+                )
+
+        # Convert to base64
+        buffered = io.BytesIO()
+        annotated.save(buffered, format="PNG")
+        img_bytes = buffered.getvalue()
+        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+
+        return img_base64
+
+    def parse_screenshot(
+        self,
+        image_array: np.ndarray,
+        task: Optional[str] = None,
+        detect_multiple: bool = True,
+        include_som: bool = True,
+        max_detections: Optional[int] = None,
+        min_confidence: Optional[float] = None,
+        return_raw_outputs: Optional[bool] = None,
+        performance_profile: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Parse UI screenshot using Holo 1.5-7B transformers (backward compatible).
+
+        Supports two modes:
+        1. Single-element mode (task provided): Localize specific element
+        2. Multi-element mode (detect_multiple=True): Detect multiple elements
+
+        Args:
+            image_array: Input screenshot as numpy array (RGB)
+            task: Optional specific task instruction (single element mode)
+            detect_multiple: Whether to detect multiple elements (default: True)
+            include_som: Whether to generate Set-of-Mark annotated image
+            max_detections: Optional cap for detections (default: 20)
+            min_confidence: Optional confidence floor (ignored for transformers)
+            return_raw_outputs: Whether to include raw outputs (not implemented)
+            performance_profile: Optional profile (speed/balanced/quality)
+
+        Returns:
+            Dictionary with detected elements and metadata (old format)
+        """
+        start_time = time.time()
+
+        # Default values
+        effective_max = max_detections or 20
+        profile_key = (performance_profile or 'balanced').lower()
+
+        elements = []
+
+        if task:
+            # Single element mode: localize specific task
+            print(f"  Single-element mode: task='{task}'")
+            navigation_step = self.navigate(
+                image_array=image_array,
+                task=task,
+                step=1,
+            )
+
+            action = navigation_step.action
+
+            # Only create element if action has coordinates
+            if hasattr(action, 'x') and hasattr(action, 'y'):
+                if action.x is not None and action.y is not None:
+                    element = {
+                        "bbox": [action.x - 20, action.y - 20, 40, 40],
+                        "center": [action.x, action.y],
+                        "confidence": 0.85,
+                        "type": "clickable",
+                        "caption": getattr(action, 'element', navigation_step.thought[:50]),
+                        "element_id": 0,
+                    }
+                    elements.append(element)
+
+        elif detect_multiple:
+            # Multi-element mode: run multiple detection prompts
+            print(f"  Multi-element mode: max_detections={effective_max}")
+            elements = self.detect_multiple_elements(
+                image_array,
+                max_detections=effective_max,
+            )
+
+        # Generate SOM annotated image if requested
+        som_image = None
+        if include_som and elements:
+            print(f"  Generating SOM image with {len(elements)} elements...")
+            pil_image = Image.fromarray(np.uint8(image_array))
+            som_image = self.generate_som_image(pil_image, elements)
+
+        processing_time = (time.time() - start_time) * 1000  # Convert to ms
+
+        # Log detection result
+        if elements:
+            print(f"✓ Detected {len(elements)} element(s) in {processing_time:.1f}ms")
+        else:
+            print(f"⚠ Found 0 elements (task={task}, detect_multiple={detect_multiple})")
+
+        result = {
+            "elements": elements,
+            "count": len(elements),
+            "processing_time_ms": round(processing_time, 2),
+            "image_size": {"width": image_array.shape[1], "height": image_array.shape[0]},
+            "device": self.device,
+            "profile": profile_key,
+            "max_detections": effective_max,
+            "min_confidence": min_confidence if min_confidence is not None else 0.3,
+        }
+
+        if som_image:
+            result["som_image"] = som_image
+
+        return result
 
 
 # Global model instance

@@ -36,30 +36,56 @@ class NavigateResponse(BaseModel):
     device: str = Field(..., description="Device used for inference")
 
 
-class LegacyParseRequest(BaseModel):
-    """Legacy request for backward compatibility with old /parse endpoint."""
+class ParseRequest(BaseModel):
+    """Request model for screenshot parsing with Holo 1.5-7B."""
     image: str = Field(..., description="Base64 encoded image")
-    task: Optional[str] = Field(None, description="Task description")
+    task: Optional[str] = Field(None, description="Specific task instruction for single-element mode")
+    detect_multiple: bool = Field(True, description="Detect multiple elements using various prompts")
+    include_som: bool = Field(True, description="Generate Set-of-Mark annotated image with numbered boxes")
+    max_detections: Optional[int] = Field(
+        None,
+        ge=1,
+        le=200,
+        description="Optional cap on returned detections to limit token usage",
+    )
+    min_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for returned detections",
+    )
+    return_raw_outputs: bool = Field(
+        False,
+        description="Include raw model outputs for debugging (increases payload size)",
+    )
+    performance_profile: Optional[str] = Field(
+        None,
+        description="Performance profile: speed, balanced, or quality",
+    )
 
 
-class LegacyElementDetection(BaseModel):
-    """Legacy element format for backward compatibility."""
+class ElementDetection(BaseModel):
+    """Detected UI element."""
     bbox: list[int] = Field(..., description="Bounding box [x, y, width, height]")
     center: list[int] = Field(..., description="Center point [x, y]")
-    confidence: float = Field(default=0.85, description="Detection confidence")
-    type: str = Field(default="clickable", description="Element type")
+    confidence: float = Field(..., description="Detection confidence")
+    type: str = Field(..., description="Element type")
     caption: Optional[str] = Field(None, description="Element description")
     element_id: int = Field(..., description="Element index")
 
 
-class LegacyParseResponse(BaseModel):
-    """Legacy response for backward compatibility."""
-    elements: list[LegacyElementDetection]
+class ParseResponse(BaseModel):
+    """Response model for screenshot parsing."""
+    elements: list[ElementDetection]
     count: int
     processing_time_ms: float
-    image_size: Dict[str, int]
+    image_size: dict[str, int]
     device: str
-    model: str = Field(default="holo-1.5-7b-transformers")
+    profile: Optional[str] = Field(None, description="Performance profile applied for this response")
+    max_detections: Optional[int] = Field(None, description="Effective detection cap used")
+    min_confidence: Optional[float] = Field(None, description="Confidence threshold applied")
+    som_image: Optional[str] = Field(None, description="Base64 encoded Set-of-Mark annotated image")
+    model: str = Field("holo-1.5-7b-transformers", description="Source model identifier")
 
 
 class HealthResponse(BaseModel):
@@ -256,90 +282,84 @@ async def navigate(request: NavigateRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Navigation error: {str(e)}")
 
 
-@app.post("/parse", response_model=LegacyParseResponse)
-async def parse_legacy(request: LegacyParseRequest = Body(...)):
+@app.post("/parse", response_model=ParseResponse)
+async def parse_screenshot(request: ParseRequest = Body(...)):
     """
-    Legacy parse endpoint for backward compatibility.
+    Parse UI screenshot using Holo 1.5-7B localization (backward compatible).
 
-    Translates navigation output to old element detection format.
+    Supports two modes:
+    1. Single-element mode (task provided): Localize specific element
+    2. Multi-element mode (detect_multiple=True): Detect multiple elements using prompts
 
     Args:
-        request: LegacyParseRequest with image and optional task
+        request: ParseRequest with base64 image and options
 
     Returns:
-        LegacyParseResponse with detected elements
+        ParseResponse with detected elements and optional SOM annotated image
     """
     try:
-        start_time = time.time()
-
-        # Use default task if none provided
-        task = request.task or "Identify all interactive UI elements"
-
-        print(f"→ Legacy parse request: task='{task}'")
+        # Log incoming request
+        print(f"→ Parse request: task={'Yes' if request.task else 'No'}, "
+              f"detect_multiple={request.detect_multiple}, "
+              f"profile={request.performance_profile or 'balanced'}, "
+              f"max_detections={request.max_detections or 'default'}")
 
         # Decode image
         image = decode_image(request.image)
+        print(f"  Image decoded: {image.shape[1]}x{image.shape[0]} pixels")
 
         # Get model
         model = get_model()
 
-        # Run navigation
-        navigation_step = model.navigate(
-            image_array=image,
-            task=task,
-            step=1,
+        # Use Holo 1.5-7B parse_screenshot (backward compatible)
+        result = model.parse_screenshot(
+            image,
+            task=request.task,
+            detect_multiple=request.detect_multiple,
+            include_som=request.include_som,
+            max_detections=request.max_detections,
+            min_confidence=request.min_confidence,
+            return_raw_outputs=request.return_raw_outputs,
+            performance_profile=request.performance_profile,
         )
 
-        processing_time_ms = (time.time() - start_time) * 1000
+        result["model"] = "holo-1.5-7b-transformers"
 
-        # Translate navigation action to legacy element format
-        elements = []
-
-        action = navigation_step.action
-
-        # Only create element if action has coordinates
-        if hasattr(action, 'x') and hasattr(action, 'y'):
-            if action.x is not None and action.y is not None:
-                # Create element from action coordinates
-                element = LegacyElementDetection(
-                    bbox=[action.x - 20, action.y - 20, 40, 40],  # 40x40 box around center
-                    center=[action.x, action.y],
-                    confidence=0.85,  # Default confidence
-                    type="clickable",
-                    caption=getattr(action, 'element', navigation_step.thought),
-                    element_id=0,
-                )
-                elements.append(element)
-
-        return LegacyParseResponse(
-            elements=elements,
-            count=len(elements),
-            processing_time_ms=processing_time_ms,
-            image_size={"width": image.shape[1], "height": image.shape[0]},
-            device=settings.device,
-        )
+        return ParseResponse(**result)
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"✗ Legacy parse error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Parse error: {str(e)}")
+        print(f"✗ Parse error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
 
 
-@app.post("/parse/upload", response_model=LegacyParseResponse)
-async def parse_upload_legacy(
+@app.post("/parse/upload", response_model=ParseResponse)
+async def parse_upload(
     file: UploadFile = File(...),
     task: Optional[str] = None,
+    detect_multiple: bool = True,
+    include_som: bool = True,
+    max_detections: Optional[int] = None,
+    min_confidence: Optional[float] = None,
+    performance_profile: Optional[str] = None,
 ):
     """
-    Legacy parse upload endpoint for backward compatibility.
+    Parse UI screenshot from file upload using Holo 1.5-7B.
 
     Args:
         file: Uploaded image file
-        task: Optional task description
+        task: Specific task instruction for single-element mode
+        detect_multiple: Detect multiple elements using various prompts
+        include_som: Generate Set-of-Mark annotated image
+        max_detections: Optional cap for detections
+        min_confidence: Optional confidence threshold
+        performance_profile: Optional profile (speed/balanced/quality)
 
     Returns:
-        LegacyParseResponse with detected elements
+        ParseResponse with detected elements and optional SOM annotated image
     """
     try:
         # Read image file
@@ -349,8 +369,16 @@ async def parse_upload_legacy(
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
         # Call main parse endpoint
-        request = LegacyParseRequest(image=image_b64, task=task)
-        return await parse_legacy(request)
+        request = ParseRequest(
+            image=image_b64,
+            task=task,
+            detect_multiple=detect_multiple,
+            include_som=include_som,
+            max_detections=max_detections,
+            min_confidence=min_confidence,
+            performance_profile=performance_profile,
+        )
+        return await parse_screenshot(request)
 
     except Exception as e:
         print(f"✗ Upload parse error: {str(e)}")

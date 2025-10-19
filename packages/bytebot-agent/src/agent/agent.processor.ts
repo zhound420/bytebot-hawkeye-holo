@@ -1,4 +1,5 @@
 import { TasksService } from '../tasks/tasks.service';
+import { TaskBlockerService } from '../tasks/task-blocker.service';
 import { MessagesService } from '../messages/messages.service';
 import { TasksGateway } from '../tasks/tasks.gateway';
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
@@ -260,6 +261,7 @@ export class AgentProcessor implements OnModuleDestroy {
     private readonly cvActivityService: CVActivityIndicatorService,
     private readonly modelCapabilityService: ModelCapabilityService,
     private readonly loopDetectionService: LoopDetectionService,
+    private readonly taskBlockerService: TaskBlockerService,
     @Inject(forwardRef(() => TasksGateway))
     private readonly tasksGateway: TasksGateway,
   ) {
@@ -1300,21 +1302,30 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         });
 
         // Auto-set to NEEDS_HELP with context (Phase 1.2)
+        const helpContext = {
+          reason: 'timeout',
+          blockerType: 'timeout',
+          elapsedMs: timeoutCheck.elapsedMs,
+          message: timeoutCheck.message,
+          timestamp: new Date().toISOString(),
+          suggestedActions: [
+            'Review current screenshot for modal dialogs or blockers',
+            'Try breaking down the task into smaller steps',
+            'Switch to a different model if current approach is not working',
+          ],
+        };
+
         await this.tasksService.update(taskId, {
           status: TaskStatus.NEEDS_HELP,
-          helpContext: {
-            reason: 'timeout',
-            blockerType: 'timeout',
-            elapsedMs: timeoutCheck.elapsedMs,
-            message: timeoutCheck.message,
-            timestamp: new Date().toISOString(),
-            suggestedActions: [
-              'Review current screenshot for modal dialogs or blockers',
-              'Try breaking down the task into smaller steps',
-              'Switch to a different model if current approach is not working',
-            ],
-          },
+          helpContext,
         });
+
+        // Phase 3.1: Record blocker for cross-model learning
+        await this.taskBlockerService.detectAndRecordFromHelpContext(
+          taskId,
+          helpContext,
+          model.name,
+        );
 
         // Create message with timeout info
         await this.messagesService.create({
@@ -1420,7 +1431,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       );
 
       // Use direct vision prompt if enabled, otherwise use tier-specific CV-first prompt
-      const systemPrompt = effectiveDirectVisionMode
+      let systemPrompt = effectiveDirectVisionMode
         ? buildAgentSystemPrompt(currentDate, currentTime, timeZone, true)
         : buildTierSpecificAgentSystemPrompt(
             rules.tier,
@@ -1430,6 +1441,15 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
             timeZone,
             supportsVision(model),  // Pass vision capability for appropriate prompts
           );
+
+      // Phase 3.1: Inject blocker context from previous failed attempts
+      const blockerContext = await this.taskBlockerService.getBlockerContext(taskId);
+      if (blockerContext) {
+        systemPrompt = systemPrompt + '\n\n' + blockerContext;
+        this.logger.log(
+          `Task ${taskId}: Injected blocker context from previous failed attempts`,
+        );
+      }
 
       // Log which prompt system is being used
       this.logger.log(
@@ -1806,20 +1826,29 @@ ${loopResult.suggestion}
         } else if (desired === 'needs_help') {
           // Store help context (Phase 1.2)
           const helpReason = setTaskStatusToolUseBlock.input.description || 'Model requested help without specific reason';
+          const helpContext = {
+            reason: 'model_request',
+            blockerType: setTaskStatusToolUseBlock.input.blockerType || 'unknown',
+            message: helpReason,
+            timestamp: new Date().toISOString(),
+            suggestedActions: [
+              'Review the model\'s explanation above',
+              'Provide specific guidance or take manual action',
+              'Consider switching to a different model if stuck',
+            ],
+          };
+
           await this.tasksService.update(taskId, {
             status: TaskStatus.NEEDS_HELP,
-            helpContext: {
-              reason: 'model_request',
-              blockerType: 'unknown',
-              message: helpReason,
-              timestamp: new Date().toISOString(),
-              suggestedActions: [
-                'Review the model\'s explanation above',
-                'Provide specific guidance or take manual action',
-                'Consider switching to a different model if stuck',
-              ],
-            },
+            helpContext,
           });
+
+          // Phase 3.1: Record blocker for cross-model learning
+          await this.taskBlockerService.detectAndRecordFromHelpContext(
+            taskId,
+            helpContext,
+            model.name,
+          );
         } else if (desired === 'failed') {
           const failureTimestamp = new Date();
           const failureReason =

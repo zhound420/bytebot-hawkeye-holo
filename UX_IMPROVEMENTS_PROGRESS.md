@@ -13,8 +13,8 @@ Based on the UX analysis in `UX_ANALYSIS_DEEP_DIVE.md`, implementing comprehensi
 **Root Cause Identified:** Modal dialog blocker + lack of timeout detection + no cross-model learning
 
 **Total Phases:** 4 major phases, 11 backend tasks
-**Completed:** 6 tasks (54.5%)
-**In Progress:** Phase 3.1 (TaskBlocker Memory System)
+**Completed:** 7 tasks (63.6%)
+**In Progress:** Remaining Phase 3 tasks + UI work
 
 **Commits:**
 - `de6aff7` - fix(types): add helpContext to UpdateTaskDto
@@ -22,7 +22,8 @@ Based on the UX analysis in `UX_ANALYSIS_DEEP_DIVE.md`, implementing comprehensi
 - `1fd04a9` - feat(ux): implement Phase 1.3 real-time progress indicators
 - `8f98573` - feat(ux): implement Phase 2.1 modal dialog detection
 - `ef45d05` - feat(ux): implement Phase 2.2 system prompt dialog guidelines
-- (pending) - feat(ux): implement Phase 2.3 computer_handle_dialog() tool
+- `8428321` - feat(ux): implement Phase 2.3 computer_handle_dialog() tool
+- (pending) - feat(ux): implement Phase 3.1 TaskBlocker memory system
 
 ---
 
@@ -320,45 +321,88 @@ model DialogInteraction {
 
 ## ⏳ Phase 3: Cross-Model Learning (Week 3)
 
-### ⏳ Phase 3.1: Task Blocker Memory (PENDING)
+### ✅ Phase 3.1: Task Blocker Memory (COMPLETE)
 
-**Problem to Solve:** Each model encounters same blocker, each fails
+**Problem Solved:** Each model encountered same blocker, each failed independently without learning from previous failures
 
-**Planned Implementation:**
+**Implementation:**
+
+1. **Database Schema** (schema.prisma:78-96)
+   - Created `TaskBlocker` model for cross-model learning
+   - Fields: taskId, blockerType, description, failedModels[], detectedAt, resolved, resolutionNotes, metadata
+   - Blocker types: 'modal_dialog', 'timeout', 'permission_denied', 'element_not_found', 'crash'
+   - Indexed by taskId, detectedAt, and resolved for efficient queries
+   - Migration: `20251019011452_add_task_blockers`
+
+2. **TaskBlockerService** (task-blocker.service.ts)
+   - `recordBlocker()` - Records blockers with model failedModels tracking
+   - `getUnresolvedBlockers()` - Retrieves active blockers for a task
+   - `getBlockerContext()` - Formats blockers for system prompt injection
+   - `detectAndRecordFromHelpContext()` - Auto-detects blocker type from helpContext
+   - `resolveBlocker()` - Marks blockers as resolved when fixed
+
+3. **Agent Integration** (agent.processor.ts)
+   - Lines 1323-1328: Record timeout blockers automatically
+   - Lines 1846-1851: Record model-requested help blockers
+   - Lines 1445-1452: Inject blocker context into system prompts for subsequent attempts
+
+4. **Service Registration** (tasks.module.ts)
+   - Added TaskBlockerService to providers and exports
+   - Available throughout the agent system
 
 **Database Schema:**
 ```prisma
 model TaskBlocker {
   id              String   @id @default(cuid())
   taskId          String
-  blockerType     String   // 'modal_dialog', 'timeout', 'permission_denied'
-  description     String
-  screenshotId    String?
-  failedModels    String[] // ['qwen3-vl', 'deepseek-chat']
+  blockerType     String   // 'modal_dialog', 'timeout', 'permission_denied', 'element_not_found', 'crash'
+  description     String   // Human-readable description
+  screenshotId    String?  // Reference to screenshot
+  failedModels    String[] // ['qwen3-vl', 'deepseek-chat', 'gpt-4o-mini']
   detectedAt      DateTime @default(now())
   resolved        Boolean  @default(false)
-  resolutionNotes String?
-  task            Task     @relation(fields: [taskId], references: [id])
+  resolutionNotes String?  // How blocker was resolved
+  metadata        Json?    // Additional context (dialog text, etc.)
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([detectedAt])
+  @@index([resolved])
 }
 ```
 
-**Injection into System Prompt:**
+**System Prompt Injection Example:**
 ```
-PREVIOUS ATTEMPTS FAILED DUE TO:
-- Modal dialog: "Untrusted application launcher"
-- Failed models: qwen3-vl, deepseek-chat, qwen-plus
-- Suggested approach: Handle dialog first before proceeding
+════════════════════════════════
+⚠️ PREVIOUS ATTEMPTS FAILED
+════════════════════════════════
+
+The following blockers were encountered by previous models:
+
+**Blocker Type:** modal_dialog
+**Description:** Untrusted application launcher dialog blocking execution
+**Failed Models:** qwen3-vl, deepseek-chat, qwen-plus
+**Dialog Text:** "This application was launched from an untrusted location..."
+**Button Options:** Cancel, Mark as Trusted
+**Suggested Approach:** Handle security dialog appropriately or escalate
+
+**CRITICAL:** Learn from these failures. Do NOT repeat the same approach that failed.
+If you encounter the same blocker, escalate with set_task_status(NEEDS_HELP).
 ```
 
-**Files to Modify:**
-1. `packages/bytebot-agent/prisma/schema.prisma` - Add TaskBlocker model
-2. `packages/bytebot-agent/src/tasks/task-blocker.service.ts` - New service
-3. `packages/bytebot-agent/src/agent/agent.processor.ts` - Inject blocker context
+**Files Modified:**
+1. `packages/bytebot-agent/prisma/schema.prisma` - TaskBlocker model + migration
+2. `packages/bytebot-agent/src/tasks/task-blocker.service.ts` - Complete service (new file)
+3. `packages/bytebot-agent/src/tasks/tasks.module.ts` - Service registration
+4. `packages/bytebot-agent/src/agent/agent.processor.ts` - Integration + injection
 
-**Expected Impact:**
-- ✅ 2nd model knows why 1st model failed
-- ✅ Avoid repetitive failures
+**Impact:**
+- ✅ 2nd model knows WHY 1st model failed (blocker context injected)
+- ✅ Avoids repetitive failures (learn from previous attempts)
 - ✅ Faster resolution via shared knowledge
+- ✅ Automatic blocker detection from helpContext
+- ✅ Complete audit trail of all blocker encounters
+- ✅ Models can see list of failed models to avoid same approach
 
 ---
 

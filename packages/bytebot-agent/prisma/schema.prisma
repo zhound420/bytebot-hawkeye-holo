@@ -72,6 +72,27 @@ model Task {
   summaries        Summary[]
   files            File[]
   dialogInteractions DialogInteraction[] // Phase 2.3: Dialog handling audit trail
+  blockers         TaskBlocker[]         // Phase 3.1: Cross-model learning
+}
+
+// Phase 3.1: Task Blocker Memory (Cross-Model Learning)
+model TaskBlocker {
+  id              String   @id @default(cuid())
+  taskId          String
+  blockerType     String   // 'modal_dialog', 'timeout', 'permission_denied', 'element_not_found', 'crash'
+  description     String   // Human-readable description of the blocker
+  screenshotId    String?  // Reference to screenshot showing the blocker
+  failedModels    String[] // List of model names that failed on this blocker
+  detectedAt      DateTime @default(now())
+  resolved        Boolean  @default(false)
+  resolutionNotes String?  // How the blocker was resolved (if resolved)
+  metadata        Json?    // Additional context (dialog text, error messages, etc.)
+
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([detectedAt])
+  @@index([resolved])
 }
 
 // Phase 2.3: Dialog Interaction Logging

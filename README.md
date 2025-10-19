@@ -434,9 +434,12 @@ Hawkeye provides comprehensive visibility into computer vision operations with l
 - **UI Integration** - Dedicated CV Activity panels on both Desktop and Task pages with 500ms polling for real-time updates
 - **Debug Telemetry** - Comprehensive method execution history for optimization and troubleshooting
 
-### Adaptive Model Capability System
+### CV Enforcement System (Tier-Based Workflow Rules)
 
-Hawkeye's **Model Capability System** provides intelligent CV-first enforcement based on each AI model's vision capabilities. Different models receive different levels of enforcement, ensuring optimal performance without blocking capable models or frustrating weaker ones.
+Hawkeye's **CV Enforcement System** provides intelligent CV-first workflow enforcement based on each AI model's vision capabilities. Different models receive different levels of enforcement, ensuring optimal performance without blocking capable models or frustrating weaker ones.
+
+**Purpose**: Controls how strictly models must use CV detection before clicking (workflow enforcement)
+**Note**: This is separate from the Empirical Model Learning System which tracks actual task outcomes.
 
 #### **Three-Tier Model Classification**
 
@@ -482,6 +485,84 @@ Based on production session analysis comparing GPT-4o vs Qwen3-VL:
 
 **Location**: `packages/bytebot-agent/src/models/`
 **Configuration**: See `model-capabilities.config.ts` for full model database
+
+### Empirical Model Learning System (Data-Driven Recommendations)
+
+Hawkeye's **Empirical Model Learning System** tracks actual task outcomes to build data-driven understanding of which models perform best in different scenarios. Unlike the static tier system, this learns from real-world performance.
+
+**Purpose**: Provides intelligent model recommendations based on historical success rates, speed, and autonomy
+**Note**: This is separate from the CV Enforcement System which controls workflow rules.
+
+#### **Automatic Outcome Tracking**
+
+Every completed, failed, or cancelled task records comprehensive metrics to the `TaskOutcome` database:
+
+**Performance Metrics:**
+- Success rate (completed vs failed)
+- Average duration (time to completion)
+- Tool call count
+- CV detection count
+- Click count
+- Error count
+
+**Contextual Data:**
+- Task complexity (simple/medium/complex - auto-inferred)
+- Help required (human intervention needed)
+- Blocker types encountered
+- First attempt vs retry
+
+#### **Intelligent Model Recommendations**
+
+The system scores models using a weighted formula:
+- **60% Success Rate** - How often the model completes tasks successfully
+- **20% Speed** - How quickly the model works (normalized to 5min max)
+- **20% Autonomy** - How often the model works without human help
+
+**Example Recommendation:**
+```
+Task: "Install VS Code extension"
+Complexity: Medium
+
+Top 3 Recommendations:
+1. claude-opus-4: Score 0.87 (92% success, 38s avg, 95% autonomous)
+2. gpt-4o: Score 0.81 (85% success, 45s avg, 88% autonomous)
+3. gemini-2.0-flash: Score 0.76 (78% success, 52s avg, 82% autonomous)
+```
+
+#### **Real-Time Performance Dashboard**
+
+The Desktop page (`/desktop`) displays live model performance:
+
+**Active Model Performance Card:**
+- Current model's success rate, avg time, autonomy score
+- Detailed metrics: tool calls, clicks, error rate
+- Updates in real-time as tasks complete
+
+**Model Leaderboard Card:**
+- Top 5 models ranked by overall performance
+- Success rate badges (🟢 80%+, 🟡 60-80%, 🔴 <60%)
+- Rank medals 🥇🥈🥉 for top 3 performers
+- Minimum 5 tasks required for leaderboard inclusion
+
+#### **API Endpoints**
+
+```bash
+# Get top performing models
+GET /api/tasks/models/leaderboard?limit=10
+
+# Get detailed stats for specific model
+GET /api/tasks/models/stats/:modelName
+
+# Get recommendations for a task
+GET /api/tasks/models/recommend?description=Install extension&complexity=medium
+
+# Get current model performance
+GET /api/tasks/models/current-performance?modelName=gpt-4o
+```
+
+**Location**: `packages/bytebot-agent/src/tasks/task-outcome.service.ts`
+**Database**: `TaskOutcome` model in Prisma schema
+**UI Components**: `ModelPerformanceCard`, `ActiveModelPerformance` in `/desktop`
 
 ### Hybrid Vision/Non-Vision Model Support
 

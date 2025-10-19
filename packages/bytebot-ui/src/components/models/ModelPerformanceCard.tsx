@@ -85,12 +85,6 @@ export function ModelPerformanceCard({ className }: { className?: string }) {
     );
   }
 
-  const getSuccessRateColor = (rate: number) => {
-    if (rate >= 0.8) return "text-green-500";
-    if (rate >= 0.6) return "text-yellow-500";
-    return "text-red-500";
-  };
-
   const getSuccessRateBadge = (rate: number) => {
     if (rate >= 0.8) return "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300";
     if (rate >= 0.6) return "bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300";

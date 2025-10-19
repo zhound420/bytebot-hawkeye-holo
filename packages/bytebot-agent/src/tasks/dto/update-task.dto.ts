@@ -22,4 +22,18 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsBoolean()
   directVisionMode?: boolean;
+
+  // Phase 1.2: NEEDS_HELP context
+  @IsOptional()
+  helpContext?: {
+    reason: string;
+    blockerType: string;
+    message: string;
+    elapsedMs?: number;
+    timestamp: string;
+    suggestedActions: string[];
+  };
+
+  @IsOptional()
+  lastScreenshotId?: string;
 }

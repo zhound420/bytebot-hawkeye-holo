@@ -12,6 +12,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
+import { TaskOutcomeService } from './task-outcome.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { Message, Task } from '@prisma/client';
 import { AddTaskMessageDto } from './dto/add-task-message.dto';
@@ -50,6 +51,7 @@ export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
+    private readonly taskOutcomeService: TaskOutcomeService,
   ) {}
 
   @Post()
@@ -456,6 +458,83 @@ export class TasksController {
         HttpStatus.BAD_GATEWAY,
       );
     }
+  }
+
+  // Model Performance Endpoints (Empirical Learning System)
+
+  @Get('models/leaderboard')
+  async getModelLeaderboard(@Query('limit') limit?: string) {
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const leaderboard = await this.taskOutcomeService.getModelLeaderboard(limitNum);
+    return {
+      leaderboard,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('models/stats/:modelName')
+  async getModelStats(@Param('modelName') modelName: string) {
+    const stats = await this.taskOutcomeService.getModelPerformanceStats(modelName);
+
+    if (!stats) {
+      throw new HttpException(
+        `No performance data available for model: ${modelName}`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return {
+      modelName,
+      stats,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('models/recommend')
+  async recommendModels(
+    @Query('description') description?: string,
+    @Query('complexity') complexity?: string,
+  ) {
+    if (!description || description.trim().length === 0) {
+      throw new HttpException(
+        'Task description is required for recommendations',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const recommendations = await this.taskOutcomeService.recommendModels(
+      description,
+      complexity,
+    );
+
+    return {
+      description,
+      complexity: complexity || 'any',
+      recommendations,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('models/current-performance')
+  async getCurrentModelPerformance(@Query('modelName') modelName?: string) {
+    if (!modelName || modelName.trim().length === 0) {
+      return {
+        modelName: null,
+        stats: null,
+        message: 'No active model specified',
+      };
+    }
+
+    const stats = await this.taskOutcomeService.getModelPerformanceStats(modelName);
+    const successRate = await this.taskOutcomeService.getModelSuccessRate(modelName);
+
+    return {
+      modelName,
+      stats,
+      successRate,
+      hasData: stats !== null,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @Get(':id')

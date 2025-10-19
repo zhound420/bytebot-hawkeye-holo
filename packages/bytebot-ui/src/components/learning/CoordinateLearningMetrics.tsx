@@ -30,7 +30,7 @@ interface LearningStats {
   >;
 }
 
-export function LearningMetrics({ className }: { className?: string }) {
+export function CoordinateLearningMetrics({ className }: { className?: string }) {
   const [stats, setStats] = React.useState<LearningStats | null>(null);
   const [topEntries, setTopEntries] = React.useState<LearningEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -95,7 +95,7 @@ export function LearningMetrics({ className }: { className?: string }) {
         )}
       >
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          Learning Metrics
+          Coordinate Learning
         </h3>
         <p className="text-sm text-muted-foreground">
           {error || "No data available"}
@@ -125,10 +125,10 @@ export function LearningMetrics({ className }: { className?: string }) {
     >
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Learning Metrics
+          Coordinate Learning
         </h3>
         <span className="text-xs text-muted-foreground">
-          🧠 Adaptive System
+          🎯 UI Element Confidence
         </span>
       </div>
 

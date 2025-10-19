@@ -4,7 +4,9 @@ import React from "react";
 import { Header } from "@/components/layout/Header";
 import { DesktopContainer } from "@/components/ui/desktop-container";
 import { CVActivityIndicator } from "@/components/cv/CVActivityIndicator";
-import { LearningMetrics } from "@/components/learning/LearningMetrics";
+import { CoordinateLearningMetrics } from "@/components/learning/CoordinateLearningMetrics";
+import { ActiveModelPerformance } from "@/components/models/ActiveModelPerformance";
+import { ModelPerformanceCard } from "@/components/models/ModelPerformanceCard";
 import { fetchTasks } from "@/utils/taskUtils";
 import { Task, TaskStatus } from "@/types";
 import { getTaskModelLabel } from "@/components/tasks/TaskItem";
@@ -63,6 +65,11 @@ export default function DesktopPage() {
     return undefined;
   }, [activeTask]);
 
+  const currentModelName = React.useMemo(() => {
+    if (!activeTask?.model) return null;
+    return activeTask.model.name?.trim() || null;
+  }, [activeTask]);
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header />
@@ -84,8 +91,10 @@ export default function DesktopPage() {
                 </span>
               )}
             </div>
+            <ActiveModelPerformance modelName={currentModelName} />
             <CVActivityIndicator />
-            <LearningMetrics />
+            <ModelPerformanceCard />
+            <CoordinateLearningMetrics />
           </div>
 
           {/* Center - Desktop view (primary focus) */}

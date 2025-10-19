@@ -77,6 +77,7 @@ model Task {
   files            File[]
   dialogInteractions DialogInteraction[] // Phase 2.3: Dialog handling audit trail
   blockers         TaskBlocker[]         // Phase 3.1: Cross-model learning
+  outcome          TaskOutcome?          // Phase 3.3: Empirical model learning
 }
 
 // Phase 3.1: Task Blocker Memory (Cross-Model Learning)
@@ -114,6 +115,41 @@ model DialogInteraction {
 
   @@index([taskId])
   @@index([timestamp])
+}
+
+// Phase 3.3: Empirical Model Learning (Task Outcome Tracking)
+model TaskOutcome {
+  id                 String   @id @default(cuid())
+  taskId             String   @unique // One outcome per task
+  modelName          String   // Model that executed the task (e.g., 'gpt-4o', 'claude-opus-4')
+  modelProvider      String   // Provider (e.g., 'openai', 'anthropic')
+  finalStatus        String   // Final status: COMPLETED, FAILED, CANCELLED, NEEDS_HELP
+  outcome            String   // 'success', 'failure', 'abandoned', 'needs_help'
+
+  // Performance Metrics
+  totalDurationMs    Int      // Total time from start to completion
+  toolCallCount      Int      @default(0) // Number of tool calls made
+  cvDetectionCount   Int      @default(0) // Number of CV detections
+  clickCount         Int      @default(0) // Number of clicks
+  errorCount         Int      @default(0) // Number of errors encountered
+
+  // Contextual Metadata
+  taskDescription    String   @db.Text // Task description for categorization
+  taskComplexity     String?  // 'simple', 'medium', 'complex' (inferred)
+  blockerTypes       String[] // Blockers encountered: ['modal_dialog', 'timeout']
+  requiredHelp       Boolean  @default(false) // Whether human help was needed
+  firstAttempt       Boolean  @default(true) // Was this the first model attempt?
+
+  // Timestamps
+  createdAt          DateTime @default(now())
+  completedAt        DateTime?
+
+  task               Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([modelName])
+  @@index([outcome])
+  @@index([createdAt])
+  @@index([modelProvider])
 }
 
 model Summary {

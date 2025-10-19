@@ -1,5 +1,6 @@
 import { TasksService } from '../tasks/tasks.service';
 import { TaskBlockerService } from '../tasks/task-blocker.service';
+import { TaskOutcomeService } from '../tasks/task-outcome.service';
 import { MessagesService } from '../messages/messages.service';
 import { TasksGateway } from '../tasks/tasks.gateway';
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
@@ -262,6 +263,7 @@ export class AgentProcessor implements OnModuleDestroy {
     private readonly modelCapabilityService: ModelCapabilityService,
     private readonly loopDetectionService: LoopDetectionService,
     private readonly taskBlockerService: TaskBlockerService,
+    private readonly taskOutcomeService: TaskOutcomeService,
     @Inject(forwardRef(() => TasksGateway))
     private readonly tasksGateway: TasksGateway,
   ) {
@@ -1126,6 +1128,19 @@ Focus on words that would appear in UI element descriptions. Be specific and use
     }
 
     await this.stopProcessing();
+  }
+
+  // Phase 3.3: Record task outcomes for empirical model learning
+  @OnEvent('task.completed')
+  async handleTaskCompleted({ taskId }: { taskId: string }) {
+    this.logger.log(`Task completed event received for task ID: ${taskId}`);
+    await this.taskOutcomeService.recordTaskOutcome(taskId);
+  }
+
+  @OnEvent('task.failed')
+  async handleTaskFailed({ taskId }: { taskId: string }) {
+    this.logger.log(`Task failed event received for task ID: ${taskId}`);
+    await this.taskOutcomeService.recordTaskOutcome(taskId);
   }
 
   processTask(taskId: string) {

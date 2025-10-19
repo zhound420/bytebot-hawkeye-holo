@@ -94,6 +94,25 @@ class ParseResponse(BaseModel):
     parse_error: Optional[str] = Field(None, description="Parse error message if applicable")
 
 
+class DialogDetectionRequest(BaseModel):
+    """Request model for dialog detection endpoint (Phase 2.1)."""
+    image: str = Field(..., description="Base64 encoded screenshot")
+
+
+class DialogDetectionResponse(BaseModel):
+    """Response model for dialog detection (Phase 2.1)."""
+    has_dialog: bool = Field(..., description="Whether a modal dialog is present")
+    dialog_type: Optional[str] = Field(None, description="Dialog type: security, confirmation, error, info, warning")
+    dialog_text: str = Field("", description="Full text content of the dialog")
+    button_options: list[str] = Field(default_factory=list, description="List of visible button labels")
+    dialog_location: str = Field("unknown", description="Dialog position: center, top, bottom, left, right, none")
+    confidence: float = Field(0.0, description="Detection confidence 0.0-1.0")
+    processing_time_ms: float = Field(..., description="Detection time in milliseconds")
+    device: str = Field(..., description="Device used for inference")
+    timing: Optional[Dict[str, float]] = Field(None, description="Detailed timing breakdown")
+    error: Optional[str] = Field(None, description="Error message if detection failed")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str
@@ -414,6 +433,74 @@ async def parse_screenshot(request: ParseRequest = Body(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error parsing screenshot: {str(e)}")
+
+
+@app.post("/detect_dialog", response_model=DialogDetectionResponse)
+async def detect_dialog(request: DialogDetectionRequest = Body(...)):
+    """
+    Detect modal dialogs or popups in screenshot using Holo 1.5-7B.
+
+    Phase 2.1: Modal Dialog Detection
+
+    Identifies blocking dialogs like:
+    - Security warnings ("Untrusted application launcher")
+    - Confirmation dialogs ("Are you sure?")
+    - Error messages
+    - Informational popups
+
+    Args:
+        request: DialogDetectionRequest with base64 image
+
+    Returns:
+        DialogDetectionResponse with dialog details and button options
+    """
+    try:
+        start_time = time.time()
+
+        # Log incoming request
+        print(f"→ Dialog detection request")
+
+        # Decode image
+        image = decode_image(request.image)
+        print(f"  Image decoded: {image.shape[1]}x{image.shape[0]} pixels")
+
+        # Get model
+        model = get_model()
+
+        # Run dialog detection
+        result = model.detect_modal_dialog(image)
+
+        # Calculate processing time
+        processing_time_ms = (time.time() - start_time) * 1000
+
+        # Build response
+        response = DialogDetectionResponse(
+            has_dialog=result['has_dialog'],
+            dialog_type=result.get('dialog_type'),
+            dialog_text=result.get('dialog_text', ''),
+            button_options=result.get('button_options', []),
+            dialog_location=result.get('dialog_location', 'unknown'),
+            confidence=result.get('confidence', 0.0),
+            processing_time_ms=processing_time_ms,
+            device=settings.device.upper(),
+            timing=result.get('timing'),
+            error=result.get('error'),
+        )
+
+        print(f"✓ Dialog detection complete ({processing_time_ms:.1f}ms)")
+        print(f"  Has Dialog: {response.has_dialog}")
+        if response.has_dialog:
+            print(f"  Type: {response.dialog_type}, Buttons: {response.button_options}")
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"✗ Dialog detection error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error detecting dialog: {str(e)}")
 
 
 @app.post("/parse/upload", response_model=ParseResponse)

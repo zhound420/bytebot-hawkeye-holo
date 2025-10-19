@@ -30,10 +30,20 @@ export interface EnhancedDetectionResult {
     totalTime: number;
     ocrTime?: number;
     holoTime?: number;
+    dialogDetectionTime?: number;
   };
   confidence: number;
   somImage?: string; // Base64 encoded Set-of-Mark annotated image from Holo
   elementMapping?: Map<number, string>; // Element number -> element ID mapping for SOM
+  // Phase 2.1: Modal dialog detection
+  dialogDetection?: {
+    has_dialog: boolean;
+    dialog_type: string | null;
+    dialog_text: string;
+    button_options: string[];
+    dialog_location: string;
+    confidence: number;
+  };
 }
 
 @Injectable()
@@ -61,6 +71,8 @@ export class EnhancedVisualDetectorService {
 
   /**
    * UI element detection using Holo 1.5-7B (semantic) and OCR (text)
+   *
+   * Phase 2.1: Pre-checks for modal dialogs before element detection
    */
   async detectElements(
     screenshotBuffer: Buffer,
@@ -89,6 +101,36 @@ export class EnhancedVisualDetectorService {
     // Use let for useOCR to allow Phase 3.2 optimization (conditional skip)
     let useOCR = options.useOCR ?? false; // OCR is expensive, use as fallback only
     const useHolo = options.useHolo ?? holoAvailable; // Use Holo 1.5-7B, defaults to enabled when service healthy
+
+    // Phase 2.1: Check for modal dialogs BEFORE element detection
+    let dialogDetection: EnhancedDetectionResult['dialogDetection'] | undefined;
+    if (useHolo && this.holoClient) {
+      const dialogStart = Date.now();
+      try {
+        const dialogResult = await this.holoClient.detectModalDialog(screenshotBuffer);
+        performance.dialogDetectionTime = Date.now() - dialogStart;
+
+        dialogDetection = {
+          has_dialog: dialogResult.has_dialog,
+          dialog_type: dialogResult.dialog_type,
+          dialog_text: dialogResult.dialog_text,
+          button_options: dialogResult.button_options,
+          dialog_location: dialogResult.dialog_location,
+          confidence: dialogResult.confidence,
+        };
+
+        if (dialogResult.has_dialog) {
+          this.logger.log(
+            `⚠️ Modal dialog blocking UI: type="${dialogResult.dialog_type}", ` +
+            `text="${dialogResult.dialog_text.substring(0, 60)}...", ` +
+            `buttons=[${dialogResult.button_options.join(', ')}]`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`Dialog detection failed: ${error.message}`);
+        performance.dialogDetectionTime = Date.now() - dialogStart;
+      }
+    }
 
     try {
       // Phase 3.2: Run Holo first, skip OCR if Holo succeeds with high confidence
@@ -161,6 +203,7 @@ export class EnhancedVisualDetectorService {
         confidence: avgConfidence,
         somImage, // Pass through SOM image if available
         elementMapping, // Pass through element mapping if available
+        dialogDetection, // Phase 2.1: Pass through dialog detection result
       };
 
     } catch (error) {
@@ -436,6 +479,7 @@ export class EnhancedVisualDetectorService {
       confidence: 0,
       somImage: undefined,
       elementMapping: undefined,
+      dialogDetection: undefined,
     };
   }
 

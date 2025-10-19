@@ -13,13 +13,14 @@ Based on the UX analysis in `UX_ANALYSIS_DEEP_DIVE.md`, implementing comprehensi
 **Root Cause Identified:** Modal dialog blocker + lack of timeout detection + no cross-model learning
 
 **Total Phases:** 4 major phases, 11 backend tasks
-**Completed:** 3 tasks (27.3%)
-**In Progress:** Phase 2 (Dialog Handling) next
+**Completed:** 4 tasks (36.4%)
+**In Progress:** Phase 2.2 (System Prompt Dialog Guidelines)
 
 **Commits:**
 - `de6aff7` - fix(types): add helpContext to UpdateTaskDto
 - `ccb1a00` - feat(ux): implement Phase 1 UX improvements
 - `1fd04a9` - feat(ux): implement Phase 1.3 real-time progress indicators
+- (pending) - feat(ux): implement Phase 2.1 modal dialog detection
 
 ---
 
@@ -140,33 +141,58 @@ Based on the UX analysis in `UX_ANALYSIS_DEEP_DIVE.md`, implementing comprehensi
 
 ## ⏳ Phase 2: Dialog Handling (Week 2)
 
-### ⏳ Phase 2.1: Modal Dialog Detection via Holo (PENDING)
+### ✅ Phase 2.1: Modal Dialog Detection via Holo (COMPLETE)
 
-**Problem to Solve:** Models don't detect "Untrusted application launcher" dialog
+**Problem Solved:** Models don't detect "Untrusted application launcher" dialog
 
-**Planned Implementation:**
-1. Add `detect_modal_dialog()` method to Holo wrapper
-2. New prompt: "Is there a modal dialog blocking the UI?"
-3. Return: `{ has_dialog, dialog_type, dialog_text, button_options[] }`
+**Implementation:**
+1. ✅ Added `detect_modal_dialog()` method to Holo wrapper (holo_wrapper.py:438-587)
+   - Comprehensive dialog detection prompt with JSON response format
+   - Returns: has_dialog, dialog_type, dialog_text, button_options, dialog_location, confidence
+   - Dialog types: 'security', 'confirmation', 'error', 'info', 'warning'
 
-**Files to Modify:**
-1. `packages/bytebot-holo/src/holo_wrapper.py`
-   - Add `detect_modal_dialog()` method
-   - Add dialog detection prompt
+2. ✅ Added `/detect_dialog` endpoint to FastAPI server (server.py:438-503)
+   - DialogDetectionRequest and DialogDetectionResponse models (server.py:97-113)
+   - Decodes base64 image, calls detect_modal_dialog(), returns structured response
+   - Includes error handling and processing time tracking
 
-2. `packages/bytebot-holo/src/server.py`
-   - Add `/detect_dialog` endpoint
+3. ✅ Added `detectModalDialog()` method to HoloClientService (holo-client.service.ts:824-917)
+   - Calls `/detect_dialog` endpoint with screenshot buffer
+   - Logs dialog detection results (🔔 emoji for visibility)
+   - Pauses GPU polling during detection for performance
 
-3. `packages/bytebot-cv/src/services/holo-client.service.ts`
-   - Add `detectModalDialog()` method
+4. ✅ Integrated dialog detection into EnhancedVisualDetectorService (enhanced-visual-detector.service.ts:105-133)
+   - Pre-checks for modal dialogs BEFORE element detection
+   - Logs warning if dialog blocks UI: type, text, buttons
+   - Includes dialog detection result in EnhancedDetectionResult
+   - Performance tracking for dialog detection time
 
-4. `packages/bytebot-cv/src/services/enhanced-visual-detector.service.ts`
-   - Pre-check for dialogs in `detectElements()`
+**Files Modified:**
+1. `packages/bytebot-holo/src/holo_wrapper.py` - Dialog detection method
+2. `packages/bytebot-holo/src/server.py` - REST endpoint and models
+3. `packages/bytebot-cv/src/services/holo-client.service.ts` - Client method
+4. `packages/bytebot-cv/src/services/enhanced-visual-detector.service.ts` - Integration
 
-**Expected Impact:**
-- ✅ Detect modal dialogs before element detection
-- ✅ Provide dialog details to models
-- ✅ Prevent stuck states from undetected dialogs
+**Impact:**
+- ✅ Modal dialogs detected before element detection
+- ✅ Dialog details (type, text, buttons) available to models
+- ✅ Prevents stuck states from undetected dialogs
+- ✅ Visual feedback: "⚠️ Modal dialog blocking UI" logs
+
+**Test Scenario:**
+```typescript
+// Detect dialog on screenshot with "Untrusted application launcher"
+const result = await holoClient.detectModalDialog(screenshotBuffer);
+// Expected:
+// {
+//   has_dialog: true,
+//   dialog_type: 'security',
+//   dialog_text: 'This application was launched from an untrusted location...',
+//   button_options: ['Cancel', 'Mark as Trusted'],
+//   dialog_location: 'center',
+//   confidence: 0.95
+// }
+```
 
 ---
 

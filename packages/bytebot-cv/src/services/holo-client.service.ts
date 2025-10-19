@@ -822,6 +822,101 @@ export class HoloClientService {
   }
 
   /**
+   * Detect modal dialogs or popups that may be blocking UI interaction (Phase 2.1)
+   *
+   * Uses Holo 1.5-7B to detect:
+   * - Modal dialogs (security, confirmation, error, info, warning)
+   * - Dialog text content and button options
+   * - Dialog location and confidence
+   *
+   * @param imageBuffer - Screenshot image buffer
+   * @returns Dialog detection result
+   *
+   * @example
+   * const result = await holoClient.detectModalDialog(screenshot);
+   * if (result.has_dialog && result.dialog_type === 'security') {
+   *   console.log(`Security dialog: "${result.dialog_text}"`);
+   *   console.log(`Buttons: ${result.button_options.join(', ')}`);
+   * }
+   */
+  async detectModalDialog(
+    imageBuffer: Buffer,
+  ): Promise<{
+    has_dialog: boolean;
+    dialog_type: string | null;
+    dialog_text: string;
+    button_options: string[];
+    dialog_location: string;
+    confidence: number;
+    processing_time_ms: number;
+  }> {
+    if (!this.enabled) {
+      throw new Error('Holo 1.5-7B is disabled');
+    }
+
+    const startTime = Date.now();
+
+    // Pause GPU polling during detection
+    this.detectionInProgress = true;
+
+    try {
+      // Convert buffer to base64
+      const base64Image = imageBuffer.toString('base64');
+
+      // Send request to dialog detection endpoint
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      const response = await fetch(`${this.baseUrl}/detect_dialog`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: base64Image,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Holo dialog detection failed: ${response.status} ${errorText}`,
+        );
+      }
+
+      const result = await response.json();
+
+      const elapsed = Date.now() - startTime;
+
+      // Log dialog detection result
+      if (result.has_dialog) {
+        this.logger.log(
+          `🔔 Modal dialog detected: type="${result.dialog_type}", ` +
+          `text="${result.dialog_text.substring(0, 50)}...", ` +
+          `buttons=[${result.button_options.join(', ')}] ` +
+          `(${elapsed}ms)`,
+        );
+      } else {
+        this.logger.debug(`No modal dialog detected (${elapsed}ms)`);
+      }
+
+      return result;
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      this.logger.error(
+        `Holo dialog detection error after ${elapsed}ms: ${error.message}`,
+      );
+      throw error;
+    } finally {
+      // Resume GPU polling
+      this.detectionInProgress = false;
+    }
+  }
+
+  /**
    * Get Holo 1.5-7B service status
    */
   async getStatus(): Promise<{

@@ -435,6 +435,157 @@ class Holo15:
                 action.x = original_x
                 action.y = original_y
 
+    def detect_modal_dialog(
+        self,
+        image_array: np.ndarray,
+    ) -> Dict[str, Any]:
+        """
+        Detect modal dialogs or popups that may be blocking UI interaction.
+
+        Phase 2.1: Modal Dialog Detection
+
+        Args:
+            image_array: Screenshot as numpy array
+
+        Returns:
+            Dict with dialog detection results:
+            {
+                'has_dialog': bool,
+                'dialog_type': str | None,  # 'security', 'confirmation', 'error', 'info'
+                'dialog_text': str | None,
+                'button_options': List[str],  # e.g., ['Launch Anyway', 'Mark Executable', 'Cancel']
+                'dialog_bbox': Dict | None,  # {'x': int, 'y': int, 'width': int, 'height': int}
+                'confidence': float,
+            }
+        """
+        timing = {}
+
+        # Convert to PIL Image
+        start = time.time()
+        pil_image = Image.fromarray(np.uint8(image_array))
+        timing['convert_ms'] = (time.time() - start) * 1000
+
+        # Apply smart resize
+        start = time.time()
+        resized_image, scale_factors = self._smart_resize_image(pil_image)
+        timing['resize_ms'] = (time.time() - start) * 1000
+
+        # Create dialog detection prompt
+        start = time.time()
+        dialog_prompt = """DIALOG DETECTION TASK:
+
+Analyze this screenshot and determine if there is a modal dialog, popup, or overlay blocking the main UI.
+
+You MUST return an ANSWER action with a JSON object in this exact format:
+
+{
+  "has_dialog": true/false,
+  "dialog_type": "security" | "confirmation" | "error" | "info" | "warning" | null,
+  "dialog_text": "Full text content of the dialog",
+  "button_options": ["Button 1", "Button 2", "Button 3"],
+  "dialog_location": "center" | "top" | "bottom" | "left" | "right",
+  "confidence": 0.0-1.0
+}
+
+DIALOG TYPES:
+- "security": Permission requests, untrusted application warnings, certificate warnings
+- "confirmation": "Are you sure?" type dialogs requiring user confirmation
+- "error": Error messages, critical warnings
+- "info": Informational popups, tips, welcome messages
+- "warning": Warning messages that aren't critical errors
+
+IMPORTANT:
+- If NO dialog is visible, return: {"has_dialog": false, "dialog_type": null, "dialog_text": "", "button_options": [], "dialog_location": "none", "confidence": 1.0}
+- List ALL visible buttons in the dialog
+- Extract the complete dialog text
+- Use "answer" action, NOT "click_element"
+- Focus on MODAL dialogs that block interaction with the main UI
+
+Example for security dialog:
+{
+  "has_dialog": true,
+  "dialog_type": "security",
+  "dialog_text": "The launcher file firefox.desktop is not trusted. Starting it will run commands as if run in bash shell.",
+  "button_options": ["Launch Anyway", "Mark Executable", "Cancel"],
+  "dialog_location": "center",
+  "confidence": 0.95
+}"""
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": resized_image},
+                    {"type": "text", "text": dialog_prompt},
+                ],
+            }
+        ]
+        timing['prompt_ms'] = (time.time() - start) * 1000
+
+        # Run inference
+        start = time.time()
+        output_str = self.run_inference(messages, resized_image)
+        timing['inference_ms'] = (time.time() - start) * 1000
+
+        # Parse dialog detection result
+        start = time.time()
+        try:
+            # Extract JSON from answer
+            if "```json" in output_str:
+                start_idx = output_str.find("```json") + 7
+                end_idx = output_str.find("```", start_idx)
+                json_str = output_str[start_idx:end_idx].strip()
+            elif "```" in output_str:
+                start_idx = output_str.find("```") + 3
+                end_idx = output_str.find("```", start_idx)
+                json_str = output_str[start_idx:end_idx].strip()
+            else:
+                # Try to find JSON object in output
+                json_match = re.search(r'\{[^{}]*"has_dialog"[^{}]*\}', output_str, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                else:
+                    json_str = output_str.strip()
+
+            result = json.loads(json_str)
+
+            # Validate and normalize result
+            result['has_dialog'] = bool(result.get('has_dialog', False))
+            result['dialog_type'] = result.get('dialog_type', None)
+            result['dialog_text'] = result.get('dialog_text', '')
+            result['button_options'] = result.get('button_options', [])
+            result['dialog_location'] = result.get('dialog_location', 'unknown')
+            result['confidence'] = float(result.get('confidence', 0.5))
+            result['timing'] = timing
+
+            print(f"\n🔍 Dialog Detection Result:")
+            print(f"  Has Dialog: {result['has_dialog']}")
+            if result['has_dialog']:
+                print(f"  Type: {result['dialog_type']}")
+                print(f"  Text: {result['dialog_text'][:100]}...")
+                print(f"  Buttons: {result['button_options']}")
+                print(f"  Confidence: {result['confidence']:.2f}")
+
+            timing['parse_ms'] = (time.time() - start) * 1000
+
+            return result
+
+        except Exception as e:
+            print(f"⚠ Warning: Failed to parse dialog detection result: {e}")
+            print(f"  Output: {output_str[:200]}...")
+
+            # Return fallback result
+            return {
+                'has_dialog': False,
+                'dialog_type': None,
+                'dialog_text': '',
+                'button_options': [],
+                'dialog_location': 'unknown',
+                'confidence': 0.0,
+                'error': str(e),
+                'timing': timing,
+            }
+
     def detect_multiple_elements(
         self,
         image_array: np.ndarray,

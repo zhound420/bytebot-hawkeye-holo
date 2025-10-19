@@ -419,45 +419,20 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
-  # Local LMStudio models - commented out (inaccessible from Docker container)
-  # Uncomment if LMStudio is running and accessible at http://192.168.4.250:1234
-  # - model_name: local-lmstudio-ui-tars-72b-dpo
-  #   litellm_params:
-  #     model: openai/ui-tars-72b-dpo
-  #     api_base: http://192.168.4.250:1234/v1
-  #     api_key: lm-studio
-  #     supports_function_calling: true
-  # - model_name: local-lmstudio-gemma-3-27b
-  #   litellm_params:
-  #     model: openai/google/gemma-3-27b
-  #     api_base: http://192.168.4.250:1234/v1
-  #     api_key: lm-studio
-  #     supports_function_calling: true
-  #   model_info:
-  #     supports_vision: true
-  # - model_name: local-lmstudio-qwen2.5-vl-32b-instruct
-  #   litellm_params:
-  #     model: openai/qwen2.5-vl-32b-instruct
-  #     api_base: http://192.168.4.250:1234/v1
-  #     api_key: lm-studio
-  #     supports_function_calling: true
-  #   model_info:
-  #     supports_vision: true
-  # - model_name: local-lmstudio-ui-tars-7b-dpo
-  #   litellm_params:
-  #     model: openai/ui-tars-7b-dpo
-  #     api_base: http://192.168.4.250:1234/v1
-  #     api_key: lm-studio
-  #     supports_function_calling: true
-  # - model_name: local-lmstudio-magistral-small-2509
-  #   litellm_params:
-  #     # Use OpenAI-compatible provider prefix for LM Studio
-  #     model: openai/mistralai/magistral-small-2509
-  #     api_base: http://192.168.4.250:1234/v1
-  #     api_key: lm-studio
-  #     supports_function_calling: true
-  #   model_info:
-  #     supports_vision: true
+  # ==============================================================================
+  # LMStudio Local Models - AUTO-GENERATED
+  # ==============================================================================
+  # This section is automatically managed by scripts/setup-lmstudio.sh
+  # Do not manually edit - run ./scripts/setup-lmstudio.sh to configure
+  #
+  # To configure LMStudio models:
+  #   1. Ensure LMStudio is running with models loaded
+  #   2. Run: ./scripts/setup-lmstudio.sh
+  #   3. Script will discover models and generate entries below
+  #
+  # Models will appear in UI under "Local Models" section
+  # ==============================================================================
+  # (LMStudio models will be inserted here by setup script)
 
 litellm_settings:
   drop_params: true

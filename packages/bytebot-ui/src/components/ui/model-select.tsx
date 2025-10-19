@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, FileText } from "lucide-react";
+import { Eye, FileText, Monitor } from "lucide-react";
 
 interface ModelSelectProps {
   models: Model[];
@@ -25,12 +25,22 @@ export function ModelSelect({
   onModelChange,
   className,
 }: ModelSelectProps) {
-  // Group models by vision capability
-  const visionModels = models.filter((m) => m.supportsVision);
-  const textOnlyModels = models.filter((m) => !m.supportsVision);
+  // Group models by provider first (local vs cloud), then by vision capability
+  const localModels = models.filter((m) => m.provider === "lmstudio");
+  const cloudModels = models.filter((m) => m.provider !== "lmstudio");
 
-  // Get icon for model
+  // Within each provider group, separate by vision capability
+  const localVisionModels = localModels.filter((m) => m.supportsVision);
+  const localTextOnlyModels = localModels.filter((m) => !m.supportsVision);
+
+  const cloudVisionModels = cloudModels.filter((m) => m.supportsVision);
+  const cloudTextOnlyModels = cloudModels.filter((m) => !m.supportsVision);
+
+  // Get icon for model based on provider and vision support
   const getModelIcon = (model: Model) => {
+    if (model.provider === "lmstudio") {
+      return <Monitor className="mr-2 h-4 w-4 text-green-500" />;
+    }
     return model.supportsVision ? (
       <Eye className="mr-2 h-4 w-4 text-blue-500" />
     ) : (
@@ -38,9 +48,22 @@ export function ModelSelect({
     );
   };
 
-  // Get capability label
-  const getCapabilityLabel = (supportsVision: boolean | undefined) => {
-    return supportsVision ? "Vision" : "Text-Only";
+  // Get capability label with cost indicator
+  const getCapabilityLabel = (model: Model) => {
+    if (model.provider === "lmstudio") {
+      return "FREE";
+    }
+    return model.supportsVision ? "Vision" : "Text-Only";
+  };
+
+  // Get badge color based on provider and capability
+  const getBadgeClasses = (model: Model) => {
+    if (model.provider === "lmstudio") {
+      return "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300";
+    }
+    return model.supportsVision
+      ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+      : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
   };
 
   return (
@@ -57,8 +80,8 @@ export function ModelSelect({
             {selectedModel && (
               <span className="flex items-center gap-2">
                 {selectedModel.title}
-                <span className="ml-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                  {getCapabilityLabel(selectedModel.supportsVision)}
+                <span className={`ml-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${getBadgeClasses(selectedModel)}`}>
+                  {getCapabilityLabel(selectedModel)}
                 </span>
               </span>
             )}
@@ -66,14 +89,73 @@ export function ModelSelect({
         </div>
       </SelectTrigger>
       <SelectContent className="max-h-[400px] overflow-auto">
-        {visionModels.length > 0 && (
+        {/* Local Models Section (LMStudio) */}
+        {localModels.length > 0 && (
+          <>
+            <SelectGroup>
+              <SelectLabel className="flex items-center gap-2 text-xs font-semibold text-green-600 dark:text-green-400">
+                <Monitor className="h-3.5 w-3.5" />
+                Local Models
+                <span className="text-muted-foreground">(FREE, running locally)</span>
+              </SelectLabel>
+
+              {/* Local Vision Models */}
+              {localVisionModels.map((m) => (
+                <SelectItem
+                  key={m.name}
+                  value={m.name}
+                  className="pl-8"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="flex items-center">
+                      <Monitor className="mr-2 h-4 w-4 text-green-500" />
+                      {m.title}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
+                        FREE
+                      </span>
+                      <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        Vision
+                      </span>
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+
+              {/* Local Text-Only Models */}
+              {localTextOnlyModels.map((m) => (
+                <SelectItem
+                  key={m.name}
+                  value={m.name}
+                  className="pl-8"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="flex items-center">
+                      <Monitor className="mr-2 h-4 w-4 text-green-500" />
+                      {m.title}
+                    </span>
+                    <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
+                      FREE
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+
+            {cloudModels.length > 0 && <SelectSeparator />}
+          </>
+        )}
+
+        {/* Cloud Models Section */}
+        {cloudVisionModels.length > 0 && (
           <SelectGroup>
             <SelectLabel className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
               <Eye className="h-3.5 w-3.5" />
               Vision Models
               <span className="text-muted-foreground">(Can process images)</span>
             </SelectLabel>
-            {visionModels.map((m) => (
+            {cloudVisionModels.map((m) => (
               <SelectItem
                 key={m.name}
                 value={m.name}
@@ -93,18 +175,18 @@ export function ModelSelect({
           </SelectGroup>
         )}
 
-        {visionModels.length > 0 && textOnlyModels.length > 0 && (
+        {cloudVisionModels.length > 0 && cloudTextOnlyModels.length > 0 && (
           <SelectSeparator />
         )}
 
-        {textOnlyModels.length > 0 && (
+        {cloudTextOnlyModels.length > 0 && (
           <SelectGroup>
             <SelectLabel className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
               <FileText className="h-3.5 w-3.5" />
               Text-Only Models
               <span className="text-muted-foreground">(Text descriptions only)</span>
             </SelectLabel>
-            {textOnlyModels.map((m) => (
+            {cloudTextOnlyModels.map((m) => (
               <SelectItem
                 key={m.name}
                 value={m.name}

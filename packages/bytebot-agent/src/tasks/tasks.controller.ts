@@ -150,6 +150,28 @@ export class TasksController {
           const maxTokens = model.model_info?.max_output_tokens || model.max_tokens;
           const contextWindow = model.model_info?.max_input_tokens || 128000;
 
+          // Detect provider from api_base or model name
+          let provider: BytebotAgentModel['provider'] = 'proxy';
+          const apiBase = model.litellm_params?.api_base?.toLowerCase() || '';
+          const baseModel = model.model_info?.base_model?.toLowerCase() || '';
+
+          // Detect LMStudio (local models)
+          if (baseModel === 'lmstudio' || apiBase.includes('lmstudio') || model.model_name?.startsWith('local-')) {
+            provider = 'lmstudio';
+          }
+          // Detect OpenRouter
+          else if (modelName.includes('openrouter/') || apiBase.includes('openrouter.ai')) {
+            provider = 'openrouter';
+          }
+          // Detect direct providers
+          else if (modelName.includes('anthropic/')) {
+            provider = 'anthropic';
+          } else if (modelName.includes('openai/') || modelName.includes('gpt-')) {
+            provider = 'openai';
+          } else if (modelName.includes('gemini/') || modelName.includes('vertex_ai/')) {
+            provider = 'google';
+          }
+
           // Detect advanced feature support
           const supportsPromptCaching = modelName.includes('anthropic/claude');
           // Note: OpenAI's API rejects reasoning_effort for o-series models despite LiteLLM metadata claiming support
@@ -157,7 +179,7 @@ export class TasksController {
           const supportsReasoningEffort = false;
 
           return {
-            provider: 'proxy',
+            provider,
             name: model.litellm_params.model,
             title: model.model_name,
             contextWindow,

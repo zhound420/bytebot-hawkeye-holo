@@ -220,6 +220,43 @@ if [[ "$TARGET_OS" != "linux" && "$TARGET_OS" != "windows" && "$TARGET_OS" != "m
     exit 1
 fi
 
+# LMStudio configuration prompt (for all OS types)
+echo ""
+echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}   LMStudio Local Models (Optional)${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+echo ""
+echo "Would you like to configure LMStudio for local models?"
+echo "  • Runs models locally (FREE, no API costs)"
+echo "  • Requires LMStudio server running on network"
+echo "  • Models appear in UI under 'Local Models'"
+echo ""
+read -p "Configure LMStudio? [y/N] " -n 1 -r LMSTUDIO_CHOICE
+echo ""
+echo ""
+
+if [[ $LMSTUDIO_CHOICE =~ ^[Yy]$ ]]; then
+    # Get script directory
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    if [[ -f "$SCRIPT_DIR/setup-lmstudio.sh" ]]; then
+        bash "$SCRIPT_DIR/setup-lmstudio.sh"
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}⚠ LMStudio setup failed or was cancelled${NC}"
+            echo -e "${YELLOW}You can run it later: ./scripts/setup-lmstudio.sh${NC}"
+            echo ""
+        fi
+    else
+        echo -e "${RED}✗ LMStudio setup script not found${NC}"
+        echo "Expected: $SCRIPT_DIR/setup-lmstudio.sh"
+        echo ""
+    fi
+else
+    echo -e "${YELLOW}✓ Skipping LMStudio configuration${NC}"
+    echo "To configure later: ${CYAN}./scripts/setup-lmstudio.sh${NC}"
+    echo ""
+fi
+
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   Starting Bytebot Hawkeye Stack ($TARGET_OS)${NC}"
 echo -e "${BLUE}================================================${NC}"

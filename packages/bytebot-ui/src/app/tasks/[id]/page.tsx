@@ -24,6 +24,9 @@ import { VirtualDesktopStatus } from "@/components/VirtualDesktopStatusHeader";
 import { TelemetryStatus } from "@/components/telemetry/TelemetryStatus";
 import { TaskPromptSummary } from "@/components/tasks/TaskPromptSummary";
 import { CVActivityIndicator } from "@/components/cv/CVActivityIndicator";
+import { HelpContextCard } from "@/components/tasks/HelpContextCard";
+import { ReFailureWarning } from "@/components/tasks/ReFailureWarning";
+import { ProgressIndicator } from "@/components/tasks/ProgressIndicator";
 
 export default function TaskPage() {
   const params = useParams();
@@ -51,6 +54,11 @@ export default function TaskPage() {
     taskModel,
     directVisionMode,
     initialPrompt,
+    // Phase 4 UI: UX improvement fields
+    helpContext,
+    needsHelpCount,
+    lastScreenshotId,
+    createdAt,
   } = useChatSession({ initialTaskId: taskId });
 
   // Determine if task is inactive (show screenshot) or active (show VNC)
@@ -239,6 +247,31 @@ export default function TaskPage() {
                 <TaskPromptSummary textBlocks={initialPrompt.textBlocks} />
               </div>
             ) : null}
+
+            {/* Phase 4 UI: Progress Indicator for running tasks */}
+            {taskStatus === TaskStatus.RUNNING && (
+              <div className="px-4">
+                <ProgressIndicator taskId={taskId} createdAt={createdAt || undefined} />
+              </div>
+            )}
+
+            {/* Phase 4 UI: Re-failure Warning */}
+            {needsHelpCount > 1 && (
+              <div className="px-4">
+                <ReFailureWarning
+                  count={needsHelpCount}
+                  modelName={taskModel?.name}
+                />
+              </div>
+            )}
+
+            {/* Phase 4 UI: Help Context Card */}
+            {taskStatus === TaskStatus.NEEDS_HELP && helpContext && (
+              <div className="px-4">
+                <HelpContextCard helpContext={helpContext} />
+              </div>
+            )}
+
             {/* Telemetry sidebar */}
             <TelemetryStatus className="px-4" />
             {/* Messages scrollable area */}

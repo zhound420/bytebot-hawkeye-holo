@@ -54,6 +54,11 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  // Phase 4 UI: UX improvement fields
+  const [helpContext, setHelpContext] = useState<Task['helpContext'] | null>(null);
+  const [needsHelpCount, setNeedsHelpCount] = useState<number>(0);
+  const [lastScreenshotId, setLastScreenshotId] = useState<string | null>(null);
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
 
   const processedMessageIds = useRef<Set<string>>(new Set());
 
@@ -65,6 +70,11 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
         setControl(task.control);
         setTaskModel(task.model ?? null);
         setDirectVisionMode(task.directVisionMode ?? false);
+        // Phase 4 UI: Update UX improvement fields
+        setHelpContext(task.helpContext ?? null);
+        setNeedsHelpCount(task.needsHelpCount ?? 0);
+        setLastScreenshotId(task.lastScreenshotId ?? null);
+        setCreatedAt(task.createdAt);
       }
     },
     [currentTaskId],
@@ -211,6 +221,11 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
             setControl(task.control);
             setTaskModel(task.model ?? null);
             setDirectVisionMode(task.directVisionMode ?? false);
+            // Phase 4 UI: Set UX improvement fields
+            setHelpContext(task.helpContext ?? null);
+            setNeedsHelpCount(task.needsHelpCount ?? 0);
+            setLastScreenshotId(task.lastScreenshotId ?? null);
+            setCreatedAt(task.createdAt);
 
             // Set grouped messages for chat UI
             setGroupedMessages(processedMessages);
@@ -385,5 +400,10 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     handleTakeOverTask,
     handleResumeTask,
     handleCancelTask,
+    // Phase 4 UI: UX improvement fields
+    helpContext,
+    needsHelpCount,
+    lastScreenshotId,
+    createdAt,
   };
 }

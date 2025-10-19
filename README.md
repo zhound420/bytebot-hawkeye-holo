@@ -50,6 +50,7 @@ At least one LLM provider API key:
 - **OpenAI** (GPT models) - Get at [platform.openai.com](https://platform.openai.com)
 - **Google** (Gemini models) - Get at [aistudio.google.com](https://aistudio.google.com)
 - **OpenRouter** (Multi-model proxy) - Get at [openrouter.ai](https://openrouter.ai)
+- **LMStudio** (Local models, optional) - FREE local inference. Configure via `./scripts/setup-lmstudio.sh`
 
 ### Disk Space Requirements
 
@@ -271,6 +272,15 @@ The start script will:
 ```bash
 ./scripts/stop-stack.sh
 ```
+
+**Optional: Configure LMStudio for Local Models (FREE)**
+
+During stack startup, you'll be prompted to configure LMStudio:
+- Answer 'y' to automatically discover and configure local models
+- Or run later: `./scripts/setup-lmstudio.sh`
+- Models appear in UI under "Local Models" section with FREE badge
+- Zero API costs, privacy-preserving local inference
+- Works alongside cloud providers (Anthropic, OpenAI, etc.)
 
 ### 💡 Interactive vs Flag-Based Mode
 
@@ -649,14 +659,19 @@ docker compose -f docker/docker-compose.proxy.yml up -d --build
 - **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5-thinking`, `gpt-5-main`, `gpt-5-mini`, `gpt-5-nano`
 - **OpenRouter**: `openrouter-claude-3.5-sonnet`, `openrouter-claude-3.7-sonnet`, `openrouter-gemini-2.5-pro`, `openrouter-gemini-2.5-flash`, `openrouter-gemini-1.5-pro`, `openrouter-internvl3-78b`, `openrouter-qwen3-vl-235b-a22b-instruct`
 - **Gemini**: `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-vertex-pro`, `gemini-vertex-flash`
-- **Local LMStudio**: `local-lmstudio-qwen2.5-vl-32b-instruct` (vision), configure in [`packages/bytebot-llm-proxy/litellm-config.yaml`](packages/bytebot-llm-proxy/litellm-config.yaml)
 
 **Text-Only Models (📝 Receive text descriptions):**
 - **OpenAI Reasoning**: `o3-pro`, `o3`, `o3-mini`, `o1`, `o1-mini`, `o1-preview`
 - **OpenRouter**: `openrouter-deepseek-r1`, `openrouter-deepseek-r1-distill-qwen-32b`, `openrouter-deepseek-r1-distill-llama-70b`, `openrouter-qwen-plus`, `openrouter-qwen-turbo`, `openrouter-qwen-max`, `openrouter-claude-3-haiku`, `openrouter-mistral-large`, `openrouter-glm-4.6`, `openrouter-grok-4-fast-free`
-- **Local LMStudio**: `local-lmstudio-ui-tars-72b-dpo`, `local-lmstudio-ui-tars-7b-dpo`, `local-lmstudio-gemma-3-27b`, `local-lmstudio-magistral-small-2509` (text-only)
 
-To use custom model endpoints, edit `litellm-config.yaml` and restart: `docker compose restart bytebot-llm-proxy`
+**Local LMStudio Models (💻 Auto-generated, FREE):**
+- Models are discovered automatically from your LMStudio server via `./scripts/setup-lmstudio.sh`
+- Appear in UI under "Local Models" section with green Monitor icon and FREE badge
+- Vision support auto-detected from model names (llava, qwen-vl, cogvlm, etc.)
+- To reconfigure: `./scripts/setup-lmstudio.sh`
+- No manual `litellm-config.yaml` editing required
+
+To use custom cloud model endpoints, edit `litellm-config.yaml` and restart: `docker compose restart bytebot-llm-proxy`
 
 ### Using the Standard Stack (No Proxy)
 
@@ -669,108 +684,127 @@ docker compose -f docker/docker-compose.yml up -d --build
 
 **Note:** Direct API access requires API keys in `docker/.env`. The agent will use the provider-specific services (Anthropic, OpenAI, Google) directly.
 
-## LMStudio Deployment Recommendations
+## LMStudio Local Models (Optional)
 
-### Resource Constraints on Apple Silicon
+Run models locally with **zero API costs** through LMStudio integration. The setup script automatically discovers models and configures the LiteLLM proxy.
 
-**Important:** On Apple Silicon Macs, Holo 1.5-7B **must** run locally for Metal GPU acceleration. This means you likely **cannot** run LMStudio locally due to GPU memory constraints unless you have a massive GPU.
+### Quick Setup
 
-**Why Holo runs locally:**
-- Docker Desktop on macOS doesn't support Metal GPU passthrough
-- Running Holo natively gives ~1.5-2.5s inference vs ~8-15s CPU-only in Docker
-- Holo 1.5-7B GGUF Q4_K_M needs ~6GB GPU memory (quantized from 8.29B parameters)
+**Option 1: Interactive (During Stack Startup)**
+```bash
+./scripts/start-stack.sh
+# Answer 'y' to "Configure LMStudio?" prompt
+# Enter LMStudio server IP:port (default: 192.168.4.112:1234)
+# Select models to enable from auto-discovered list
+```
 
-**Can I run Holo in LM Studio?**
-Yes! Since Holo is now GGUF format, you can load it in LM Studio:
-- Model: `mradermacher/Holo1.5-7B-GGUF` (search in LM Studio model browser)
-- Quantization: Q4_K_M recommended (4.8GB)
-- Use LM Studio's OpenAI-compatible API endpoint
-- Configure Holo service to connect to LM Studio instead of running its own inference
+**Option 2: Standalone Configuration**
+```bash
+./scripts/setup-lmstudio.sh
+# Prompts for server IP, discovers models, generates config
+# Restart stack to load new models:
+./scripts/stop-stack.sh && ./scripts/start-stack.sh
+```
 
-However, this still requires ~6GB GPU memory, so you may not be able to run both Holo + large LLMs simultaneously on consumer hardware.
+### What the Setup Script Does
 
-**Why LMStudio can't run locally (usually):**
-- M1/M2/M3 unified memory is shared between CPU and GPU
-- Running both Holo GGUF (6GB) + LMStudio models (7-70B) exceeds available GPU memory
-- Result: GPU memory exhaustion, severe slowdown, or OOM crashes
+1. **Connects to LMStudio** - Prompts for server IP:port (default: 192.168.4.112:1234)
+2. **Tests Connectivity** - Verifies server is reachable via `/v1/models` endpoint
+3. **Discovers Models** - Fetches all loaded models from LMStudio
+4. **Detects Vision Support** - Auto-identifies vision models (llava, qwen-vl, cogvlm, etc.) from model names
+5. **Interactive Selection** - Let you choose which models to enable (or select 'all')
+6. **Generates Config** - Creates LiteLLM entries in `packages/bytebot-llm-proxy/litellm-config.yaml`
+7. **Updates Environment** - Sets `LMSTUDIO_ENABLED=true` and `LMSTUDIO_BASE_URL` in `docker/.env`
 
-### Recommended Deployment Options
+### UI Features
+
+Models appear in the picker under **"Local Models"** section:
+- 💻 Monitor icon with green theme
+- **FREE** badge (no API costs)
+- Vision models show dual badges: **FREE** + **Vision**
+- Separate from cloud providers for instant clarity
+- Clear distinction between local (free) and cloud (paid) models
+
+### Deployment Options
 
 #### **Option 1: LMStudio on Separate Host (Recommended)**
 
 Run LMStudio on a different machine with its own GPU:
 
-```yaml
-# In packages/bytebot-llm-proxy/litellm-config.yaml
-- model_name: local-lmstudio-ui-tars-72b-dpo
-  litellm_params:
-    model: openai/ui-tars-72b-dpo
-    api_base: http://192.168.4.250:1234/v1  # Different machine on local network
-    api_key: lm-studio
+**Setup:**
+```bash
+# On LMStudio host machine:
+# 1. Start LMStudio with network binding: --host 0.0.0.0
+# 2. Note the IP address (e.g., 192.168.4.112)
+# 3. Verify port 1234 is accessible:
+curl http://192.168.4.112:1234/v1/models
+
+# On Bytebot machine:
+./scripts/setup-lmstudio.sh
+# Enter: 192.168.4.112:1234 when prompted
 ```
 
 **Advantages:**
-- ✅ Holo GGUF gets full Metal GPU access for fast inference (~1.5-2.5s)
+- ✅ Holo gets full local GPU for fast UI localization (~1.5-2.5s on Apple Silicon)
 - ✅ LMStudio models run on separate hardware with dedicated resources
-- ✅ No GPU memory contention
+- ✅ No GPU memory contention between Holo and LLMs
 - ✅ Best performance for both systems
 - ✅ Can use large models (70B+) without affecting Holo
-- ✅ Holo's GGUF format (6GB) is more memory-efficient than before (was 15.4GB)
-
-**Setup:**
-1. **On LMStudio host machine:**
-   - Start LMStudio with network binding: `--host 0.0.0.0`
-   - Note the IP address (e.g., `192.168.4.250`)
-   - Verify port 1234 is accessible: `curl http://192.168.4.250:1234/v1/models`
-
-2. **On Bytebot Mac:**
-   - Edit `packages/bytebot-llm-proxy/litellm-config.yaml`
-   - Update `api_base` to point to LMStudio host IP
-   - Restart: `docker compose restart bytebot-llm-proxy`
+- ✅ Automatic model discovery - no manual config editing
 
 #### **Option 2: LMStudio Locally (Only for Massive GPUs)**
 
 Only viable if you have exceptional hardware:
 
-```yaml
-# Only works with >24GB GPU memory
-api_base: http://localhost:1234/v1  # Local LMStudio
+```bash
+# Requires >24GB GPU memory
+./scripts/setup-lmstudio.sh
+# Enter: localhost:1234 when prompted
 ```
 
 **Requirements:**
 - **Apple Silicon:** M3 Max (96GB+ unified memory) or M4 Max with 128GB+ RAM
 - **x86_64 Workstation:** >24GB VRAM (RTX 4090, RTX 6000 Ada, A6000, etc.)
 
-**Why:** Running Holo 1.5-7B (8GB) + 7-70B LLM models simultaneously requires massive GPU memory. Most consumer hardware can't handle both.
+**Why:** Running Holo 1.5-7B GGUF (6GB) + large LLM models (7-70B) simultaneously requires massive GPU memory. Most consumer hardware can't handle both.
 
-#### **Option 3: Cloud LLM Providers (Simplest)**
+#### **Option 3: Load Holo in LMStudio (Alternative)**
 
-Use Anthropic, OpenAI, or OpenRouter instead of LMStudio:
+Run Holo inside LMStudio instead of as a separate service:
+
+- Model: `mradermacher/Holo1.5-7B-GGUF` (search in LM Studio model browser)
+- Quantization: Q4_K_M recommended (4.8GB + 1GB mmproj = ~6GB)
+- Use LMStudio's OpenAI-compatible API endpoint
+- Configure Bytebot to connect to LMStudio for Holo: `HOLO_URL=http://192.168.4.112:1234`
+
+**Trade-offs:**
+- ✅ Saves GPU memory (one service instead of two)
+- ❌ Requires manual model loading in LMStudio
+- ❌ Less automated than native Holo setup
+- ❌ Still ~6GB GPU memory for Holo + LLM memory
+
+### Reconfiguration
+
+Models not showing up? Need to add more?
 
 ```bash
-# docker/.env
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
+./scripts/setup-lmstudio.sh
+# Script will:
+# 1. Detect and remove old LMStudio entries
+# 2. Rediscover currently loaded models
+# 3. Let you select which models to enable
+# 4. Update configuration files
 ```
-
-**Advantages:**
-- ✅ No local GPU memory constraints
-- ✅ Holo gets full local GPU for UI localization
-- ✅ Simpler setup, no additional hardware needed
-- ✅ Access to latest frontier models (Claude Opus 4, GPT-5, etc.)
-- ✅ No maintenance or model management
-
-**Costs:** Pay-per-token pricing, but eliminates need for expensive GPU hardware.
 
 ### Summary: Best Practices
 
 | Setup | Holo Location | LLM Location | Best For |
 |-------|---------------|--------------|----------|
-| **Recommended** | Local (MPS GPU) | Remote LMStudio host | Maximum performance, large models |
-| **Simplest** | Local (MPS GPU) | Cloud API (Anthropic/OpenAI) | Easy setup, frontier models |
-| **Power Users** | Local (MPS GPU) | Local LMStudio (if >24GB GPU) | Massive hardware, privacy needs |
+| **Recommended** | Local (native with MPS GPU) | Remote LMStudio host | Maximum performance, large models, zero API costs |
+| **Simplest** | Local (native with MPS GPU) | Cloud API (Anthropic/OpenAI) | Easy setup, frontier models, no GPU constraints |
+| **Power Users** | Local (native with MPS GPU) | Local LMStudio (if >24GB GPU) | Massive hardware, privacy needs, complete local stack |
 
-**Bottom line:** Unless you have exceptional GPU hardware, run LMStudio on a separate host to avoid GPU memory contention with Holo 1.5-7B.
+**Bottom line:** Use `setup-lmstudio.sh` for automatic discovery and configuration. Unless you have exceptional GPU hardware (>24GB), run LMStudio on a separate host to avoid GPU memory contention with Holo 1.5-7B.
 
 ## Alternative Deployments
 

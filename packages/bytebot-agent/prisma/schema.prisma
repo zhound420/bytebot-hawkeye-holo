@@ -71,6 +71,24 @@ model Task {
   messages         Message[]
   summaries        Summary[]
   files            File[]
+  dialogInteractions DialogInteraction[] // Phase 2.3: Dialog handling audit trail
+}
+
+// Phase 2.3: Dialog Interaction Logging
+model DialogInteraction {
+  id            String   @id @default(cuid())
+  taskId        String
+  dialogType    String   // 'security', 'confirmation', 'error', 'info', 'warning'
+  dialogText    String   // Full text content of the dialog
+  buttonClicked String   // Which button was clicked (e.g., "Cancel", "OK", "Mark as Trusted")
+  action        String   // 'read', 'cancel', 'confirm', 'button'
+  reason        String   // Model's reasoning for taking this action
+  timestamp     DateTime @default(now())
+
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([timestamp])
 }
 
 model Summary {

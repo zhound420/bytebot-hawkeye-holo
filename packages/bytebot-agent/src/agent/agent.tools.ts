@@ -499,6 +499,40 @@ export const _createTaskTool = {
 };
 
 /**
+ * Phase 2.3: Modal Dialog Handling Tool
+ * Explicit tool for interacting with modal dialogs with logging and audit trail
+ */
+export const _handleDialogTool = {
+  name: 'computer_handle_dialog',
+  description:
+    '🔔 Handle modal dialogs detected in computer_detect_elements response. Use this when you encounter a blocking dialog (security, confirmation, error, info, warning). This tool logs all dialog interactions for audit and safety. REQUIRED: Provide a clear reason explaining WHY you are taking this action. Use set_task_status(NEEDS_HELP) if uncertain about safety.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      action: {
+        type: 'string' as const,
+        enum: ['read', 'cancel', 'confirm', 'button'],
+        description:
+          'Action to take: "read" (inspect dialog without clicking), "cancel" (click Cancel/Close/No), "confirm" (click OK/Yes/Accept), "button" (click specific button by text)',
+      },
+      button_text: {
+        type: 'string' as const,
+        description:
+          'Required if action is "button". Exact text of the button to click (e.g., "Mark as Trusted", "Save Changes"). Must match button_options from detection response.',
+        nullable: true,
+      },
+      reason: {
+        type: 'string' as const,
+        description:
+          'REQUIRED: Clear explanation of WHY you are taking this action. Include safety assessment and what you expect to happen. Example: "Clicking Cancel because this is an unexpected permission dialog and the task does not require this permission."',
+        minLength: 10,
+      },
+    },
+    required: ['action', 'reason'],
+  },
+};
+
+/**
  * Tool definition for reading files
  */
 export const _readFileTool = {
@@ -577,6 +611,7 @@ export const agentTools = [
   _waitTool,
   _readFileTool,
   _writeFileTool,
+  _handleDialogTool,  // Phase 2.3: Modal dialog handling with audit trail
 
   // TASK MANAGEMENT
   _setTaskStatusTool,

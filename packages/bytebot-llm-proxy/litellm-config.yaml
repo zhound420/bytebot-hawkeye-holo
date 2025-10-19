@@ -439,7 +439,7 @@ model_list:
   - model_name: local-qwen3-vl-8b-instruct-mlx
     litellm_params:
       model: openai/qwen3-vl-8b-instruct-mlx
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -448,7 +448,7 @@ model_list:
   - model_name: local-text-embedding-nomic-embed-text-v1.5
     litellm_params:
       model: openai/text-embedding-nomic-embed-text-v1.5
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -457,7 +457,7 @@ model_list:
   - model_name: local-ui-tars-7b-dpo
     litellm_params:
       model: openai/ui-tars-7b-dpo
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -466,7 +466,7 @@ model_list:
   - model_name: local-ui-tars-1.5-7b
     litellm_params:
       model: openai/ui-tars-1.5-7b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -475,7 +475,7 @@ model_list:
   - model_name: local-mistralai-magistral-small-2509
     litellm_params:
       model: openai/mistralai/magistral-small-2509
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -484,7 +484,7 @@ model_list:
   - model_name: local-ui-tars-72b-dpo
     litellm_params:
       model: openai/ui-tars-72b-dpo
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -493,7 +493,7 @@ model_list:
   - model_name: local-glm-4.5v
     litellm_params:
       model: openai/glm-4.5v
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -502,7 +502,7 @@ model_list:
   - model_name: local-glm-4.5-air
     litellm_params:
       model: openai/glm-4.5-air
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -511,7 +511,7 @@ model_list:
   - model_name: local-google-gemma-3-27b
     litellm_params:
       model: openai/google/gemma-3-27b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -520,7 +520,7 @@ model_list:
   - model_name: local-mistralai-mistral-small-3.2
     litellm_params:
       model: openai/mistralai/mistral-small-3.2
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -529,7 +529,7 @@ model_list:
   - model_name: local-qwen2.5-vl-32b-instruct
     litellm_params:
       model: openai/qwen2.5-vl-32b-instruct
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -538,7 +538,7 @@ model_list:
   - model_name: local-qwen2.5-vl-7b-instruct-vision-r1
     litellm_params:
       model: openai/qwen2.5-vl-7b-instruct-vision-r1
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -547,7 +547,7 @@ model_list:
   - model_name: local-gemma3-4b-vision-f16
     litellm_params:
       model: openai/gemma3-4b-vision@f16
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -556,7 +556,7 @@ model_list:
   - model_name: local-gemma3-4b-vision-q8_0
     litellm_params:
       model: openai/gemma3-4b-vision@q8_0
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -565,7 +565,7 @@ model_list:
   - model_name: local-google-gemma-3n-e4b
     litellm_params:
       model: openai/google/gemma-3n-e4b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -574,7 +574,7 @@ model_list:
   - model_name: local-google-gemma-3-12b
     litellm_params:
       model: openai/google/gemma-3-12b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -583,7 +583,7 @@ model_list:
   - model_name: local-qwen-qwen2.5-vl-7b
     litellm_params:
       model: openai/qwen/qwen2.5-vl-7b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -592,7 +592,7 @@ model_list:
   - model_name: local-qwen-qwen3-4b-thinking-2507
     litellm_params:
       model: openai/qwen/qwen3-4b-thinking-2507
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:
@@ -601,7 +601,7 @@ model_list:
   - model_name: local-openai-gpt-oss-20b
     litellm_params:
       model: openai/openai/gpt-oss-20b
-      api_base: ${LMSTUDIO_BASE_URL}/v1
+      api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true
     model_info:

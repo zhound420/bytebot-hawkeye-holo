@@ -48,11 +48,8 @@ export function ModelSelect({
     );
   };
 
-  // Get capability label with cost indicator
+  // Get capability label
   const getCapabilityLabel = (model: Model) => {
-    if (model.provider === "lmstudio") {
-      return "FREE";
-    }
     return model.supportsVision ? "Vision" : "Text-Only";
   };
 
@@ -96,7 +93,7 @@ export function ModelSelect({
               <SelectLabel className="flex items-center gap-2 text-xs font-semibold text-green-600 dark:text-green-400">
                 <Monitor className="h-3.5 w-3.5" />
                 Local Models
-                <span className="text-muted-foreground">(FREE, running locally)</span>
+                <span className="text-muted-foreground">(Running locally)</span>
               </SelectLabel>
 
               {/* Local Vision Models */}
@@ -111,14 +108,9 @@ export function ModelSelect({
                       <Monitor className="mr-2 h-4 w-4 text-green-500" />
                       {m.title}
                     </span>
-                    <div className="flex items-center gap-1">
-                      <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
-                        FREE
-                      </span>
-                      <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                        Vision
-                      </span>
-                    </div>
+                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      Vision
+                    </span>
                   </div>
                 </SelectItem>
               ))}
@@ -134,9 +126,6 @@ export function ModelSelect({
                     <span className="flex items-center">
                       <Monitor className="mr-2 h-4 w-4 text-green-500" />
                       {m.title}
-                    </span>
-                    <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
-                      FREE
                     </span>
                   </div>
                 </SelectItem>

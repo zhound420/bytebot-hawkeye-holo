@@ -187,6 +187,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
     networks:
       - bytebot-network
     restart: unless-stopped

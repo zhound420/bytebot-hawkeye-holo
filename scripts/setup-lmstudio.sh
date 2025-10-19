@@ -155,7 +155,7 @@ fi
         echo "  - model_name: local-${SAFE_MODEL_NAME}"
         echo "    litellm_params:"
         echo "      model: openai/${model}"
-        echo "      api_base: \${LMSTUDIO_BASE_URL}/v1"
+        echo "      api_base: os.environ/LMSTUDIO_BASE_URL"
         echo "      api_key: lm-studio"
         echo "      supports_function_calling: true"
 
@@ -204,9 +204,9 @@ else
 fi
 
 if grep -q "^LMSTUDIO_BASE_URL=" "$ENV_FILE"; then
-    sed -i.bak "s|^LMSTUDIO_BASE_URL=.*|LMSTUDIO_BASE_URL=${LMSTUDIO_URL}|" "$ENV_FILE"
+    sed -i.bak "s|^LMSTUDIO_BASE_URL=.*|LMSTUDIO_BASE_URL=${LMSTUDIO_URL}/v1|" "$ENV_FILE"
 else
-    echo "LMSTUDIO_BASE_URL=${LMSTUDIO_URL}" >> "$ENV_FILE"
+    echo "LMSTUDIO_BASE_URL=${LMSTUDIO_URL}/v1" >> "$ENV_FILE"
 fi
 
 # Clean up backup files

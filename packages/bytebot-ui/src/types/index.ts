@@ -89,6 +89,20 @@ export interface Task {
   model: Model;
   files?: File[];
   directVisionMode?: boolean;
+  // Phase 1.2: NEEDS_HELP context
+  helpContext?: {
+    reason: string;
+    blockerType: string;
+    message: string;
+    elapsedMs?: number;
+    timestamp: string;
+    suggestedActions: string[];
+  };
+  lastScreenshotId?: string;
+  // Phase 3.2: Re-failure tracking
+  needsHelpCount?: number;
+  lastNeedsHelpAt?: string;
+  lastResumedAt?: string;
 }
 
 export interface TelemetryLearningMetricsTrend {

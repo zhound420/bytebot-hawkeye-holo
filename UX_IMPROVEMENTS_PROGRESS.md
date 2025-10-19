@@ -13,14 +13,15 @@ Based on the UX analysis in `UX_ANALYSIS_DEEP_DIVE.md`, implementing comprehensi
 **Root Cause Identified:** Modal dialog blocker + lack of timeout detection + no cross-model learning
 
 **Total Phases:** 4 major phases, 11 backend tasks
-**Completed:** 4 tasks (36.4%)
-**In Progress:** Phase 2.2 (System Prompt Dialog Guidelines)
+**Completed:** 5 tasks (45.5%)
+**In Progress:** Phase 2.3 (computer_handle_dialog() Tool)
 
 **Commits:**
 - `de6aff7` - fix(types): add helpContext to UpdateTaskDto
 - `ccb1a00` - feat(ux): implement Phase 1 UX improvements
 - `1fd04a9` - feat(ux): implement Phase 1.3 real-time progress indicators
-- (pending) - feat(ux): implement Phase 2.1 modal dialog detection
+- `8f98573` - feat(ux): implement Phase 2.1 modal dialog detection
+- (pending) - feat(ux): implement Phase 2.2 system prompt dialog guidelines
 
 ---
 
@@ -196,30 +197,56 @@ const result = await holoClient.detectModalDialog(screenshotBuffer);
 
 ---
 
-### ⏳ Phase 2.2: System Prompt Dialog Guidelines (PENDING)
+### ✅ Phase 2.2: System Prompt Dialog Guidelines (COMPLETE)
 
-**Problem to Solve:** Models have no guidance on handling security dialogs
+**Problem Solved:** Models had no guidance on handling security dialogs
 
-**Planned Implementation:**
-Add to all model system prompts:
+**Implementation:**
+Added comprehensive modal dialog handling guidelines to ALL system prompts (provider-agnostic):
+
+1. **CV-First System Prompt** (`agent.constants.ts:129-174`)
+   - Automatic dialog detection via `computer_detect_elements`
+   - 3-step handling strategy: Read → Assess → Act
+   - Safe dialog auto-handling (Cancel, Close, OK)
+   - Risky dialog escalation (security warnings, destructive actions)
+   - Example escalation flow with `set_task_status(NEEDS_HELP)`
+
+2. **Direct Vision System Prompt** (`agent.constants.ts:506-551`)
+   - Visual indicators to watch for (overlay shadows, centered dialogs)
+   - Grid-based dialog interaction
+   - Same handling strategy adapted for vision models
+   - Emphasizes observation-based dialog identification
+
+3. **Tier-Specific Prompts** (`tier-specific-prompts.ts:7-56`)
+   - Universal `DIALOG_HANDLING_GUIDELINES` constant
+   - Appended to all 3 tier levels (Tier 1, 2, 3)
+   - Consistent handling rules across model capabilities
+
+**Guidelines Structure:**
 ```
 MODAL DIALOG HANDLING:
-1. Before any action, check if modal dialog blocks UI
-2. Use computer_handle_dialog() to interact with dialogs
-3. Auto-handle: Cancel, Close, OK (for info dialogs)
-4. Log reason for every dialog interaction
-5. If uncertain about safety: use set_task_status(NEEDS_HELP)
+✅ Detection: Automatic via computer_detect_elements (includes dialog metadata)
+✅ Strategy: Read context → Assess safety → Take action
+✅ Auto-handle: Info/warning dialogs, unwanted permissions
+✅ Escalate: Security warnings, destructive actions, uncertain cases
+✅ Example: Full escalation flow for "Untrusted application" dialog
 ```
 
-**Files to Modify:**
-1. `packages/bytebot-agent/src/anthropic/anthropic.service.ts`
-2. `packages/bytebot-agent/src/openai/openai.service.ts`
-3. `packages/bytebot-agent/src/google/google.service.ts`
+**Files Modified:**
+1. `packages/bytebot-agent/src/agent/agent.constants.ts` - Added to both system prompts
+2. `packages/bytebot-agent/src/agent/tier-specific-prompts.ts` - Added universal guidelines
 
-**Expected Impact:**
-- ✅ Models know how to handle dialogs
-- ✅ Clear escalation path for uncertain dialogs
-- ✅ Automatic handling of safe dialogs
+**System Prompt Delivery:**
+- Same prompt text sent to ALL providers (Anthropic, OpenAI, Google, Proxy)
+- Provider-agnostic approach ensures consistency
+- Integrated with existing CV-first and Direct Vision workflows
+
+**Impact:**
+- ✅ Models know how to handle dialogs (automatic detection + clear guidelines)
+- ✅ Clear escalation path for uncertain dialogs (`set_task_status(NEEDS_HELP)`)
+- ✅ Automatic handling of safe dialogs (Cancel, Close, OK)
+- ✅ Security-first approach (escalate risky dialogs)
+- ✅ Consistent across all model tiers and providers
 
 ---
 

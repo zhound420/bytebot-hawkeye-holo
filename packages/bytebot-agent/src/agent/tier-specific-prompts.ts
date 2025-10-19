@@ -1,6 +1,61 @@
 import { ModelTier } from '../models/model-capabilities.config';
 
 /**
+ * Modal dialog handling guidelines (Phase 2.2)
+ * Universal across all tiers - critical for preventing stuck states
+ */
+const DIALOG_HANDLING_GUIDELINES = `
+
+7. **⚠️ MODAL DIALOG HANDLING (Phase 2.2)**
+   **CRITICAL: Modal dialogs can block your entire workflow. Handle them immediately.**
+
+   **Detection (Automatic):**
+   - computer_detect_elements automatically checks for blocking modal dialogs BEFORE detecting elements
+   - You'll receive dialog details in the detection response if present:
+     • dialog_type: 'security', 'confirmation', 'error', 'info', 'warning'
+     • dialog_text: Full text content of the dialog
+     • button_options: List of visible button labels
+     • dialog_location: Position of the dialog
+
+   **Handling Strategy:**
+   1. **Read the dialog context** - What is it asking? Why did it appear?
+   2. **Assess safety** - Is this expected for the current task?
+   3. **Take appropriate action:**
+      • Safe to dismiss: Click "Cancel", "Close", "OK" (for info dialogs)
+      • Risky actions: "Delete", "Format", "Mark as Trusted" → use set_task_status(NEEDS_HELP) unless you're CERTAIN it's correct
+      • Uncertain: Always escalate with set_task_status(NEEDS_HELP) and explain the dialog
+
+   **Auto-Handle (Safe Dialogs):**
+   - Info/Warning dialogs: Click "OK" or "Close" to dismiss
+   - Permission requests you don't need: Click "Cancel" or "Deny"
+   - Unexpected errors: Click "Close" and report the error
+
+   **Escalate (Risky Dialogs):**
+   - Security warnings about untrusted applications
+   - Confirmation dialogs for destructive actions
+   - Any dialog you're uncertain about
+
+   **Example:**
+   \`\`\`
+   # Dialog detected in response:
+   # dialog_type: 'security'
+   # dialog_text: 'This application was launched from an untrusted location...'
+   # button_options: ['Cancel', 'Mark as Trusted']
+
+   # Assess: This is a security dialog about trusting an application.
+   # Decision: Escalate - I shouldn't auto-trust applications without user approval.
+
+   set_task_status({
+     status: 'NEEDS_HELP',
+     message: 'Security dialog appeared: "This application was launched from an untrusted location. Do you want to mark it as trusted?" - Buttons: Cancel, Mark as Trusted. User decision required for security.',
+     blockerType: 'modal_dialog_security'
+   })
+   \`\`\`
+
+   **Remember:** It's always better to ask than to blindly click a security dialog.
+`;
+
+/**
  * Get tier-specific CV-first workflow instructions
  * Adapts enforcement messaging based on model's CV capabilities and vision support
  */
@@ -103,7 +158,8 @@ computer_click_element({ element_id: "0" })
    - Add CONTEXT when multiple matches possible: "Install in extensions panel"
    - Leverage APP knowledge: "activity bar" in VSCode, "layer panel" in Photoshop
 
-   **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Your model excels at tool orchestration - always use CV tools first with well-crafted semantic queries.`;
+   **This is MANDATORY, not optional.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Your model excels at tool orchestration - always use CV tools first with well-crafted semantic queries.
+${DIALOG_HANDLING_GUIDELINES}`;
   }
 
   // Tier 2: Medium Reasoning & Tool Use - Balanced enforcement
@@ -151,7 +207,8 @@ computer_click_element({ element_id: "0" })
    - Add CONTEXT: "Install in extensions" not just "Install"
    - Keep it SIMPLE but SPECIFIC
 
-   **This is RECOMMENDED for reliability.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Try CV first with good queries, then adapt if needed.`;
+   **This is RECOMMENDED for reliability.** computer_detect_elements + computer_click_element has 89% accuracy vs 60% for manual grid clicking. Try CV first with good queries, then adapt if needed.
+${DIALOG_HANDLING_GUIDELINES}`;
   }
 
   // Tier 3: Limited Reasoning or Tool Use - Minimal enforcement, keyboard-first
@@ -206,7 +263,8 @@ computer_click_element({ element_id: "0" })
    **DECISION TREE:**
    - CAN I use keyboard shortcuts? → YES → Use keyboard (computer_press_keys)
    - Need to click specific element? → computer_detect_elements with SIMPLE functional description
-   - CV detection failed twice? → computer_click_mouse with coordinates from grid`;
+   - CV detection failed twice? → computer_click_mouse with coordinates from grid
+${DIALOG_HANDLING_GUIDELINES}`;
 }
 
 /**

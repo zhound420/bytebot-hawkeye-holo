@@ -237,6 +237,7 @@ export class AgentProcessor implements OnModuleDestroy {
   private readonly enforceCVFirst = process.env.BYTEBOT_ENFORCE_CV_FIRST !== 'false'; // Default: true
   private currentModelName: string | null = null; // Track current model for tier-based enforcement
   private currentModel: BytebotAgentModel | null = null; // Store full model for vision capability checks
+  private currentDirectVisionMode: boolean = false; // Track directVisionMode for CV enforcement skip
 
   // Pattern recognition: Track successful query patterns for learning feedback
   private readonly successfulQueryPatterns = new Map<string, {
@@ -647,6 +648,14 @@ The model has been processing for ${elapsedMinutes}m ${elapsedSeconds}s without 
 
     // Skip enforcement if disabled globally or for this model tier
     if (!this.enforceCVFirst || !rules.enforceCvFirst) {
+      return { allowed: true };
+    }
+
+    // CRITICAL: Skip enforcement in Direct Vision Mode
+    // When directVisionMode is enabled, CV tools (computer_detect_elements, computer_click_element)
+    // are intentionally removed from the tools list. Vision models should use their native vision
+    // with computer_click_mouse directly without intermediate CV detection.
+    if (this.currentDirectVisionMode) {
       return { allowed: true };
     }
 
@@ -1438,6 +1447,9 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // Calculate effective mode considering global override
       const effectiveDirectVisionMode = FORCE_DIRECT_VISION_MODE || task.directVisionMode || false;
+
+      // Store for CV enforcement check (skip enforcement when directVisionMode is active)
+      this.currentDirectVisionMode = effectiveDirectVisionMode;
 
       // Log Direct Vision Mode status for visibility
       this.logger.log(

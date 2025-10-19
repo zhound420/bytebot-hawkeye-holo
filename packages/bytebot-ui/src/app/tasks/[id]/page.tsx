@@ -57,7 +57,6 @@ export default function TaskPage() {
     // Phase 4 UI: UX improvement fields
     helpContext,
     needsHelpCount,
-    lastScreenshotId,
     createdAt,
   } = useChatSession({ initialTaskId: taskId });
 
@@ -251,7 +250,7 @@ export default function TaskPage() {
             {/* Phase 4 UI: Progress Indicator for running tasks */}
             {taskStatus === TaskStatus.RUNNING && (
               <div className="px-4">
-                <ProgressIndicator taskId={taskId} createdAt={createdAt || undefined} />
+                <ProgressIndicator createdAt={createdAt || undefined} />
               </div>
             )}
 

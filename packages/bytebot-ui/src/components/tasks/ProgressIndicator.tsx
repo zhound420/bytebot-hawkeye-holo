@@ -5,12 +5,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading02Icon } from "@hugeicons/core-free-icons";
 
 interface ProgressIndicatorProps {
-  taskId: string;
   createdAt?: string;
 }
 
 export function ProgressIndicator({
-  taskId,
   createdAt,
 }: ProgressIndicatorProps) {
   const [elapsedTime, setElapsedTime] = useState<string>("0s");

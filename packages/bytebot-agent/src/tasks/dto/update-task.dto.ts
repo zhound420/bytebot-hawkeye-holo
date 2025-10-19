@@ -36,4 +36,14 @@ export class UpdateTaskDto {
 
   @IsOptional()
   lastScreenshotId?: string;
+
+  // Phase 3.2: Re-failure tracking
+  @IsOptional()
+  lastNeedsHelpAt?: Date;
+
+  @IsOptional()
+  lastResumedAt?: Date;
+
+  @IsOptional()
+  needsHelpCount?: number;
 }

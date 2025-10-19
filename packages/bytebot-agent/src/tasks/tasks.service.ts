@@ -292,9 +292,18 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
 
+    // Phase 3.2: Track when task transitions to NEEDS_HELP
+    const dataToUpdate = { ...updateTaskDto };
+    if (updateTaskDto.status === TaskStatus.NEEDS_HELP) {
+      dataToUpdate.lastNeedsHelpAt = new Date();
+      this.logger.log(
+        `Task ${id} transitioning to NEEDS_HELP (attempt #${existingTask.needsHelpCount + 1})`
+      );
+    }
+
     let updatedTask = await this.prisma.task.update({
       where: { id },
-      data: updateTaskDto,
+      data: dataToUpdate,
     });
 
     if (updateTaskDto.status === TaskStatus.COMPLETED) {
@@ -358,11 +367,41 @@ export class TasksService {
       throw new BadRequestException(`Task ${taskId} is not under user control`);
     }
 
+    // Phase 3.2: Track resume from NEEDS_HELP for re-failure detection
+    const isResumingFromNeedsHelp = task.status === TaskStatus.NEEDS_HELP && task.lastNeedsHelpAt;
+    const now = new Date();
+    let needsHelpCount = task.needsHelpCount;
+
+    // Check for re-failure pattern (resumed, but failed again quickly)
+    if (isResumingFromNeedsHelp && task.lastResumedAt) {
+      const timeSinceLastResume = now.getTime() - task.lastResumedAt.getTime();
+      const timeSinceLastNeedsHelp = now.getTime() - task.lastNeedsHelpAt.getTime();
+
+      // If task went NEEDS_HELP → resumed → NEEDS_HELP within 30 seconds, it's a re-failure
+      if (timeSinceLastNeedsHelp < 30000) {
+        this.logger.warn(
+          `⚠️ Re-failure detected for task ${taskId}: ` +
+          `Task went NEEDS_HELP → resumed → NEEDS_HELP within ${Math.round(timeSinceLastNeedsHelp / 1000)}s. ` +
+          `This is attempt #${needsHelpCount + 1}.`
+        );
+
+        // Emit WebSocket event for UI to show escalation prompt
+        this.tasksGateway.emitTaskUpdate(taskId, {
+          ...task,
+          _refailureDetected: true,
+          _refailureCount: needsHelpCount + 1,
+        } as any);
+      }
+    }
+
     const updatedTask = await this.prisma.task.update({
       where: { id: taskId },
       data: {
         control: Role.ASSISTANT,
         status: TaskStatus.RUNNING,
+        // Increment needsHelpCount only if resuming from NEEDS_HELP
+        ...(isResumingFromNeedsHelp ? { needsHelpCount: { increment: 1 } } : {}),
+        lastResumedAt: now,
       },
     });
 

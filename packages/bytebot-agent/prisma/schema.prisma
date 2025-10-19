@@ -68,6 +68,10 @@ model Task {
   // NEEDS_HELP Context (Phase 1.2): Store context when task needs help
   helpContext      Json?        // { reason, blockerType, elapsedMs, suggestedActions[], timestamp }
   lastScreenshotId String?      // Reference to last screenshot for debugging
+  // Phase 3.2: Re-failure detection for auto-escalation
+  needsHelpCount   Int          @default(0) // Number of times task has transitioned to NEEDS_HELP
+  lastNeedsHelpAt  DateTime?    // When task last transitioned to NEEDS_HELP
+  lastResumedAt    DateTime?    // When task was last resumed from NEEDS_HELP
   messages         Message[]
   summaries        Summary[]
   files            File[]

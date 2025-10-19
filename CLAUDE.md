@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Benefits:**
 - ✅ Simpler installation (no native bindings to compile)
-- ✅ Smaller package size (~5.5GB Holo 1.5 GGUF vs multiple GB OmniParser + OpenCV)
+- ✅ Official transformers model (~14GB bfloat16 precision)
 - ✅ Better cross-platform compatibility (no C++ compilation issues)
 - ✅ Superior detection accuracy (Holo 1.5 cross-platform UI understanding)
 - ✅ Improved click accuracy (70-85% with SOM vs 20-30% with raw IDs)
@@ -75,7 +75,7 @@ cd ../bytebot-cv && npm install && npm run build
 ### What Happens Automatically
 
 **On Apple Silicon (M1-M4):**
-- Sets up native OmniParser with MPS GPU (~1-2s/frame)
+- Sets up native Holo 1.5-7B with MPS GPU (~2-4s/frame)
 - Configures Docker to connect to native service
 - Best performance: GPU-accelerated
 
@@ -449,15 +449,15 @@ Core detection services in `packages/bytebot-cv/src/`:
 
 **Core Features:**
 - **Qwen2.5-VL Base** - 7B parameter vision-language model
-- **GGUF Quantization** - Q4_K_M (4-bit) or Q8_0 (8-bit) for efficiency
+- **Official Transformers** - Full precision bfloat16 for optimal accuracy
 - **Multi-prompt Detection** - Multiple detection passes for comprehensive coverage
 - **Set-of-Mark Annotations** - Numbered visual grounding for VLM click accuracy
 - **Cross-platform Training** - Windows, macOS, Linux UI screenshots
 - **Performance Profiles** - SPEED, BALANCED, QUALITY modes
 
 **Performance:**
-- NVIDIA GPU: ~2-4s/frame (Q4_K_M quantization)
-- Apple Silicon MPS: ~4-6s/frame (Q4_K_M quantization)
+- NVIDIA GPU: ~1.5-3s/frame (14GB VRAM, bfloat16)
+- Apple Silicon MPS: ~2-4s/frame (16GB+ unified memory, bfloat16)
 - CPU: ~15-30s/frame
 
 **Benchmarks:**
@@ -687,7 +687,7 @@ BYTEBOT_CV_USE_HOLO=true
 **Features:**
 - Active CV methods with live status (pulsing indicators)
 - Performance profile display (SPEED/BALANCED/QUALITY with icons)
-- Quantization level (Q4_K_M/Q8_0)
+- Model precision (bfloat16 full precision)
 - Device type (NVIDIA GPU ⚡ / Apple GPU 🍎 / CPU 💻)
 - Detection history with cache hit indicators
 - Click success/failure tracking

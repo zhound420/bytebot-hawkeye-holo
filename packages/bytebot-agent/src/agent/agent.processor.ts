@@ -273,6 +273,8 @@ export class AgentProcessor implements OnModuleDestroy {
       openai: this.openaiService,
       google: this.googleService,
       proxy: this.proxyService,
+      lmstudio: this.proxyService,    // LMStudio local models via LiteLLM proxy
+      openrouter: this.proxyService,  // OpenRouter models via LiteLLM proxy
     };
     this.loadVisualDescriptionCache();
     this.captionTrainingCollector = new CaptionTrainingDataCollector();

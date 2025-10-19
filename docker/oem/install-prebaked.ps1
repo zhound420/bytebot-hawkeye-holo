@@ -287,34 +287,82 @@ try {
 }
 
 try {
-    # Remove old scheduled task approach (if present)
-    Write-Log "Removing old scheduled task if present..."
-    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
-
     # Stop any running instances
     Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-    Write-Log "Creating startup shortcut for interactive desktop session..."
+    Write-Log "Creating S4U scheduled task for interactive desktop access..."
 
-    # Create shortcut in Windows Startup folder (runs on user login with desktop access)
-    # This approach ensures bytebotd runs in the interactive desktop session where GUI automation works
-    $StartupFolder = [System.Environment]::GetFolderPath('Startup')
-    $ShortcutPath = Join-Path $StartupFolder "Bytebotd Desktop Agent.lnk"
+    # Remove existing task if present
+    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
 
-    # Create WScript.Shell COM object to create shortcut
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-    $Shortcut.TargetPath = "powershell.exe"
-    $Shortcut.Arguments = "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
-    $Shortcut.WorkingDirectory = $BytebotdDir
-    $Shortcut.Description = "Bytebot Desktop Daemon - AI agent computer control service"
-    $Shortcut.Save()
+    # Get current username for S4U task
+    $CurrentUser = $env:USERNAME
+    if (-not $CurrentUser) {
+        $CurrentUser = "docker"  # Fallback for dockur/windows containers
+    }
 
-    Write-Log "✓ Startup shortcut created: $ShortcutPath" "SUCCESS"
-    Write-Log "Bytebotd will auto-start when user logs in (interactive desktop session)" "SUCCESS"
+    # Create S4U scheduled task (Service-for-User logon type)
+    # This provides interactive desktop access without requiring user login
+    # Critical for nut-js screen.capture() and keyboard/mouse input automation
+
+    $TaskAction = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`"" `
+        -WorkingDirectory $BytebotdDir
+
+    $TaskTrigger = New-ScheduledTaskTrigger `
+        -AtStartup `
+        -Delay (New-TimeSpan -Seconds 30)
+
+    # S4U (Service-for-User) logon type enables interactive desktop without login
+    $TaskPrincipal = New-ScheduledTaskPrincipal `
+        -UserId $CurrentUser `
+        -LogonType S4U `
+        -RunLevel Highest
+
+    $TaskSettings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1)
+
+    Register-ScheduledTask `
+        -TaskName $ServiceName `
+        -Action $TaskAction `
+        -Trigger $TaskTrigger `
+        -Principal $TaskPrincipal `
+        -Settings $TaskSettings `
+        -Description "Bytebot Desktop Daemon - AI agent computer control service with S4U interactive desktop access" `
+        -Force | Out-Null
+
+    Write-Log "✓ S4U scheduled task created: $ServiceName" "SUCCESS"
+    Write-Log "✓ Logon type: S4U (interactive desktop without login)" "SUCCESS"
+    Write-Log "✓ User: $CurrentUser (RunLevel: Highest)" "SUCCESS"
+    Write-Log "Bytebotd will auto-start on system boot with interactive desktop access" "SUCCESS"
 } catch {
-    Write-Log "ERROR: Failed to create startup shortcut: $_" "ERROR"
-    exit 1
+    Write-Log "ERROR: Failed to create S4U scheduled task: $_" "ERROR"
+    Write-Log "Falling back to startup shortcut approach..." "WARN"
+
+    # Fallback: Create startup shortcut if S4U task fails
+    try {
+        $StartupFolder = [System.Environment]::GetFolderPath('Startup')
+        $ShortcutPath = Join-Path $StartupFolder "Bytebotd Desktop Agent.lnk"
+
+        $WshShell = New-Object -ComObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+        $Shortcut.TargetPath = "powershell.exe"
+        $Shortcut.Arguments = "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+        $Shortcut.WorkingDirectory = $BytebotdDir
+        $Shortcut.Description = "Bytebot Desktop Daemon - AI agent computer control service"
+        $Shortcut.Save()
+
+        Write-Log "✓ Startup shortcut created as fallback: $ShortcutPath" "SUCCESS"
+        Write-Log "NOTE: Startup shortcut requires user login (less reliable than S4U task)" "WARN"
+    } catch {
+        Write-Log "ERROR: Both S4U task and startup shortcut failed: $_" "ERROR"
+        exit 1
+    }
 }
 
 Write-Log ""

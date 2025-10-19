@@ -162,12 +162,20 @@ export class EnhancedVisualDetectorService {
         performance.ocrTime = Date.now() - ocrStart;
       }
 
+      // Track which methods were ATTEMPTED (not just successful)
+      // This ensures telemetry shows the actual method used even when 0 elements are found
+      if (useHolo && this.holoClient) {
+        methodsUsed.push('holo-1.5-7b');
+      }
+      if (useOCR) {
+        methodsUsed.push('ocr');
+      }
+
       // Extract SOM data from Holo result
       let somImage: string | undefined;
       let elementMapping: Map<number, string> | undefined;
 
       if (holoResult.elements.length > 0) {
-        methodsUsed.push('holo-1.5-7b');
         allElements.push(...holoResult.elements);
         somImage = holoResult.somImage;
         elementMapping = holoResult.elementMapping;
@@ -176,7 +184,6 @@ export class EnhancedVisualDetectorService {
       }
 
       if (ocrResults.length > 0) {
-        methodsUsed.push('ocr');
         allElements.push(...ocrResults);
       }
 
@@ -474,7 +481,7 @@ export class EnhancedVisualDetectorService {
   private createEmptyResult(): EnhancedDetectionResult {
     return {
       elements: [],
-      methodsUsed: [],
+      methodsUsed: ['none'], // Use 'none' instead of [] to indicate no methods were attempted
       performance: { totalTime: 0 },
       confidence: 0,
       somImage: undefined,

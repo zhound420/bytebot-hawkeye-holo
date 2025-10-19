@@ -54,4 +54,14 @@ export class TasksGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitTaskDeleted(taskId: string) {
     this.server.emit('task_deleted', taskId);
   }
+
+  // Phase 1.3: Real-time progress indicators
+  emitTaskProgress(taskId: string, progress: {
+    type: 'thinking' | 'processing_tool' | 'waiting';
+    elapsedSeconds: number;
+    lastAction?: string;
+    timestamp: string;
+  }) {
+    this.server.to(`task_${taskId}`).emit('task_progress', progress);
+  }
 }

@@ -1,6 +1,7 @@
 import { TasksService } from '../tasks/tasks.service';
 import { MessagesService } from '../messages/messages.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { TasksGateway } from '../tasks/tasks.gateway';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import type { OnModuleDestroy } from '@nestjs/common/interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -172,6 +173,12 @@ export class AgentProcessor implements OnModuleDestroy {
   // Timeout detection (Phase 1.1)
   private readonly TIMEOUT_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without tool calls = timeout
 
+  // Progress tracking (Phase 1.3)
+  private readonly taskIterationStartTime = new Map<string, Date>();
+  private readonly taskLastAction = new Map<string, string>();
+  private readonly PROGRESS_UPDATE_INTERVAL_MS = 30 * 1000; // 30 seconds
+  private readonly progressIntervals = new Map<string, NodeJS.Timeout>();
+
   // Visual description cache for LLM-assisted element identification
   private visualDescriptionCache: VisualDescriptionCache = {
     version: '1.0.0',
@@ -253,6 +260,8 @@ export class AgentProcessor implements OnModuleDestroy {
     private readonly cvActivityService: CVActivityIndicatorService,
     private readonly modelCapabilityService: ModelCapabilityService,
     private readonly loopDetectionService: LoopDetectionService,
+    @Inject(forwardRef(() => TasksGateway))
+    private readonly tasksGateway: TasksGateway,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -549,6 +558,75 @@ The model has been processing for ${elapsedMinutes}m ${elapsedSeconds}s without 
     }
 
     return { timedOut: false, elapsedMs };
+  }
+
+  /**
+   * Start progress tracking for a task (Phase 1.3)
+   */
+  private startProgressTracking(taskId: string): void {
+    // Clear any existing interval
+    this.stopProgressTracking(taskId);
+
+    // Record start time
+    this.taskIterationStartTime.set(taskId, new Date());
+
+    // Emit initial progress
+    this.emitProgress(taskId);
+
+    // Set up periodic progress updates
+    const interval = setInterval(() => {
+      this.emitProgress(taskId);
+    }, this.PROGRESS_UPDATE_INTERVAL_MS);
+
+    this.progressIntervals.set(taskId, interval);
+    this.logger.debug(`Started progress tracking for task ${taskId}`);
+  }
+
+  /**
+   * Stop progress tracking for a task (Phase 1.3)
+   */
+  private stopProgressTracking(taskId: string): void {
+    const interval = this.progressIntervals.get(taskId);
+    if (interval) {
+      clearInterval(interval);
+      this.progressIntervals.delete(taskId);
+      this.logger.debug(`Stopped progress tracking for task ${taskId}`);
+    }
+    this.taskIterationStartTime.delete(taskId);
+  }
+
+  /**
+   * Emit progress update via WebSocket (Phase 1.3)
+   */
+  private emitProgress(taskId: string): void {
+    const startTime = this.taskIterationStartTime.get(taskId);
+    if (!startTime) return;
+
+    const elapsedMs = Date.now() - startTime.getTime();
+    const elapsedSeconds = Math.floor(elapsedMs / 1000);
+    const lastAction = this.taskLastAction.get(taskId);
+
+    try {
+      this.tasksGateway.emitTaskProgress(taskId, {
+        type: 'thinking',
+        elapsedSeconds,
+        lastAction,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.debug(
+        `Progress update: ${elapsedSeconds}s elapsed${lastAction ? `, last: ${lastAction}` : ''}`,
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to emit progress update: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update last action description (Phase 1.3)
+   */
+  private updateLastAction(taskId: string, action: string): void {
+    this.taskLastAction.set(taskId, action);
   }
 
   /**
@@ -1100,10 +1178,17 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         // Clean up loop detection history
         this.loopDetectionService.clearTaskHistory(taskId);
 
+        // Clean up progress tracking (Phase 1.3)
+        this.stopProgressTracking(taskId);
+        this.taskLastAction.delete(taskId);
+
         return;
       }
 
       this.logger.log(`Processing iteration for task ID: ${taskId}`);
+
+      // Start progress tracking (Phase 1.3)
+      this.startProgressTracking(taskId);
 
       // Refresh abort controller for this iteration to avoid accumulating
       // "abort" listeners on a single AbortSignal across iterations.
@@ -1248,6 +1333,8 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         this.currentTaskId = null;
         this.taskIterationCount.delete(taskId);
         this.taskLastActionTime.delete(taskId);
+        this.stopProgressTracking(taskId); // Phase 1.3
+        this.taskLastAction.delete(taskId); // Phase 1.3
         await this.tasksService.releaseLock(taskId);
         return;
       }
@@ -1637,6 +1724,17 @@ Taking more screenshots will NOT help. Use computer_detect_elements to find UI e
         this.logger.debug(
           `Task ${taskId}: Updated last action time (${generatedToolResults.length} tool results)`,
         );
+
+        // Update last action description (Phase 1.3)
+        if (messageContentBlocks.length > 0) {
+          const toolNames = messageContentBlocks
+            .filter(block => isComputerToolUseContentBlock(block))
+            .map(block => (block as ComputerToolUseContentBlock).name)
+            .join(', ');
+          if (toolNames) {
+            this.updateLastAction(taskId, toolNames);
+          }
+        }
       }
 
       // Check for loop detection after tool execution
@@ -3315,6 +3413,12 @@ ${loopResult.suggestion}
     this.abortController?.abort();
 
     await this.inputCaptureService.stop();
+
+    // Stop progress tracking (Phase 1.3)
+    if (this.currentTaskId) {
+      this.stopProgressTracking(this.currentTaskId);
+      this.taskLastAction.delete(this.currentTaskId);
+    }
 
     this.isProcessing = false;
     this.currentTaskId = null;

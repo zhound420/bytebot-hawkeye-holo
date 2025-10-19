@@ -65,6 +65,9 @@ model Task {
   // Concurrency Support: Task locking to enable multi-worker processing
   lockedBy         String?      // Worker ID that holds the lock
   lockedAt         DateTime?    // When the lock was acquired
+  // NEEDS_HELP Context (Phase 1.2): Store context when task needs help
+  helpContext      Json?        // { reason, blockerType, elapsedMs, suggestedActions[], timestamp }
+  lastScreenshotId String?      // Reference to last screenshot for debugging
   messages         Message[]
   summaries        Summary[]
   files            File[]

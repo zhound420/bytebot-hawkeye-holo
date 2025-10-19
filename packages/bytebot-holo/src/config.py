@@ -184,7 +184,10 @@ Desktop UI Guidelines:
 - If the task asks for multiple elements, list all relevant elements with their coordinates and descriptions
 - Store all task-relevant information in the notes field with precise details
 - If you see the element needed to complete the task, provide its exact location
-- For comprehensive UI analysis tasks, return an answer action with a structured list of all detected elements
+- For comprehensive UI analysis tasks, you MUST return an ANSWER action (not click_element)
+- Format comprehensive analysis as a numbered list: '1. Button at (x, y): description\\n2. Input at (x, y): description...'
+- List ALL interactive elements you can identify (15-20+ elements), not just the most prominent one
+- Do NOT return a single click_element action for comprehensive UI analysis - analyze the entire interface
 - Use both the task instruction and visual context to decide the appropriate action
 - The current date is {timestamp}.
 

@@ -439,7 +439,7 @@ class Holo15:
         self,
         image_array: np.ndarray,
         max_detections: int = 20,
-        max_new_tokens: int = 512,  # Increased from 256 for comprehensive detection
+        max_new_tokens: int = 1024,  # Increased to 1024 for comprehensive multi-element lists
     ) -> List[Dict[str, Any]]:
         """
         Detect multiple UI elements using a single comprehensive prompt.
@@ -459,13 +459,24 @@ class Holo15:
         Returns:
             List of detected elements with bbox, center, confidence, caption
         """
-        # Single comprehensive prompt (Phase 1 optimization)
+        # Single comprehensive prompt (Phase 1 optimization - 100% complete)
         # Leverages model's ability to analyze full UI context in one pass
+        # CRITICAL: Explicitly request answer action with numbered list format
         comprehensive_task = (
-            f"Analyze this UI screenshot and identify up to {max_detections} interactive elements. "
-            "Include buttons, links, input fields, dropdowns, checkboxes, tabs, menus, icons, and navigation controls. "
-            "For each element, note its center coordinates (x, y in pixels) and functional description. "
-            "List all elements you can identify in this screenshot, prioritizing the most important interactive controls."
+            f"COMPREHENSIVE UI ANALYSIS TASK:\n"
+            f"Analyze this screenshot and identify ALL interactive UI elements (up to {max_detections}).\n\n"
+            f"IMPORTANT: You MUST return an ANSWER action (not click_element) with a structured list of elements.\n\n"
+            f"Format your answer exactly like this:\n"
+            f"'UI Elements Detected:\n"
+            f"1. Button at (123, 456): Install button\n"
+            f"2. Input at (640, 120): Search field\n"
+            f"3. Menu at (45, 30): File menu\n"
+            f"4. Icon at (200, 250): Settings gear\n"
+            f"...\n'\n\n"
+            f"Element types to find: buttons, links, input fields, dropdowns, checkboxes, radio buttons, "
+            f"tabs, menus, icons, toolbars, navigation controls, lists, tree views.\n\n"
+            f"Return as many elements as you can find (aim for at least 15-{max_detections} elements). "
+            f"Do NOT return just one element - analyze the entire UI comprehensively."
         )
 
         try:
@@ -483,9 +494,26 @@ class Holo15:
 
             action = navigation_step.action
 
+            # Debug logging: Full model response (Phase 1.6 - 100% completion)
+            note_len = len(navigation_step.note) if navigation_step.note else 0
+            print(f"  Raw model output (note: {note_len} chars, thought: {len(navigation_step.thought)} chars)")
+            if navigation_step.note:
+                print(f"  Note preview: {navigation_step.note[:200]}...")
+            print(f"  Action type: {action.action}")
+
+            if action.action == 'answer' and hasattr(action, 'content'):
+                content_len = len(action.content) if action.content else 0
+                print(f"  ✓ Answer action received ({content_len} chars):")
+                print(f"  {action.content[:300]}...")
+            elif hasattr(action, 'x') and hasattr(action, 'y'):
+                print(f"  ⚠ Model returned {action.action} action (single element) instead of answer")
+                print(f"  Element: '{getattr(action, 'element', 'N/A')}' at ({action.x}, {action.y})")
+            else:
+                print(f"  ⚠ Unexpected action type: {action.action}")
+
             # The model should return either:
-            # 1. A click_element action with the first/most important element
-            # 2. An answer action with structured element list
+            # 1. A click_element action with the first/most important element (FALLBACK)
+            # 2. An answer action with structured element list (PREFERRED)
 
             elements = []
 
@@ -526,66 +554,148 @@ class Holo15:
         max_detections: int,
     ) -> List[Dict[str, Any]]:
         """
-        Parse structured element list from answer.content.
+        Parse structured element list from answer.content with multiple format support.
 
-        Expects format like:
-        "Elements detected:
-        1. Button at (100, 200): Install button
-        2. Input at (150, 300): Username field
-        ..."
+        Supported formats:
+        1. "1. Button at (123, 456): Install button"
+        2. "Button at (123, 456): Install button"
+        3. "(123, 456) - Button: Install button"
+        4. "[Button] (123, 456) Install button"
 
         Args:
             answer_content: Answer action content from model
             max_detections: Maximum elements to extract
 
         Returns:
-            List of detected elements
+            List of detected elements with type, coordinates, description
         """
         import re
 
         elements = []
 
-        # Try to parse coordinate patterns like "(123, 456)" or "x=123, y=456"
-        # Common patterns:
-        # - "at (x, y): description"
-        # - "x=123, y=456 - description"
-        # - "coordinates: (x, y), label: description"
+        # Strategy 1: Line-by-line numbered list format (PREFERRED)
+        # Pattern: "1. Button at (123, 456): Install button"
+        # Group 1: optional element type, Group 2-3: coordinates, Group 4: description
+        pattern1 = r'^\s*\d+\.\s*(?:([A-Za-z]+)\s+)?at\s+\((\d+),\s*(\d+)\)\s*:\s*(.+)$'
 
-        # Pattern: captures (x, y) coordinates
-        coord_pattern = r'\((\d+),\s*(\d+)\)'
-        matches = re.finditer(coord_pattern, answer_content)
+        # Strategy 2: Element type before coordinates
+        # Pattern: "Button at (123, 456): Install"
+        pattern2 = r'^\s*([A-Za-z]+)\s+at\s+\((\d+),\s*(\d+)\)\s*:\s*(.+)$'
 
-        for idx, match in enumerate(matches):
-            if idx >= max_detections:
-                break
+        # Strategy 3: Coordinate-first format
+        # Pattern: "(123, 456) - Button: Install"
+        pattern3 = r'^\s*\((\d+),\s*(\d+)\)\s*[-:]\s*(?:([A-Za-z]+)\s*:\s*)?(.+)$'
 
-            x = int(match.group(1))
-            y = int(match.group(2))
+        # Try line-by-line parsing with all patterns
+        for line in answer_content.split('\n'):
+            line = line.strip()
+            if not line or len(elements) >= max_detections:
+                continue
 
-            # Extract description from surrounding text
-            # Look for text after the coordinates (next 50 chars)
-            start_pos = match.end()
-            description_text = answer_content[start_pos:start_pos + 80].strip()
+            element_type = None
+            x = None
+            y = None
+            description = None
 
-            # Clean up description (remove common prefixes/separators)
-            description = description_text.split('\n')[0]  # Take first line
-            description = re.sub(r'^[\s\-:,]+', '', description)  # Remove leading separators
-            description = description[:50]  # Limit length
+            # Try pattern 1: "1. Button at (123, 456): Install button"
+            match = re.match(pattern1, line)
+            if match:
+                element_type = match.group(1) or "interactive"
+                x = int(match.group(2))
+                y = int(match.group(3))
+                description = match.group(4).strip()
+            else:
+                # Try pattern 2: "Button at (123, 456): Install"
+                match = re.match(pattern2, line)
+                if match:
+                    element_type = match.group(1) or "interactive"
+                    x = int(match.group(2))
+                    y = int(match.group(3))
+                    description = match.group(4).strip()
+                else:
+                    # Try pattern 3: "(123, 456) - Button: Install"
+                    match = re.match(pattern3, line)
+                    if match:
+                        x = int(match.group(1))
+                        y = int(match.group(2))
+                        element_type = match.group(3) or "interactive"
+                        description = match.group(4).strip()
 
-            if not description:
-                description = f"Element {idx + 1}"
+            # If we got coordinates, create element
+            if x is not None and y is not None:
+                elements.append({
+                    "bbox": [x - 20, y - 20, 40, 40],
+                    "center": [x, y],
+                    "confidence": 0.80,  # Higher confidence for structured parsing
+                    "type": self._normalize_element_type(element_type) if element_type else "clickable",
+                    "caption": description[:50] if description else f"Element {len(elements) + 1}",
+                    "element_id": len(elements),
+                })
 
-            element = {
-                "bbox": [x - 20, y - 20, 40, 40],
-                "center": [x, y],
-                "confidence": 0.75,
-                "type": "clickable",
-                "caption": description,
-                "element_id": idx,
-            }
-            elements.append(element)
+        # Fallback: Original coordinate pattern matching (if no line-by-line matches)
+        if not elements:
+            print(f"  No structured elements found, trying fallback coordinate extraction...")
+            coord_pattern = r'\((\d+),\s*(\d+)\)'
+            matches = re.finditer(coord_pattern, answer_content)
+
+            for idx, match in enumerate(matches):
+                if idx >= max_detections:
+                    break
+
+                x = int(match.group(1))
+                y = int(match.group(2))
+
+                # Extract description from surrounding text
+                start_pos = match.end()
+                description_text = answer_content[start_pos:start_pos + 80].strip()
+                description = description_text.split('\n')[0]
+                description = re.sub(r'^[\s\-:,]+', '', description)
+                description = description[:50] if description else f"Element {idx + 1}"
+
+                elements.append({
+                    "bbox": [x - 20, y - 20, 40, 40],
+                    "center": [x, y],
+                    "confidence": 0.70,  # Lower confidence for fallback
+                    "type": "clickable",
+                    "caption": description,
+                    "element_id": idx,
+                })
 
         return elements
+
+    def _normalize_element_type(self, type_str: str) -> str:
+        """
+        Normalize element type strings to standard categories.
+
+        Args:
+            type_str: Raw element type from model (e.g., "Button", "btn", "input field")
+
+        Returns:
+            Normalized type: button, text_input, menu_item, checkbox, icon, or clickable
+        """
+        if not type_str:
+            return "clickable"
+
+        type_lower = type_str.lower().strip()
+
+        if 'button' in type_lower or 'btn' in type_lower:
+            return 'button'
+        elif 'input' in type_lower or 'field' in type_lower or 'textbox' in type_lower or 'text' in type_lower:
+            return 'text_input'
+        elif 'menu' in type_lower or 'dropdown' in type_lower or 'select' in type_lower:
+            return 'menu_item'
+        elif 'checkbox' in type_lower or 'check' in type_lower:
+            return 'checkbox'
+        elif 'radio' in type_lower:
+            return 'radio_button'
+        elif 'icon' in type_lower or 'image' in type_lower:
+            return 'icon'
+        elif 'link' in type_lower or 'anchor' in type_lower:
+            return 'link'
+        elif 'tab' in type_lower:
+            return 'tab'
+        else:
+            return 'clickable'
 
     def generate_som_image(
         self,

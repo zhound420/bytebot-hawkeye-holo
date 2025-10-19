@@ -169,6 +169,9 @@ export class AgentProcessor implements OnModuleDestroy {
   private readonly taskLastActionTime = new Map<string, Date>();
   private readonly MAX_ITERATIONS_WITHOUT_ACTION = 5; // Trigger intervention after 5 iterations without meaningful action
 
+  // Timeout detection (Phase 1.1)
+  private readonly TIMEOUT_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without tool calls = timeout
+
   // Visual description cache for LLM-assisted element identification
   private visualDescriptionCache: VisualDescriptionCache = {
     version: '1.0.0',
@@ -502,6 +505,50 @@ export class AgentProcessor implements OnModuleDestroy {
     const { getToolsForTask } = require('./agent.tools');
     const tools = getToolsForTask(directVisionMode);
     return tools.map((tool: any) => tool.name);
+  }
+
+  /**
+   * Check if task has timed out (Phase 1.1)
+   * Returns timeout info if >2 minutes since last tool call
+   */
+  private checkTaskTimeout(taskId: string): {
+    timedOut: boolean;
+    elapsedMs?: number;
+    message?: string;
+  } {
+    const lastActionTime = this.taskLastActionTime.get(taskId);
+
+    if (!lastActionTime) {
+      // No action time recorded yet, task just started
+      return { timedOut: false };
+    }
+
+    const elapsedMs = Date.now() - lastActionTime.getTime();
+
+    if (elapsedMs > this.TIMEOUT_THRESHOLD_MS) {
+      const elapsedMinutes = Math.floor(elapsedMs / 60000);
+      const elapsedSeconds = Math.floor((elapsedMs % 60000) / 1000);
+
+      const message = `⏱️ **TIMEOUT DETECTED** ⏱️
+
+The model has been processing for ${elapsedMinutes}m ${elapsedSeconds}s without making any tool calls.
+
+**What This Means:**
+- The model may be stuck in a reasoning loop
+- There may be a blocker preventing progress (e.g., modal dialog, permission issue)
+- The task may be too complex for the current approach
+
+**Recommended Actions:**
+1. Review the current screenshot to identify any blockers
+2. Try a different approach or break down the task into smaller steps
+3. If you're unsure how to proceed, provide specific details about what's blocking you
+
+**Status:** Task automatically set to NEEDS_HELP. Please provide guidance to continue.`;
+
+      return { timedOut: true, elapsedMs, message };
+    }
+
+    return { timedOut: false, elapsedMs };
   }
 
   /**
@@ -1144,6 +1191,67 @@ Focus on words that would appear in UI element descriptions. Be specific and use
         ];
       }
 
+      // Timeout detection (Phase 1.1): Check if model stuck without making tool calls
+      const timeoutCheck = this.checkTaskTimeout(taskId);
+      if (timeoutCheck.timedOut) {
+        this.logger.warn(
+          `Task ${taskId} timed out after ${Math.floor(timeoutCheck.elapsedMs! / 60000)}m without tool calls. Auto-setting to NEEDS_HELP.`,
+        );
+
+        // Inject timeout message into conversation
+        messages.push({
+          id: `timeout_${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          taskId,
+          summaryId: null,
+          role: Role.USER,
+          content: [
+            {
+              type: MessageContentType.Text,
+              text: timeoutCheck.message!,
+            },
+          ],
+        });
+
+        // Auto-set to NEEDS_HELP with context (Phase 1.2)
+        await this.tasksService.update(taskId, {
+          status: TaskStatus.NEEDS_HELP,
+          helpContext: {
+            reason: 'timeout',
+            blockerType: 'timeout',
+            elapsedMs: timeoutCheck.elapsedMs,
+            message: timeoutCheck.message,
+            timestamp: new Date().toISOString(),
+            suggestedActions: [
+              'Review current screenshot for modal dialogs or blockers',
+              'Try breaking down the task into smaller steps',
+              'Switch to a different model if current approach is not working',
+            ],
+          },
+        });
+
+        // Create message with timeout info
+        await this.messagesService.create({
+          content: [
+            {
+              type: MessageContentType.Text,
+              text: timeoutCheck.message!,
+            },
+          ],
+          role: Role.USER,
+          taskId,
+        });
+
+        // Stop processing this task
+        this.isProcessing = false;
+        this.currentTaskId = null;
+        this.taskIterationCount.delete(taskId);
+        this.taskLastActionTime.delete(taskId);
+        await this.tasksService.releaseLock(taskId);
+        return;
+      }
+
       // Stuck detection: track iteration count and inject intervention if needed
       const iterationCount = (this.taskIterationCount.get(taskId) || 0) + 1;
       this.taskIterationCount.set(taskId, iterationCount);
@@ -1523,6 +1631,12 @@ Taking more screenshots will NOT help. Use computer_detect_elements to find UI e
           role: Role.USER,
           taskId,
         });
+
+        // Update last action time (Phase 1.1): Model made tool calls, reset timeout timer
+        this.taskLastActionTime.set(taskId, new Date());
+        this.logger.debug(
+          `Task ${taskId}: Updated last action time (${generatedToolResults.length} tool results)`,
+        );
       }
 
       // Check for loop detection after tool execution
@@ -1592,8 +1706,21 @@ ${loopResult.suggestion}
             });
           }
         } else if (desired === 'needs_help') {
+          // Store help context (Phase 1.2)
+          const helpReason = setTaskStatusToolUseBlock.input.description || 'Model requested help without specific reason';
           await this.tasksService.update(taskId, {
             status: TaskStatus.NEEDS_HELP,
+            helpContext: {
+              reason: 'model_request',
+              blockerType: 'unknown',
+              message: helpReason,
+              timestamp: new Date().toISOString(),
+              suggestedActions: [
+                'Review the model\'s explanation above',
+                'Provide specific guidance or take manual action',
+                'Consider switching to a different model if stuck',
+              ],
+            },
           });
         } else if (desired === 'failed') {
           const failureTimestamp = new Date();

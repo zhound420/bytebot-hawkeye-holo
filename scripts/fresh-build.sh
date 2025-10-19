@@ -8,6 +8,97 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Helper functions for waiting on container health and port availability
+wait_for_container_health() {
+    local container="$1"
+    local timeout="${2:-360}"
+    local interval="${3:-5}"
+
+    if ! docker ps -a --format '{{.Names}}' | grep -qx "$container" 2>/dev/null; then
+        echo -e "${YELLOW}Skipping health wait for ${container} (container not running)${NC}"
+        return 0
+    fi
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${container} health${NC}"
+    while (( waited < timeout )); do
+        local status
+        status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "")
+
+        case "$status" in
+            healthy)
+                echo -e " ${GREEN}✓${NC}"
+                return 0
+                ;;
+            unhealthy)
+                echo -e " ${RED}✗${NC} (reported unhealthy)"
+                docker logs "$container" --tail 40 || true
+                return 1
+                ;;
+            "")
+                # container not ready yet
+                ;;
+            *)
+                # still starting
+                ;;
+        esac
+
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    docker logs "$container" --tail 40 || true
+    return 1
+}
+
+wait_for_port() {
+    local label="$1"
+    local port="$2"
+    local host="${3:-localhost}"
+    local timeout="${4:-300}"
+    local interval="${5:-5}"
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${label} (port ${port})${NC}"
+    while (( waited < timeout )); do
+        if (exec 3<>/dev/tcp/"$host"/"$port") 2>/dev/null; then
+            exec 3>&-
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    return 1
+}
+
+wait_for_http() {
+    local url="$1"
+    local label="$2"
+    local timeout="${3:-180}"
+    local interval="${4:-5}"
+
+    local waited=0
+    echo -ne "${BLUE}Waiting for ${label}${NC}"
+    while (( waited < timeout )); do
+        if curl -sf --max-time 5 "$url" >/dev/null 2>&1; then
+            echo -e " ${GREEN}✓${NC}"
+            return 0
+        fi
+        echo -n "."
+        sleep "$interval"
+        waited=$((waited + interval))
+    done
+
+    echo -e " ${RED}✗${NC} (timeout after ${timeout}s)"
+    return 1
+}
+
 # Parse arguments
 FULL_RESET=false
 TARGET_OS="linux"  # Default to Linux
@@ -162,6 +253,43 @@ fi
 # Mark that TARGET_OS was set via flag (for future reference)
 if [[ "$@" =~ "--os" ]]; then
     TARGET_OS_FROM_FLAG=true
+fi
+
+# LMStudio configuration prompt (for all OS types)
+echo ""
+echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}   LMStudio Local Models (Optional)${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+echo ""
+echo "Would you like to configure LMStudio for local models?"
+echo "  • Runs models locally (FREE, no API costs)"
+echo "  • Requires LMStudio server running on network"
+echo "  • Models appear in UI under 'Local Models'"
+echo ""
+read -p "Configure LMStudio? [y/N] " -n 1 -r LMSTUDIO_CHOICE
+echo ""
+echo ""
+
+if [[ $LMSTUDIO_CHOICE =~ ^[Yy]$ ]]; then
+    # Get script directory
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    if [[ -f "$SCRIPT_DIR/setup-lmstudio.sh" ]]; then
+        bash "$SCRIPT_DIR/setup-lmstudio.sh"
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}⚠ LMStudio setup failed or was cancelled${NC}"
+            echo -e "${YELLOW}You can run it later: ./scripts/setup-lmstudio.sh${NC}"
+            echo ""
+        fi
+    else
+        echo -e "${RED}✗ LMStudio setup script not found${NC}"
+        echo "Expected: $SCRIPT_DIR/setup-lmstudio.sh"
+        echo ""
+    fi
+else
+    echo -e "${YELLOW}✓ Skipping LMStudio configuration${NC}"
+    echo "To configure later: ${CYAN}./scripts/setup-lmstudio.sh${NC}"
+    echo ""
 fi
 
 # Stop any running services
@@ -988,6 +1116,13 @@ else
         echo -e "${BLUE}Starting Holo + Windows containers early...${NC}"
         docker compose -f $COMPOSE_FILE up -d --no-deps bytebot-holo bytebot-windows
 
+        # Wait for Holo health before continuing (allows model download in parallel with builds)
+        echo ""
+        wait_for_container_health "bytebot-holo" 480 5 || {
+            echo -e "${YELLOW}Warning: Holo health check timed out, continuing anyway${NC}"
+        }
+        echo ""
+
         if [[ "$USE_PREBAKED" == "true" ]]; then
             echo -e "${YELLOW}Windows will boot (~30-60s) while remaining services build${NC}"
         else
@@ -1017,37 +1152,57 @@ else
     if [[ "$TARGET_OS" == "windows" ]]; then
         docker compose -f $COMPOSE_FILE up -d --no-deps "${REMAINING_SERVICES[@]}"
     else
-        docker compose -f $COMPOSE_FILE up -d
+        # Linux/macOS: Start Holo first, wait for health, then start remaining services
+        echo -e "${BLUE}Starting Holo 1.5-7B first...${NC}"
+        docker compose -f $COMPOSE_FILE up -d --build bytebot-holo
+
+        # Wait for Holo health (up to 8 minutes for model download)
+        echo ""
+        wait_for_container_health "bytebot-holo" 480 5 || {
+            echo -e "${YELLOW}Warning: Holo health check timed out, continuing anyway${NC}"
+        }
+        echo ""
+
+        # Start remaining services (excluding Holo which is already running)
+        echo -e "${BLUE}Starting remaining services...${NC}"
+        docker compose -f $COMPOSE_FILE up -d --build --no-deps "${STACK_SERVICES[@]}"
     fi
 fi
 
 cd ..
 
-# Wait for services
+# Wait for services with comprehensive health checks
 echo ""
 echo -e "${BLUE}Waiting for services to start...${NC}"
-sleep 8
-
-# Check service health
-echo ""
-echo -e "${BLUE}Service Health Check:${NC}"
-
-services=("bytebot-ui:9992" "bytebot-agent:9991" "$DESKTOP_SERVICE:9990")
-if lsof -Pi :9989 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    services+=("Holo 1.5-7B:9989")
-fi
 
 all_healthy=true
-for service_port in "${services[@]}"; do
-    IFS=: read -r service port <<< "$service_port"
-    if (exec 3<>/dev/tcp/localhost/"$port") 2>/dev/null; then
-        exec 3>&-
-        echo -e "  ${GREEN}✓${NC} $service (port $port)"
-    else
-        echo -e "  ${RED}✗${NC} $service (port $port) - check logs"
+
+# Core services - wait with timeout for port availability
+if ! wait_for_port "UI" 9992 "localhost" 120 3; then
+    all_healthy=false
+fi
+
+if ! wait_for_port "Agent" 9991 "localhost" 120 3; then
+    all_healthy=false
+fi
+
+if ! wait_for_port "Desktop" 9990 "localhost" 120 3; then
+    all_healthy=false
+fi
+
+# Holo - check HTTP health endpoint (only if container exists)
+if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-holo" 2>/dev/null; then
+    if ! wait_for_http "http://localhost:9989/health" "Holo 1.5-7B health" 60 3; then
         all_healthy=false
     fi
-done
+fi
+
+# Agent container health check (if available)
+if docker ps -a --format '{{.Names}}' | grep -qx "bytebot-agent" 2>/dev/null; then
+    if ! wait_for_container_health "bytebot-agent" 60 3; then
+        all_healthy=false
+    fi
+fi
 
 echo ""
 if $all_healthy; then

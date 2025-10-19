@@ -310,9 +310,9 @@ try {
         -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`"" `
         -WorkingDirectory $BytebotdDir
 
-    $TaskTrigger = New-ScheduledTaskTrigger `
-        -AtStartup `
-        -Delay (New-TimeSpan -Seconds 30)
+    # Note: -Delay parameter not supported on all Windows versions (e.g., Tiny11/Nano11)
+    # Using -StartWhenAvailable in TaskSettings instead (line 326) for delayed start
+    $TaskTrigger = New-ScheduledTaskTrigger -AtStartup
 
     # S4U (Service-for-User) logon type enables interactive desktop without login
     $TaskPrincipal = New-ScheduledTaskPrincipal `

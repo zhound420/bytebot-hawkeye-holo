@@ -104,7 +104,17 @@ AVAILABLE TOOLS
   Parameters:
     - status (required): "completed" or "failed"
     - message (optional): Completion message
-  Example: {"name": "set_task_status", "input": {"status": "completed", "message": "File saved successfully"}}
+
+  **CRITICAL: VERIFY BEFORE COMPLETING**
+  Before calling set_task_status with "completed":
+  1. Take a FINAL screenshot OR use computer_read_file to confirm success
+  2. Then call set_task_status describing what you verified
+
+  Example workflow:
+  → computer_screenshot (shows file saved successfully)
+  → set_task_status with status: "completed", message: "Created poem.txt and verified it's saved (screenshot shows the file)"
+
+  **IMPORTANT: The system will REJECT completion without verification!**
 
 ═══════════════════════════════════════════════════════════════
 COMPLETE WORKFLOW EXAMPLE
@@ -120,8 +130,8 @@ COMPLETE WORKFLOW EXAMPLE
 5. computer_click_element → Click the search bar (element_id: "0")
 6. computer_type_text → Type "AI automation"
 7. computer_type_keys → Press "Enter"
-8. computer_screenshot → Confirm search results loaded
-9. set_task_status → Mark as completed
+8. computer_screenshot → VERIFY: Confirm search results loaded (REQUIRED before completion!)
+9. set_task_status → Mark as completed: "Search completed successfully (screenshot shows results)"
 
 **WRONG workflow** (DON'T DO THIS):
 ❌ computer_application → Opens Firefox without seeing the screen first
@@ -136,7 +146,8 @@ IMPORTANT RULES
 2. **ONE ACTION AT A TIME**: Execute one tool call, then take another screenshot
 3. **USE DETECTION**: Always use computer_detect_elements before clicking
 4. **VERIFY ACTIONS**: Take screenshot after important actions to confirm success
-5. **COMPLETE TASKS**: Call set_task_status when done
+5. **VERIFY BEFORE COMPLETION**: Take a FINAL screenshot/read_file before set_task_status "completed"
+6. **COMPLETE TASKS**: Call set_task_status with verification details when done
 
 ═══════════════════════════════════════════════════════════════
 FINAL REMINDER

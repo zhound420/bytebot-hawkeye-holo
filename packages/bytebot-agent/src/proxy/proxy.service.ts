@@ -473,9 +473,19 @@ export class ProxyService implements BytebotAgentService {
     if (message.tool_calls && message.tool_calls.length > 0) {
       for (const toolCall of message.tool_calls) {
         if (toolCall.type === 'function') {
-          let parsedInput = {};
+          let parsedInput: any = {};
           try {
             parsedInput = JSON.parse(toolCall.function.arguments || '{}');
+
+            // Handle Anthropic-style tool calls: {name: "tool", input: {...}}
+            // Some models (like openai-gpt-oss-20b) generate this format
+            // We need to unwrap the nested 'input' field
+            if (parsedInput.name && parsedInput.input && typeof parsedInput.input === 'object') {
+              this.logger.debug(
+                `Detected Anthropic-style tool call for ${toolCall.function.name}, unwrapping nested input`,
+              );
+              parsedInput = parsedInput.input;
+            }
           } catch (e) {
             this.logger.warn(
               `Failed to parse tool call arguments: ${toolCall.function.arguments}`,

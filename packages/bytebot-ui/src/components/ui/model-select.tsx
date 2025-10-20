@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, FileText, Monitor } from "lucide-react";
+import { Eye, FileText, Monitor, AlertTriangle } from "lucide-react";
 
 interface ModelSelectProps {
   models: Model[];
@@ -63,6 +63,22 @@ export function ModelSelect({
       : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
   };
 
+  // Get function calling warning badge if model doesn't support it
+  const getFunctionCallingWarning = (model: Model) => {
+    if (model.supportsToolCalling === false) {
+      return (
+        <span
+          className="ml-1 flex items-center gap-1 rounded-md bg-orange-50 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-950 dark:text-orange-300"
+          title="This model may not support function calling reliably. Consider using a different model for desktop automation tasks."
+        >
+          <AlertTriangle className="h-3 w-3" />
+          Unverified
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <Select
       value={selectedModel?.name}
@@ -80,6 +96,7 @@ export function ModelSelect({
                 <span className={`ml-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${getBadgeClasses(selectedModel)}`}>
                   {getCapabilityLabel(selectedModel)}
                 </span>
+                {getFunctionCallingWarning(selectedModel)}
               </span>
             )}
           </SelectValue>
@@ -108,9 +125,12 @@ export function ModelSelect({
                       <Monitor className="mr-2 h-4 w-4 text-green-500" />
                       {m.title}
                     </span>
-                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                      Vision
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        Vision
+                      </span>
+                      {getFunctionCallingWarning(m)}
+                    </div>
                   </div>
                 </SelectItem>
               ))}
@@ -127,6 +147,7 @@ export function ModelSelect({
                       <Monitor className="mr-2 h-4 w-4 text-green-500" />
                       {m.title}
                     </span>
+                    {getFunctionCallingWarning(m)}
                   </div>
                 </SelectItem>
               ))}
@@ -155,9 +176,12 @@ export function ModelSelect({
                     <Eye className="mr-2 h-4 w-4 text-blue-500" />
                     {m.title}
                   </span>
-                  <span className="ml-2 rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                    Vision
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="ml-2 rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      Vision
+                    </span>
+                    {getFunctionCallingWarning(m)}
+                  </div>
                 </div>
               </SelectItem>
             ))}
@@ -186,9 +210,12 @@ export function ModelSelect({
                     <FileText className="mr-2 h-4 w-4 text-amber-500" />
                     {m.title}
                   </span>
-                  <span className="ml-2 rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                    Text-Only
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="ml-2 rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      Text-Only
+                    </span>
+                    {getFunctionCallingWarning(m)}
+                  </div>
                 </div>
               </SelectItem>
             ))}

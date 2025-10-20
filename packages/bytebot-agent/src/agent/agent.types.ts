@@ -28,6 +28,7 @@ export interface BytebotAgentModel {
   title: string;
   contextWindow?: number;
   supportsVision?: boolean;
+  supportsToolCalling?: boolean; // Model supports function calling (vs. fallback prompt injection)
   // LiteLLM metadata for advanced routing and tier detection
   inputCost?: number; // Cost per input token (e.g., 0.000002 for tier1)
   outputCost?: number; // Cost per output token

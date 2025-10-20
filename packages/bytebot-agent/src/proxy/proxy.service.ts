@@ -104,6 +104,7 @@ export class ProxyService implements BytebotAgentService {
       systemPrompt,
       processedMessages,
     );
+
     try {
       // Get model tier for tier-aware parameters
       const tier = this.modelCapabilityService.getModelTier(modelName);

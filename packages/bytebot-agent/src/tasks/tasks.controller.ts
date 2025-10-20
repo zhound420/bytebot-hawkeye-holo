@@ -180,12 +180,19 @@ export class TasksController {
           // Disabled until verified which models actually support it
           const supportsReasoningEffort = false;
 
+          // Extract function calling support from litellm config
+          const supportsToolCalling =
+            model.litellm_params?.supports_function_calling ??
+            model.model_info?.supports_function_calling ??
+            true; // Default to true for unknown models
+
           return {
             provider,
             name: model.litellm_params.model,
             title: model.model_name,
             contextWindow,
             supportsVision,
+            supportsToolCalling,
             inputCost,
             outputCost,
             maxTokens,

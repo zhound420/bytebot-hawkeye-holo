@@ -26,17 +26,15 @@ services:
   bytebot-holo:
     platform: linux/amd64
 
-    # GPU Support - Multiple fallback strategies for maximum compatibility
-    # Strategy 1: Modern approach (Docker Compose 2.3+, CDI-compatible)
-    # Strategy 2: Legacy runtime (older nvidia-docker setups)
-    # Docker applies what's supported on the host automatically
+    # GPU Support - Graceful GPU/CPU Fallback
+    # Uses modern device reservation (Docker Compose 2.3+, CDI-compatible)
+    # Docker gracefully ignores GPU config if nvidia-container-toolkit not available
+    # CPU-only systems: start-stack.sh auto-detects and skips Holo container
 
-    # Legacy runtime support (for older setups without CDI)
-    # Comment out if it causes issues on your system
-    runtime: nvidia
+    # NOTE: 'runtime: nvidia' removed - it fails on CPU-only systems before container starts
+    # The deploy.resources.reservations approach handles missing GPU gracefully
 
     # Modern device reservation (preferred, works with CDI)
-    # Docker gracefully ignores if nvidia-container-toolkit not available
     deploy:
       resources:
         reservations:

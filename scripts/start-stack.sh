@@ -886,25 +886,50 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
 elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
     echo -e "${BLUE}Platform: x86_64${NC}"
-    EXPECT_HOLO_CONTAINER=true
 
-    # Check for NVIDIA GPU
-    if command -v nvidia-smi &> /dev/null; then
-        echo -e "${GREEN}✓ NVIDIA GPU detected${NC}"
-        nvidia-smi --query-gpu=name --format=csv,noheader | head -1
+    # Detect GPU availability for Holo 1.5-7B
+    HAS_GPU=false
+    GPU_NAME=""
+
+    if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null 2>&1; then
+        HAS_GPU=true
+        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        echo -e "${GREEN}✓ NVIDIA GPU detected: $GPU_NAME${NC}"
+        echo -e "${GREEN}  → Holo 1.5-7B will use GPU acceleration (~0.6-2s/frame)${NC}"
+    elif [ -f /proc/driver/nvidia/version ]; then
+        # NVIDIA driver exists but nvidia-smi might not work (WSL edge case)
+        HAS_GPU=true
+        echo -e "${YELLOW}⚠ NVIDIA driver detected but nvidia-smi unavailable${NC}"
+        echo -e "${YELLOW}  → Attempting GPU mode (may fall back to CPU)${NC}"
+    else
+        echo -e "${YELLOW}⚠ No NVIDIA GPU detected${NC}"
+        echo -e "${YELLOW}  → Holo 1.5-7B disabled (CPU mode too slow: 15-30s/frame)${NC}"
+        echo -e "${YELLOW}  → Computer vision will use Tesseract.js OCR fallback${NC}"
     fi
 
     echo ""
-    echo -e "${BLUE}Starting Holo container first (GPU/CPU Docker)${NC}"
-    docker compose "${COMPOSE_FILES[@]}" up -d --build bytebot-holo
 
-    if wait_for_container_health "bytebot-holo" 480 5; then
-        HOLO_PREWAIT=true
-        HOLO_PREWAIT_SUCCESS=true
+    if [[ "$HAS_GPU" == "true" ]]; then
+        EXPECT_HOLO_CONTAINER=true
+        echo -e "${BLUE}Starting Holo container first (GPU mode)${NC}"
+        docker compose "${COMPOSE_FILES[@]}" up -d --build bytebot-holo
     else
-        HOLO_PREWAIT=true
-        HOLO_PREWAIT_SUCCESS=false
-        echo -e "${YELLOW}⚠ Holo container not healthy yet; continuing to start remaining services${NC}"
+        EXPECT_HOLO_CONTAINER=false
+        # CPU-only mode: disable Holo and skip container
+        export BYTEBOT_CV_USE_HOLO=false
+        echo -e "${BLUE}Skipping Holo container (CPU-only mode)${NC}"
+        echo -e "${YELLOW}  → Set BYTEBOT_CV_USE_HOLO=false in docker/.env${NC}"
+    fi
+
+    if [[ "$HAS_GPU" == "true" ]]; then
+        if wait_for_container_health "bytebot-holo" 480 5; then
+            HOLO_PREWAIT=true
+            HOLO_PREWAIT_SUCCESS=true
+        else
+            HOLO_PREWAIT=true
+            HOLO_PREWAIT_SUCCESS=false
+            echo -e "${YELLOW}⚠ Holo container not healthy yet; continuing to start remaining services${NC}"
+        fi
     fi
 
     # Optimize Windows startup: start Windows early to parallelize installation with image builds

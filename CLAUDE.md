@@ -328,15 +328,22 @@ docker compose -f docker/docker-compose.proxy.yml up -d --build
 
 Holo 1.5-7B is a Qwen2.5-VL-based model trained on Windows, macOS, and Linux UI screenshots.
 
-### Docker (Multi-Architecture)
+### Automatic GPU Detection
 
-| Platform | Device | Performance | Notes |
-|----------|--------|-------------|-------|
-| x86_64 + NVIDIA GPU | CUDA | ~0.6s/frame ⚡ | **Recommended for production** |
-| x86_64 CPU-only | CPU | ~8-15s/frame | Works but slow |
-| ARM64 (Apple Silicon) | CPU | ~8-15s/frame ⚠️ | **MPS not available in containers** |
+The stack **automatically detects GPU availability** and configures accordingly:
 
-**Auto-detection**: Set `HOLO_DEVICE=auto` (default) to automatically use the best available device.
+| Platform | GPU Status | Behavior | Performance |
+|----------|-----------|----------|-------------|
+| x86_64 + NVIDIA GPU | Detected | Holo enabled with CUDA | ~0.6-2s/frame ⚡ **RECOMMENDED** |
+| x86_64 CPU-only | Not detected | **Holo disabled**, Tesseract.js fallback | N/A (OCR-only mode) |
+| Apple Silicon (M1-M4) | MPS | Native Holo with Metal GPU | ~2-4s/frame 🍎 |
+
+**Why CPU-only disables Holo:**
+- CPU inference is extremely slow (15-30s/frame) - unusable for interactive use
+- Tesseract.js OCR provides text detection without the performance penalty
+- Better user experience: fast OCR vs waiting 30 seconds per detection
+
+**Manual override:** Set `BYTEBOT_CV_USE_HOLO=false` in `docker/.env` to force disable Holo
 
 ### Native Execution (Apple Silicon)
 
@@ -352,7 +359,28 @@ For GPU acceleration on Apple Silicon (M1-M4), run Holo **natively outside Docke
 ```bash
 # docker/.env
 HOLO_DEVICE=auto  # Recommended: auto-detect (cuda > mps > cpu)
-BYTEBOT_CV_USE_HOLO=true
+BYTEBOT_CV_USE_HOLO=true  # Auto-set to false by start-stack.sh on CPU-only systems
+```
+
+### Troubleshooting CPU-Only Systems
+
+**Symptom:** Error `nvidia-container-cli: initialization error: WSL environment detected but no adapters were found`
+
+**Solution:** This is now fixed! The latest version auto-detects and skips Holo on CPU-only systems.
+
+**What happens automatically:**
+1. `start-stack.sh` detects no NVIDIA GPU
+2. Sets `BYTEBOT_CV_USE_HOLO=false`
+3. Skips starting the `bytebot-holo` container entirely
+4. Computer vision falls back to Tesseract.js OCR (text detection only)
+
+**Manual verification:**
+```bash
+# Check if GPU detected
+nvidia-smi
+
+# If command not found or fails → CPU-only mode (expected behavior)
+# Stack will start without Holo automatically
 ```
 
 ## Database

@@ -698,7 +698,22 @@ ${uiMethodsSection}
 ════════════════════════════════
 TASK WORKFLOW & STATUS MANAGEMENT
 ════════════════════════════════
-• **Active work**: Proceed through tasks systematically. When complete, call set_task_status({ status: "completed" }).
+• **Active work**: Proceed through tasks systematically. Before marking as completed:
+  1. **Verify your work** - Take a final screenshot OR use computer_read_file to confirm success
+  2. **Then call set_task_status** with status "completed" and describe what you verified
+
+  **Example:**
+  \`\`\`
+  # After creating and saving a file
+  computer_screenshot()  # Shows file saved successfully
+  set_task_status({
+    status: "completed",
+    description: "Created poem.txt with the poem content and verified it's saved (screenshot shows the file)"
+  })
+  \`\`\`
+
+  **IMPORTANT:** You cannot mark a task as completed without providing verification (screenshot or file read) after your final action. The system will reject completion attempts that lack verification.
+
 • **Request help**: If blocked (ambiguous requirements, missing resources, unclear expectations), immediately call set_task_status({ status: "needs_help", description: "explain the blocker" }) instead of guessing.
 • **Create subtasks**: Use create_task to spawn parallel or dependent work; include priority and optional scheduledFor when relevant.
 

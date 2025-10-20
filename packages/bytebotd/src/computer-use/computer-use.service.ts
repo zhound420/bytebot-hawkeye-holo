@@ -801,6 +801,13 @@ export class ComputerUseService {
   private async typeKeys(action: TypeKeysAction): Promise<void> {
     const { keys, delay } = action;
     await this.nutService.sendKeys(keys);
+
+    // Windows-specific: UI updates slower than Linux, add settle delay
+    // This prevents screenshots from capturing stale UI state before updates render
+    if (isWindows()) {
+      await this.delay(300);  // 300ms for UI to update
+    }
+
     if (delay && delay > 0) {
       await this.delay(delay);
     }
@@ -810,18 +817,36 @@ export class ComputerUseService {
   private async pressKeys(action: PressKeysAction): Promise<void> {
     const { keys, press } = action;
     await this.nutService.holdKeys(keys, press === 'down');
+
+    // Windows-specific: UI settle delay
+    if (isWindows()) {
+      await this.delay(300);
+    }
+
     await this.recordActionEvent('press_keys');
   }
 
   private async typeText(action: TypeTextAction): Promise<void> {
     const { text, delay } = action;
     await this.nutService.typeText(text, delay);
+
+    // Windows-specific: UI settle delay
+    if (isWindows()) {
+      await this.delay(300);
+    }
+
     await this.recordActionEvent('type_text');
   }
 
   private async pasteText(action: PasteTextAction): Promise<void> {
     const { text } = action;
     await this.nutService.pasteText(text);
+
+    // Windows-specific: UI settle delay
+    if (isWindows()) {
+      await this.delay(300);
+    }
+
     await this.recordActionEvent('paste_text');
   }
 

@@ -52,6 +52,30 @@ At least one LLM provider API key:
 - **OpenRouter** (Multi-model proxy) - Get at [openrouter.ai](https://openrouter.ai)
 - **LMStudio** (Local models, optional) - FREE local inference. Configure via `./scripts/setup-lmstudio.sh`
 
+### Native Build Dependencies (Required for Local Development)
+
+⚠️ **IMPORTANT: Install these system dependencies BEFORE running npm install or fresh-build.sh**
+
+These dependencies are required for canvas native compilation (computer vision package):
+
+**Ubuntu/Debian Systems:**
+```bash
+sudo apt update
+sudo apt install -y pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S pkg-config cairo pango
+```
+
+**macOS:**
+```bash
+brew install pkg-config cairo pango
+```
+
+> **Note:** These dependencies are only needed for local development. Docker deployments include all necessary dependencies.
+
 ### Disk Space Requirements
 
 **Holo 1.5-7B Transformers Model:**
@@ -114,7 +138,30 @@ No additional installation needed - `setup-holo.sh` automatically configures nat
 > **Note:** Docker Desktop on macOS doesn't pass through Metal GPU access, so Holo 1.5-7B runs natively outside Docker for best performance.
 
 #### **x86_64 CPU-only**
-Works without GPU but slower (~15-30s/inference). No additional setup needed.
+**Automatic fallback** - Works without GPU, Holo disabled for performance
+
+The stack automatically detects CPU-only systems and configures optimal settings:
+
+**What happens automatically:**
+- ✅ `start-stack.sh` detects no NVIDIA GPU via `nvidia-smi`
+- ✅ Sets `BYTEBOT_CV_USE_HOLO=false` in `docker/.env`
+- ✅ Applies `docker-compose.cpu-only.yml` overlay to remove Holo service dependencies
+- ✅ Bytebot agent and desktop services start successfully without Holo
+- ✅ Computer vision falls back to Tesseract.js OCR (text detection only)
+
+**Why Holo is disabled on CPU:**
+- CPU inference is extremely slow (15-30s/frame) - unusable for interactive use
+- Tesseract.js OCR provides fast text detection without the performance penalty
+- Better user experience: instant OCR vs waiting 30 seconds per detection
+
+**Manual override (advanced users):**
+```bash
+# Force enable Holo on CPU-only systems (not recommended - very slow)
+echo "BYTEBOT_CV_USE_HOLO=true" >> docker/.env
+./scripts/start-stack.sh
+```
+
+> **Note:** The automatic CPU fallback ensures the stack starts successfully on any system, even without a GPU.
 
 ---
 
@@ -247,11 +294,13 @@ The setup script automatically detects your hardware and configures optimal perf
 - ✅ Production-ready GPU acceleration
 
 **x86_64 CPU-only:**
-- ✅ Docker container with CPU (~8-15s/inference)
-- ✅ Works everywhere without GPU
+- ✅ Automatic CPU fallback (Holo disabled, Tesseract.js OCR enabled)
+- ✅ Stack starts successfully without GPU
+- ✅ Works everywhere without hardware requirements
 
 The start script will:
-- Launch all services (agent, UI, desktop, database, Holo 1.5-7B)
+- Launch all services (agent, UI, desktop, database)
+- Launch Holo 1.5-7B if GPU detected (skipped on CPU-only systems)
 - Apply database migrations automatically
 - Verify all services are healthy
 
@@ -298,6 +347,31 @@ Both modes work identically - choose based on your workflow:
 - Backward compatible with existing workflows
 
 ### Troubleshooting Setup
+
+**Canvas build errors on Ubuntu/Debian (pkg-config not found):**
+- **Symptom:** `npm ERR! /bin/sh: 1: pkg-config: not found` during `npm install` or `./scripts/fresh-build.sh`
+- **Cause:** System dependencies for canvas native compilation not installed, or node-gyp using /bin/sh instead of bash
+- **Fix:** Install system dependencies FIRST before running any build commands:
+  ```bash
+  # Ubuntu/Debian
+  sudo apt update
+  sudo apt install -y pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+  # Then run fresh-build.sh (uses SHELL=/bin/bash for node-gyp)
+  ./scripts/fresh-build.sh
+  ```
+- **Technical details:** The build scripts use `SHELL=/bin/bash` to force node-gyp subprocess chains to use bash instead of /bin/sh (dash on Ubuntu), ensuring PATH inheritance works properly.
+- **Prevention:** Always install [Native Build Dependencies](#native-build-dependencies-required-for-local-development) before `npm install` or `fresh-build.sh`
+
+**CPU-only systems (stack starts but no models appear):**
+- **Symptom:** Stack starts successfully but model picker is empty, or services fail to start
+- **Cause:** On systems without GPU, Holo service dependencies prevent stack startup
+- **Fix:** This is now automatic! The latest version detects CPU-only systems and:
+  - Sets `BYTEBOT_CV_USE_HOLO=false` automatically
+  - Applies `docker-compose.cpu-only.yml` overlay to remove Holo dependencies
+  - Falls back to Tesseract.js OCR for element detection
+- **Verify:** Run `nvidia-smi` - if it fails, you're on a CPU-only system and automatic fallback applies
+- **Manual check:** Look for `BYTEBOT_CV_USE_HOLO=false` in `docker/.env` after running `start-stack.sh`
 
 **Transformers model doesn't download:**
 - **Cause:** Model downloads automatically on first run via transformers

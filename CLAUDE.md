@@ -53,22 +53,56 @@ This fork adds precision tooling on top of upstream Bytebot:
 - **Coordinate telemetry**: Accuracy metrics and adaptive calibration
 - **Grid overlay guidance**: Always-on coordinate grids with debug overlays
 
+## Prerequisites
+
+⚠️ **IMPORTANT: Install these system dependencies BEFORE running npm install or fresh-build.sh**
+
+**Node.js Requirements:**
+- Node.js ≥20.0.0 (Node 24+ recommended)
+- npm ≥8.0.0
+
+**Ubuntu/Debian Systems:**
+Canvas native dependencies required for computer vision (MUST install first):
+```bash
+sudo apt update
+sudo apt install -y pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S pkg-config cairo pango
+```
+
+**macOS:**
+```bash
+brew install pkg-config cairo pango
+```
+
 ## Quick Start
 
-**Simple 3-step setup:**
+**Automated setup (recommended):**
 
 ```bash
-# 1. Install dependencies
+# 1. Install system prerequisites FIRST (see above)
+# 2. Run automated build script
+./scripts/fresh-build.sh
+```
+
+**Manual setup:**
+
+```bash
+# 1. Install system prerequisites FIRST (see above)
+# 2. Install dependencies
 npm install
 
-# 2. Build packages (shared → bytebot-cv → services)
+# 3. Build packages (shared → bytebot-cv → services)
 cd packages/shared && npm run build
 cd ../bytebot-cv && npm install && npm run build
 
-# 3. Setup Holo 1.5-7B (auto-detects Apple Silicon vs x86_64/NVIDIA)
+# 4. Setup Holo 1.5-7B (auto-detects Apple Silicon vs x86_64/NVIDIA)
 ./scripts/setup-holo.sh
 
-# 4. Start stack
+# 5. Start stack
 ./scripts/start-stack.sh
 ```
 

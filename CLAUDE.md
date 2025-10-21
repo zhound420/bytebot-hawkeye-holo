@@ -53,6 +53,29 @@ This fork adds precision tooling on top of upstream Bytebot:
 - **Coordinate telemetry**: Accuracy metrics and adaptive calibration
 - **Grid overlay guidance**: Always-on coordinate grids with debug overlays
 
+## Prerequisites
+
+**Node.js Requirements:**
+- Node.js ≥20.0.0 (Node 24+ recommended)
+- npm ≥8.0.0
+
+**Ubuntu/Debian Systems:**
+Canvas native dependencies required for computer vision:
+```bash
+sudo apt update
+sudo apt install -y pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S pkg-config cairo pango
+```
+
+**macOS:**
+```bash
+brew install pkg-config cairo pango
+```
+
 ## Quick Start
 
 **Simple 3-step setup:**

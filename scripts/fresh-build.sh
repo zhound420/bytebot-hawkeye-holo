@@ -13,6 +13,11 @@ NC='\033[0m' # No Color
 # This PATH is inherited by all npm install commands and their subprocesses
 export PATH="/usr/bin:/bin:$PATH"
 
+# Configure npm to use bash instead of /bin/sh for better cross-platform compatibility
+# Ubuntu/Debian: Forces node-gyp subprocesses to use bash with full PATH inheritance
+# This ensures pkg-config and other build tools are visible during canvas native compilation
+npm config set script-shell /bin/bash 2>/dev/null || true
+
 # Helper functions for waiting on container health and port availability
 wait_for_container_health() {
     local container="$1"

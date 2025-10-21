@@ -175,10 +175,126 @@ export class NutService {
     if (keys.length === 0) {
       return;
     }
+
+    // Windows uses PowerShell SendKeys for key combinations (works in VM/RDP/VNC)
+    if (isWindows()) {
+      return this.executeKeySequenceWindows(keys);
+    }
+
+    // Linux/macOS use nut.js
     const nutKeys = keys.map((key) => this.validateKey(key));
     await keyboard.pressKey(...nutKeys);
     await this.delay(100);
     await keyboard.releaseKey(...nutKeys);
+  }
+
+  /**
+   * Executes key sequence on Windows using PowerShell SendKeys
+   * Converts key names to SendKeys syntax: Ctrl=^, Shift=+, Alt=%
+   */
+  private async executeKeySequenceWindows(keys: string[]): Promise<void> {
+    const execAsync = promisify(exec);
+
+    // Brief delay to ensure window is ready
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    try {
+      // Convert key array to SendKeys syntax
+      let sendKeysSequence = '';
+
+      for (const key of keys) {
+        const sendKeyCode = this.keyToSendKeysCode(key);
+        if (sendKeyCode.startsWith('{') || sendKeyCode.match(/^[+^%]$/)) {
+          // Special key or modifier
+          sendKeysSequence += sendKeyCode;
+        } else {
+          // Regular key - wrap in parens if used with modifiers
+          sendKeysSequence += sendKeyCode;
+        }
+      }
+
+      this.logger.debug(`Windows SendKeys sequence: ${sendKeysSequence}`);
+
+      await execAsync(
+        `powershell -Command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys('${sendKeysSequence}')"`,
+        { timeout: 5000 }
+      );
+
+      this.logger.debug('Windows key sequence completed successfully');
+    } catch (error) {
+      this.logger.error(`Failed to execute key sequence via SendKeys: ${error.message}`);
+      throw new Error(`Failed to execute key sequence via SendKeys: ${error.message}`);
+    }
+  }
+
+  /**
+   * Converts a key name to SendKeys code
+   * Modifiers: ^ (Ctrl), + (Shift), % (Alt)
+   * Special keys use {KEYNAME} syntax
+   */
+  private keyToSendKeysCode(key: string): string {
+    const keyLower = key.toLowerCase();
+
+    // Modifier keys (used as prefix in key combos)
+    if (keyLower.includes('control') || keyLower.includes('ctrl')) {
+      return '^';
+    }
+    if (keyLower.includes('shift')) {
+      return '+';
+    }
+    if (keyLower.includes('alt')) {
+      return '%';
+    }
+    if (keyLower.includes('meta') || keyLower.includes('cmd') || keyLower.includes('super') || keyLower.includes('win')) {
+      return '^{ESC}'; // Windows key approximation (Ctrl+Esc opens Start menu)
+    }
+
+    // Special keys that need braces
+    const specialKeys: Record<string, string> = {
+      'return': '{ENTER}',
+      'enter': '{ENTER}',
+      'tab': '{TAB}',
+      'escape': '{ESC}',
+      'esc': '{ESC}',
+      'backspace': '{BACKSPACE}',
+      'delete': '{DELETE}',
+      'del': '{DELETE}',
+      'insert': '{INSERT}',
+      'home': '{HOME}',
+      'end': '{END}',
+      'pageup': '{PGUP}',
+      'pagedown': '{PGDN}',
+      'up': '{UP}',
+      'down': '{DOWN}',
+      'left': '{LEFT}',
+      'right': '{RIGHT}',
+      'f1': '{F1}',
+      'f2': '{F2}',
+      'f3': '{F3}',
+      'f4': '{F4}',
+      'f5': '{F5}',
+      'f6': '{F6}',
+      'f7': '{F7}',
+      'f8': '{F8}',
+      'f9': '{F9}',
+      'f10': '{F10}',
+      'f11': '{F11}',
+      'f12': '{F12}',
+      'space': ' ',
+    };
+
+    if (specialKeys[keyLower]) {
+      return specialKeys[keyLower];
+    }
+
+    // Single character keys (a-z, 0-9, etc.)
+    if (key.length === 1) {
+      return key;
+    }
+
+    // Default: return as-is
+    this.logger.warn(`Unknown key for SendKeys: ${key}, using as-is`);
+    return key;
   }
 
   /**
@@ -395,12 +511,12 @@ export class NutService {
   async typeText(text: string, delayMs: number = 0): Promise<void> {
     this.logger.log(`Typing text: ${text}`);
 
-    // Windows-specific: Brief delay to ensure window is ready for keyboard input
-    // Windows needs time after window focus changes for keyboard input queue to be ready
+    // Windows uses PowerShell SendKeys instead of nut.js due to VM/RDP/VNC compatibility
     if (isWindows()) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      return this.typeTextWindows(text, delayMs);
     }
 
+    // Linux/macOS use nut.js keyboard (works reliably in X11/native environments)
     try {
       for (let i = 0; i < text.length; i++) {
         const char = text[i];
@@ -428,6 +544,109 @@ export class NutService {
     } catch (error) {
       throw new Error(`Failed to type text: ${error.message}`);
     }
+  }
+
+  /**
+   * Types text on Windows using PowerShell WScript.Shell.SendKeys
+   * This works in VM/RDP/VNC environments where nut.js SendInput API fails
+   *
+   * @param text The text to type
+   * @param delayMs Delay between keypresses in ms (0 = type all at once)
+   */
+  private async typeTextWindows(text: string, delayMs: number = 0): Promise<void> {
+    const execAsync = promisify(exec);
+
+    // Brief delay to ensure window is ready for keyboard input
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    try {
+      if (delayMs > 0) {
+        // Type character by character with delays
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const escapedChar = this.escapeSendKeysChar(char);
+
+          await execAsync(
+            `powershell -Command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys('${escapedChar}')"`,
+            { timeout: 5000 }
+          );
+
+          if (i < text.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+      } else {
+        // Type entire text at once (faster, no delays)
+        const escapedText = this.escapeSendKeysText(text);
+
+        await execAsync(
+          `powershell -Command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys('${escapedText}')"`,
+          { timeout: 10000 }
+        );
+      }
+
+      this.logger.debug(`Windows SendKeys completed successfully`);
+    } catch (error) {
+      this.logger.error(`Failed to type text via SendKeys: ${error.message}`);
+      throw new Error(`Failed to type text via SendKeys: ${error.message}`);
+    }
+  }
+
+  /**
+   * Escapes a single character for WScript.Shell.SendKeys
+   * SendKeys special characters: + ^ % ~ ( ) { } [ ]
+   */
+  private escapeSendKeysChar(char: string): string {
+    // SendKeys special characters that need to be enclosed in braces
+    const specialChars: Record<string, string> = {
+      '+': '{+}',   // Shift
+      '^': '{^}',   // Ctrl
+      '%': '{%}',   // Alt
+      '~': '{~}',   // Enter
+      '(': '{(}',
+      ')': '{)}',
+      '{': '{{}',
+      '}': '{}}',
+      '[': '{[}',
+      ']': '{]}',
+    };
+
+    if (specialChars[char]) {
+      return specialChars[char];
+    }
+
+    // Escape single quotes for PowerShell (double them)
+    if (char === "'") {
+      return "''";
+    }
+
+    // Handle newlines
+    if (char === '\n') {
+      return '{ENTER}';
+    }
+    if (char === '\r') {
+      return ''; // Skip carriage returns
+    }
+
+    return char;
+  }
+
+  /**
+   * Escapes entire text for WScript.Shell.SendKeys
+   */
+  private escapeSendKeysText(text: string): string {
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+
+      // Skip \r if followed by \n (handle \r\n as just \n)
+      if (char === '\r' && text[i + 1] === '\n') {
+        continue;
+      }
+
+      result += this.escapeSendKeysChar(char);
+    }
+    return result;
   }
 
   async pasteText(text: string): Promise<void> {

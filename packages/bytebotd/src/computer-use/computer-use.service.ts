@@ -1536,35 +1536,8 @@ export class ComputerUseService {
         `Application ${action.application} is already running, attempting to focus...`,
       );
 
-      // Attempt to activate and maximize the window
-      try {
-        const command = commandMap[action.application];
-        // Use PowerShell to focus window - try multiple approaches
-        const focusScript = `
-          $proc = Get-Process -Name '${processMap[action.application]}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-          if ($proc) {
-            Add-Type @"
-              using System;
-              using System.Runtime.InteropServices;
-              public class WinAPI {
-                [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-                [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-              }
-"@
-            [WinAPI]::ShowWindow($proc.MainWindowHandle, 3)  # 3 = SW_MAXIMIZE
-            [WinAPI]::SetForegroundWindow($proc.MainWindowHandle)
-          }
-        `;
-
-        await execAsync(
-          `powershell -Command "${focusScript.replace(/"/g, '\\"').replace(/\n/g, ';')}"`,
-          { timeout: 5000 },
-        );
-      } catch (error: any) {
-        this.logger.warn(
-          `Failed to focus window: ${error.message || String(error)}`,
-        );
-      }
+      // Activate and maximize the window using reusable method
+      await this.activateWindow(processMap[action.application]);
       return;
     }
 
@@ -1605,6 +1578,10 @@ export class ComputerUseService {
 
       // Additional wait for window to receive focus
       await this.waitForWindowFocus(processMap[action.application], 2000);
+
+      // Activate the window (SetForegroundWindow) to make it receive keyboard input
+      // This is the critical step that was missing - window exists but needs explicit activation
+      await this.activateWindow(processMap[action.application]);
 
       try {
         const { stdout } = await execAsync(
@@ -1673,6 +1650,47 @@ export class ComputerUseService {
     this.logger.warn(
       `Timeout waiting for ${processName} window focus after ${maxWaitMs}ms`,
     );
+  }
+
+  /**
+   * Activate a Windows application window (bring to foreground)
+   * Uses Win32 API ShowWindow + SetForegroundWindow
+   */
+  private async activateWindow(processName: string): Promise<void> {
+    const execAsync = promisify(exec);
+
+    this.logger.debug(`Activating window for process: ${processName}`);
+
+    try {
+      // PowerShell script to call Win32 API for window activation
+      const focusScript = `
+        $proc = Get-Process -Name '${processName}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+        if ($proc) {
+          Add-Type @"
+            using System;
+            using System.Runtime.InteropServices;
+            public class WinAPI {
+              [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+              [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+            }
+"@
+          [WinAPI]::ShowWindow($proc.MainWindowHandle, 3)  # 3 = SW_MAXIMIZE
+          [WinAPI]::SetForegroundWindow($proc.MainWindowHandle)
+        }
+      `;
+
+      await execAsync(
+        `powershell -Command "${focusScript.replace(/"/g, '\\"').replace(/\n/g, ';')}"`,
+        { timeout: 5000 },
+      );
+
+      this.logger.debug(`✓ Window activated successfully for ${processName}`);
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to activate window for ${processName}: ${error.message || String(error)}`,
+      );
+      // Don't throw - activation is best-effort
+    }
   }
 
   private async applicationLinux(action: ApplicationAction): Promise<void> {

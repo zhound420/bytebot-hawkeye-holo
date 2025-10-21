@@ -13,11 +13,6 @@ NC='\033[0m' # No Color
 # This PATH is inherited by all npm install commands and their subprocesses
 export PATH="/usr/bin:/bin:$PATH"
 
-# Configure npm to use bash instead of /bin/sh for better cross-platform compatibility
-# Ubuntu/Debian: Forces node-gyp subprocesses to use bash with full PATH inheritance
-# This ensures pkg-config and other build tools are visible during canvas native compilation
-npm config set script-shell /bin/bash 2>/dev/null || true
-
 # Helper functions for waiting on container health and port availability
 wait_for_container_health() {
     local container="$1"
@@ -835,7 +830,7 @@ echo ""
 # Build shared package first (required dependency)
 echo -e "${BLUE}Step 3: Building shared package...${NC}"
 cd packages/shared
-npm install
+SHELL=/bin/bash npm install
 npm run build
 echo -e "${GREEN}✓ Shared package built${NC}"
 cd ../..
@@ -849,7 +844,7 @@ if [ -d "node_modules" ]; then
     echo "Cleaning bytebot-cv node_modules for fresh install..."
     rm -rf node_modules
 fi
-npm install --no-save
+SHELL=/bin/bash npm install --no-save
 npm run build
 echo -e "${GREEN}✓ CV package built${NC}"
 cd ../..
@@ -858,7 +853,7 @@ echo ""
 # Build bytebotd package (depends on shared and bytebot-cv)
 echo -e "${BLUE}Step 5: Building bytebotd package...${NC}"
 cd packages/bytebotd
-npm install
+SHELL=/bin/bash npm install
 npm run build
 echo -e "${GREEN}✓ Bytebotd package built${NC}"
 cd ../..

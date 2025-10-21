@@ -21,6 +21,7 @@ import { ANTHROPIC_MODELS } from '../anthropic/anthropic.constants';
 import { OPENAI_MODELS } from '../openai/openai.constants';
 import { GOOGLE_MODELS } from '../google/google.constants';
 import { BytebotAgentModel } from 'src/agent/agent.types';
+import { OpenAIService } from '../openai/openai.service';
 
 type AgentTelemetrySessionInfo = {
   id: string;
@@ -52,6 +53,7 @@ export class TasksController {
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
     private readonly taskOutcomeService: TaskOutcomeService,
+    private readonly openaiService: OpenAIService,
   ) {}
 
   @Post()
@@ -83,6 +85,9 @@ export class TasksController {
 
   @Get('models')
   async getModels() {
+    const allModels: BytebotAgentModel[] = [];
+
+    // 1. Try LiteLLM proxy first (includes LMStudio and other proxy models)
     const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
     if (proxyUrl) {
       try {
@@ -201,18 +206,48 @@ export class TasksController {
           } satisfies BytebotAgentModel;
         });
 
-        return models;
+        allModels.push(...models);
       } catch (error) {
         if (error instanceof HttpException) {
           throw error;
         }
-        throw new HttpException(
-          `Error fetching models: ${error.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
+        this.logger.warn(`Proxy models unavailable: ${error.message}`);
+        // Continue to fetch from direct APIs
       }
     }
-    return models;
+
+    // 2. Fetch OpenAI models dynamically (if API key set and proxy not used)
+    if (!proxyUrl && openaiApiKey) {
+      try {
+        const openaiModels = await this.openaiService.listModels();
+        allModels.push(...openaiModels);
+        this.logger.log(`Fetched ${openaiModels.length} OpenAI models dynamically`);
+      } catch (error) {
+        this.logger.warn(`OpenAI models unavailable: ${error.message}`);
+        // Fallback to hardcoded list
+        allModels.push(...OPENAI_MODELS);
+      }
+    }
+
+    // 3. Add Anthropic models (hardcoded, curated list - no dynamic API available)
+    if (!proxyUrl && anthropicApiKey) {
+      allModels.push(...ANTHROPIC_MODELS);
+      this.logger.log(`Added ${ANTHROPIC_MODELS.length} Anthropic models from curated list`);
+    }
+
+    // 4. Add Google Gemini models (hardcoded - could add dynamic fetching later)
+    if (!proxyUrl && geminiApiKey) {
+      allModels.push(...GOOGLE_MODELS);
+      this.logger.log(`Added ${GOOGLE_MODELS.length} Google models from curated list`);
+    }
+
+    // If no models found at all, return fallback hardcoded lists
+    if (allModels.length === 0) {
+      this.logger.warn('No models available from any source, using fallback lists');
+      return models; // Return original hardcoded models constant
+    }
+
+    return allModels;
   }
 
   @Get('telemetry/summary')

@@ -94,6 +94,100 @@ export class OpenAIService implements BytebotAgentService {
     }
   }
 
+  /**
+   * Fetch available models from OpenAI API
+   * Returns dynamic list of models or falls back to hardcoded list on error
+   */
+  async listModels(): Promise<BytebotAgentModel[]> {
+    try {
+      const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+      if (!apiKey) {
+        this.logger.warn('OpenAI API key not set, returning empty model list');
+        return [];
+      }
+
+      const response = await fetch('https://api.openai.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Filter for chat/completion models only
+      const chatModels = data.data.filter((model: any) =>
+        model.id.startsWith('gpt-') ||
+        model.id.startsWith('o1') ||
+        model.id.startsWith('o3') ||
+        model.id.includes('turbo')
+      );
+
+      return chatModels.map((model: any) => ({
+        provider: 'openai' as const,
+        name: model.id,
+        title: this.formatModelTitle(model.id),
+        contextWindow: this.inferContextWindow(model.id),
+        supportsVision: this.inferVisionSupport(model.id),
+      }));
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch OpenAI models: ${error.message}`);
+      this.logger.log('Falling back to hardcoded OpenAI model list');
+      return DEFAULT_MODEL ? [DEFAULT_MODEL] : [];
+    }
+  }
+
+  /**
+   * Format model ID into a human-readable title
+   */
+  private formatModelTitle(modelId: string): string {
+    // Handle specific models
+    if (modelId === 'gpt-4o') return 'GPT-4o';
+    if (modelId === 'gpt-4o-mini') return 'GPT-4o Mini';
+    if (modelId === 'o1') return 'o1';
+    if (modelId === 'o1-preview') return 'o1 Preview';
+    if (modelId === 'o1-mini') return 'o1 Mini';
+    if (modelId === 'gpt-4-turbo') return 'GPT-4 Turbo';
+    if (modelId === 'gpt-4-turbo-preview') return 'GPT-4 Turbo Preview';
+    if (modelId === 'gpt-3.5-turbo') return 'GPT-3.5 Turbo';
+
+    // Default: capitalize and clean up
+    return modelId
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Infer context window size based on model name
+   */
+  private inferContextWindow(modelId: string): number {
+    if (modelId.includes('gpt-4o')) return 128000;
+    if (modelId.includes('o1')) return 200000;
+    if (modelId.includes('gpt-4-turbo')) return 128000;
+    if (modelId.includes('gpt-4')) return 8192;
+    if (modelId.includes('gpt-3.5-turbo')) return 16385;
+    if (modelId.includes('gpt-3.5')) return 4096;
+    return 8192; // Default
+  }
+
+  /**
+   * Infer vision support based on model name
+   */
+  private inferVisionSupport(modelId: string): boolean {
+    // GPT-4o and GPT-4 Turbo variants support vision
+    if (modelId.includes('gpt-4o')) return true;
+    if (modelId.includes('gpt-4-turbo')) return true;
+    if (modelId.includes('gpt-4-vision')) return true;
+
+    // o1 series and GPT-3.5 do not support vision
+    return false;
+  }
+
   private initializeClient() {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
 

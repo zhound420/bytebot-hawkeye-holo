@@ -825,7 +825,7 @@ echo ""
 # Build shared package first (required dependency)
 echo -e "${BLUE}Step 3: Building shared package...${NC}"
 cd packages/shared
-npm install
+env PATH="/usr/bin:/bin:$PATH" npm install
 npm run build
 echo -e "${GREEN}✓ Shared package built${NC}"
 cd ../..
@@ -848,7 +848,7 @@ echo ""
 # Build bytebotd package (depends on shared and bytebot-cv)
 echo -e "${BLUE}Step 5: Building bytebotd package...${NC}"
 cd packages/bytebotd
-npm install
+env PATH="/usr/bin:/bin:$PATH" npm install
 npm run build
 echo -e "${GREEN}✓ Bytebotd package built${NC}"
 cd ../..

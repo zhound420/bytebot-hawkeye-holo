@@ -1,10 +1,10 @@
 # Fix Bytebotd Scheduled Task Auto-Start Issue
 #
-# Problem: Scheduled task created by install-prebaked.ps1 fails with error 267009
-# Root Cause: cmd.exe /c wrapper doesn't properly background node.exe
-# Solution: Use PowerShell Start-Process for proper backgrounding
+# Problem: Keyboard/mouse input not working on Windows
+# Root Cause: S4U/ServiceAccount tasks run in Session 0 where input is blocked (Windows 10+ security)
+# Solution: Use InteractiveToken logon type to run in active user session (Session 1+)
 #
-# Run this script inside Windows container to permanently fix auto-start
+# Run this script inside Windows container to permanently fix keyboard/mouse automation
 
 $ErrorActionPreference = "Stop"
 
@@ -55,7 +55,13 @@ Write-Host "[3/5] Killing any existing node.exe processes..." -ForegroundColor Y
 Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Write-Host "  Cleanup complete" -ForegroundColor Green
 
-Write-Host "[4/5] Creating new scheduled task with PowerShell Start-Process..." -ForegroundColor Yellow
+Write-Host "[4/5] Creating new scheduled task with InteractiveToken logon..." -ForegroundColor Yellow
+
+# Get current user for interactive session
+$CurrentUser = $env:USERNAME
+if (-not $CurrentUser) {
+    $CurrentUser = "docker"  # Fallback for dockur/windows containers
+}
 
 # Create PowerShell command that uses Start-Process for proper backgrounding
 $StartupScript = @"
@@ -64,8 +70,27 @@ $StartupScript = @"
 # Change to bytebotd directory
 Set-Location "C:\Program Files\Bytebot\packages\bytebotd"
 
+# Load Holo IP configuration from container
+if (Test-Path "C:\OEM\holo-config.bat") {
+    `$holoConfigContent = Get-Content "C:\OEM\holo-config.bat"
+    foreach (`$line in `$holoConfigContent) {
+        if (`$line -match "set HOLO_URL=(.+)") {
+            `$env:HOLO_URL = `$matches[1]
+        }
+    }
+} else {
+    `$env:HOLO_URL = "http://bytebot-holo:9989"
+}
+
+# Set Holo environment variables
+`$env:BYTEBOT_CV_USE_HOLO = "true"
+`$env:HOLO_TIMEOUT = "120000"
+
 # Kill any existing node processes
-Get-Process -Name node | Stop-Process -Force
+Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# Wait for port to be released
+Start-Sleep -Seconds 2
 
 # Start bytebotd with Start-Process (proper backgrounding)
 Start-Process -FilePath "node.exe" ``
@@ -75,7 +100,7 @@ Start-Process -FilePath "node.exe" ``
     -RedirectStandardError "C:\Bytebot-Logs\bytebotd-stderr.log" ``
     -WorkingDirectory "C:\Program Files\Bytebot\packages\bytebotd"
 
-# Give service 5 seconds to start
+# Give service time to start
 Start-Sleep -Seconds 5
 
 # Verify service started
@@ -96,15 +121,17 @@ Set-Content -Path $StartupScriptPath -Value $StartupScript -Encoding UTF8
 # Create scheduled task action (direct PowerShell execution)
 $Action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+    -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`"" `
+    -WorkingDirectory $BytebotdPath
 
-# Create trigger (on boot)
-$Trigger = New-ScheduledTaskTrigger -AtStartup
+# Create trigger (on user logon - required for interactive session)
+$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 
-# Create principal (run as SYSTEM with highest privileges)
+# Create principal (InteractiveToken runs in active user session Session 1+)
+# This is required for keyboard/mouse automation on Windows 10+
 $Principal = New-ScheduledTaskPrincipal `
-    -UserId "NT AUTHORITY\SYSTEM" `
-    -LogonType ServiceAccount `
+    -UserId $CurrentUser `
+    -LogonType InteractiveToken `
     -RunLevel Highest
 
 # Create settings
@@ -122,10 +149,11 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Principal $Principal `
     -Settings $Settings `
-    -Description "Bytebot Desktop Daemon - AI agent computer control service (Fixed with PowerShell Start-Process)" `
+    -Description "Bytebot Desktop Daemon - AI agent computer control service (Fixed with InteractiveToken for keyboard/mouse)" `
     -Force | Out-Null
 
-Write-Host "  New task created successfully" -ForegroundColor Green
+Write-Host "  New task created successfully with InteractiveToken logon" -ForegroundColor Green
+Write-Host "  Logon type: InteractiveToken (Session 1+ for keyboard/mouse automation)" -ForegroundColor Green
 
 Write-Host "[5/5] Starting task and verifying..." -ForegroundColor Yellow
 

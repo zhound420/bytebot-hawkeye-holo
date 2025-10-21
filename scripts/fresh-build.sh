@@ -8,6 +8,10 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Ensure pkg-config and other build tools are in PATH for node-gyp
+# This PATH is inherited by all npm install commands and their subprocesses
+export PATH="/usr/bin:/bin:$PATH"
+
 # Helper functions for waiting on container health and port availability
 wait_for_container_health() {
     local container="$1"
@@ -825,7 +829,7 @@ echo ""
 # Build shared package first (required dependency)
 echo -e "${BLUE}Step 3: Building shared package...${NC}"
 cd packages/shared
-env PATH="/usr/bin:/bin:$PATH" npm install
+npm install
 npm run build
 echo -e "${GREEN}✓ Shared package built${NC}"
 cd ../..
@@ -839,7 +843,7 @@ if [ -d "node_modules" ]; then
     echo "Cleaning bytebot-cv node_modules for fresh install..."
     rm -rf node_modules
 fi
-env PATH="/usr/bin:/bin:$PATH" npm install --no-save
+npm install --no-save
 npm run build
 echo -e "${GREEN}✓ CV package built${NC}"
 cd ../..
@@ -848,7 +852,7 @@ echo ""
 # Build bytebotd package (depends on shared and bytebot-cv)
 echo -e "${BLUE}Step 5: Building bytebotd package...${NC}"
 cd packages/bytebotd
-env PATH="/usr/bin:/bin:$PATH" npm install
+npm install
 npm run build
 echo -e "${GREEN}✓ Bytebotd package built${NC}"
 cd ../..

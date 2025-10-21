@@ -163,13 +163,13 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) or **Nano11 25H2** (minim
 3. **Automated installation** via `install-prebaked.ps1`:
    - Downloads Node.js 20 portable, adds to system PATH
    - Extracts installer package to `C:\Program Files\Bytebot\packages\`
-   - Creates scheduled task "Bytebotd Desktop Agent" with InteractiveToken logon (Session 1+ desktop access)
+   - Creates scheduled task "Bytebotd Desktop Agent" with Interactive logon (Session 1+ desktop access)
    - Starts bytebotd service and tray monitor
 4. Access Windows web viewer at `http://localhost:8006`
 5. **Total time: 15-20 minutes** (mostly Windows boot + ZIP extraction)
 
-**InteractiveToken Scheduled Task (Critical):**
-- Uses InteractiveToken logon type to run in active user session (Session 1+)
+**Interactive Scheduled Task (Critical):**
+- Uses Interactive logon type to run in active user session (Session 1+)
 - **Required for keyboard/mouse automation** - Windows 10+ blocks input in Session 0
 - Scheduled task runs as current user on login, not in background Session 0
 - Auto-login configured in Windows container ensures task starts automatically
@@ -646,7 +646,7 @@ if (isWindows()) {
 
 **Other native modules:**
 - `uiohook-napi`: Input tracking (keyboard/mouse events) - platform-specific
-- `@nut-tree-fork/nut-js`: Keyboard shortcuts - requires interactive desktop (InteractiveToken scheduled task, Session 1+)
+- `@nut-tree-fork/nut-js`: Keyboard shortcuts - requires interactive desktop (Interactive scheduled task, Session 1+)
 
 ## Module Architecture
 

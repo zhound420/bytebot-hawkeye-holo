@@ -301,7 +301,7 @@ try {
         $CurrentUser = "docker"  # Fallback for dockur/windows containers
     }
 
-    # Create interactive scheduled task (InteractiveToken logon type)
+    # Create interactive scheduled task (Interactive logon type)
     # This runs in the user's interactive desktop session (Session 1+) where keyboard/mouse input works
     # Windows 10+ blocks keyboard/mouse input in Session 0, so S4U cannot be used
     # Requires user to be logged in (Windows container auto-login configured)
@@ -315,11 +315,11 @@ try {
     # Trigger on user logon (requires interactive session for keyboard/mouse)
     $TaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 
-    # InteractiveToken logon type runs in active user session (Session 1+)
+    # Interactive logon type runs in active user session (Session 1+)
     # This is required for keyboard/mouse automation on Windows 10+
     $TaskPrincipal = New-ScheduledTaskPrincipal `
         -UserId $CurrentUser `
-        -LogonType InteractiveToken `
+        -LogonType Interactive `
         -RunLevel Highest
 
     $TaskSettings = New-ScheduledTaskSettingsSet `
@@ -335,11 +335,11 @@ try {
         -Trigger $TaskTrigger `
         -Principal $TaskPrincipal `
         -Settings $TaskSettings `
-        -Description "Bytebot Desktop Daemon - AI agent computer control service with InteractiveToken desktop access" `
+        -Description "Bytebot Desktop Daemon - AI agent computer control service with Interactive desktop access" `
         -Force | Out-Null
 
     Write-Log "✓ Interactive scheduled task created: $ServiceName" "SUCCESS"
-    Write-Log "✓ Logon type: InteractiveToken (runs in active user session Session 1+)" "SUCCESS"
+    Write-Log "✓ Logon type: Interactive (runs in active user session Session 1+)" "SUCCESS"
     Write-Log "✓ User: $CurrentUser (RunLevel: Highest)" "SUCCESS"
     Write-Log "Bytebotd will auto-start on user login with keyboard/mouse automation" "SUCCESS"
 } catch {
@@ -360,7 +360,7 @@ try {
         $Shortcut.Save()
 
         Write-Log "✓ Startup shortcut created as fallback: $ShortcutPath" "SUCCESS"
-        Write-Log "NOTE: Startup shortcut requires user login (same as InteractiveToken task)" "WARN"
+        Write-Log "NOTE: Startup shortcut requires user login (same as Interactive task)" "WARN"
     } catch {
         Write-Log "ERROR: Both interactive task and startup shortcut failed: $_" "ERROR"
         exit 1

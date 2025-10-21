@@ -2,7 +2,7 @@
 #
 # Problem: Keyboard/mouse input not working on Windows
 # Root Cause: S4U/ServiceAccount tasks run in Session 0 where input is blocked (Windows 10+ security)
-# Solution: Use InteractiveToken logon type to run in active user session (Session 1+)
+# Solution: Use Interactive logon type to run in active user session (Session 1+)
 #
 # Run this script inside Windows container to permanently fix keyboard/mouse automation
 
@@ -55,7 +55,7 @@ Write-Host "[3/5] Killing any existing node.exe processes..." -ForegroundColor Y
 Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Write-Host "  Cleanup complete" -ForegroundColor Green
 
-Write-Host "[4/5] Creating new scheduled task with InteractiveToken logon..." -ForegroundColor Yellow
+Write-Host "[4/5] Creating new scheduled task with Interactive logon..." -ForegroundColor Yellow
 
 # Get current user for interactive session
 $CurrentUser = $env:USERNAME
@@ -127,11 +127,11 @@ $Action = New-ScheduledTaskAction `
 # Create trigger (on user logon - required for interactive session)
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 
-# Create principal (InteractiveToken runs in active user session Session 1+)
+# Create principal (Interactive runs in active user session Session 1+)
 # This is required for keyboard/mouse automation on Windows 10+
 $Principal = New-ScheduledTaskPrincipal `
     -UserId $CurrentUser `
-    -LogonType InteractiveToken `
+    -LogonType Interactive `
     -RunLevel Highest
 
 # Create settings
@@ -149,11 +149,11 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Principal $Principal `
     -Settings $Settings `
-    -Description "Bytebot Desktop Daemon - AI agent computer control service (Fixed with InteractiveToken for keyboard/mouse)" `
+    -Description "Bytebot Desktop Daemon - AI agent computer control service (Fixed with Interactive for keyboard/mouse)" `
     -Force | Out-Null
 
-Write-Host "  New task created successfully with InteractiveToken logon" -ForegroundColor Green
-Write-Host "  Logon type: InteractiveToken (Session 1+ for keyboard/mouse automation)" -ForegroundColor Green
+Write-Host "  New task created successfully with Interactive logon" -ForegroundColor Green
+Write-Host "  Logon type: Interactive (Session 1+ for keyboard/mouse automation)" -ForegroundColor Green
 
 Write-Host "[5/5] Starting task and verifying..." -ForegroundColor Yellow
 

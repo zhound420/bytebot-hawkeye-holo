@@ -9,7 +9,8 @@ import {
   Button,
   FileType,
 } from '@nut-tree-fork/nut-js';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
 import * as os from 'os';
 import { logPlatformInfo, getPlatform, Platform, isWindows, isLinux, isMacOS } from '../utils/platform';

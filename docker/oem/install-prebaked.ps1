@@ -200,6 +200,47 @@ if (Test-Path $SharpPath) {
 
 Write-Log ""
 
+# Step 3.5: Install Visual C++ Redistributable (required for nut.js native addon)
+Write-Log "Step 3.5: Installing Visual C++ Redistributable..."
+
+try {
+    # Check if already installed (registry key check)
+    $VCRedistInstalled = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+
+    if ($VCRedistInstalled -and $VCRedistInstalled.Installed -eq 1) {
+        Write-Log "✓ Visual C++ Redistributable already installed (version $($VCRedistInstalled.Version))" "SUCCESS"
+    } else {
+        Write-Log "Downloading Visual C++ Redistributable 2015-2022 (x64)..."
+        $VCRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        $VCRedistExe = Join-Path $env:TEMP "vc_redist.x64.exe"
+
+        # Download VC++ Redistributable
+        Invoke-WebRequest -Uri $VCRedistUrl -OutFile $VCRedistExe -UseBasicParsing
+        Write-Log "✓ Downloaded Visual C++ Redistributable"
+
+        # Install silently (no restart required)
+        Write-Log "Installing Visual C++ Redistributable (this may take 1-2 minutes)..."
+        $InstallProcess = Start-Process -FilePath $VCRedistExe -ArgumentList "/install", "/quiet", "/norestart" -Wait -NoNewWindow -PassThru
+
+        if ($InstallProcess.ExitCode -eq 0 -or $InstallProcess.ExitCode -eq 3010) {
+            Write-Log "✓ Visual C++ Redistributable installed successfully" "SUCCESS"
+        } elseif ($InstallProcess.ExitCode -eq 1638) {
+            Write-Log "✓ Visual C++ Redistributable already installed (newer version)" "SUCCESS"
+        } else {
+            Write-Log "WARN: Visual C++ Redistributable installation returned exit code $($InstallProcess.ExitCode)" "WARN"
+            Write-Log "nut.js may not work without Visual C++ Redistributable" "WARN"
+        }
+
+        # Clean up
+        Remove-Item $VCRedistExe -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    Write-Log "WARN: Failed to install Visual C++ Redistributable: $_" "WARN"
+    Write-Log "nut.js keyboard/mouse automation may not work" "WARN"
+}
+
+Write-Log ""
+
 # Step 4: Create data directories
 Write-Log "Step 4: Creating data directories..."
 
@@ -290,19 +331,21 @@ try {
     # Stop any running instances
     Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-    Write-Log "Creating S4U scheduled task for interactive desktop access..."
+    Write-Log "Creating interactive scheduled task for desktop access..."
 
     # Remove existing task if present
     Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
 
-    # Get current username for S4U task
+    # Get current username for interactive task
     $CurrentUser = $env:USERNAME
     if (-not $CurrentUser) {
         $CurrentUser = "docker"  # Fallback for dockur/windows containers
     }
 
-    # Create S4U scheduled task (Service-for-User logon type)
-    # This provides interactive desktop access without requiring user login
+    # Create interactive scheduled task (Interactive logon type)
+    # This runs in the user's interactive desktop session (Session 1+) where keyboard/mouse input works
+    # Windows 10+ blocks keyboard/mouse input in Session 0, so S4U cannot be used
+    # Requires user to be logged in (Windows container auto-login configured)
     # Critical for nut-js screen.capture() and keyboard/mouse input automation
 
     $TaskAction = New-ScheduledTaskAction `
@@ -310,14 +353,14 @@ try {
         -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`"" `
         -WorkingDirectory $BytebotdDir
 
-    # Note: -Delay parameter not supported on all Windows versions (e.g., Tiny11/Nano11)
-    # Using -StartWhenAvailable in TaskSettings instead (line 326) for delayed start
-    $TaskTrigger = New-ScheduledTaskTrigger -AtStartup
+    # Trigger on user logon (requires interactive session for keyboard/mouse)
+    $TaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 
-    # S4U (Service-for-User) logon type enables interactive desktop without login
+    # Interactive logon type runs in active user session (Session 1+)
+    # This is required for keyboard/mouse automation on Windows 10+
     $TaskPrincipal = New-ScheduledTaskPrincipal `
         -UserId $CurrentUser `
-        -LogonType S4U `
+        -LogonType Interactive `
         -RunLevel Highest
 
     $TaskSettings = New-ScheduledTaskSettingsSet `
@@ -333,18 +376,18 @@ try {
         -Trigger $TaskTrigger `
         -Principal $TaskPrincipal `
         -Settings $TaskSettings `
-        -Description "Bytebot Desktop Daemon - AI agent computer control service with S4U interactive desktop access" `
+        -Description "Bytebot Desktop Daemon - AI agent computer control service with Interactive desktop access" `
         -Force | Out-Null
 
-    Write-Log "✓ S4U scheduled task created: $ServiceName" "SUCCESS"
-    Write-Log "✓ Logon type: S4U (interactive desktop without login)" "SUCCESS"
+    Write-Log "✓ Interactive scheduled task created: $ServiceName" "SUCCESS"
+    Write-Log "✓ Logon type: Interactive (runs in active user session Session 1+)" "SUCCESS"
     Write-Log "✓ User: $CurrentUser (RunLevel: Highest)" "SUCCESS"
-    Write-Log "Bytebotd will auto-start on system boot with interactive desktop access" "SUCCESS"
+    Write-Log "Bytebotd will auto-start on user login with keyboard/mouse automation" "SUCCESS"
 } catch {
-    Write-Log "ERROR: Failed to create S4U scheduled task: $_" "ERROR"
+    Write-Log "ERROR: Failed to create interactive scheduled task: $_" "ERROR"
     Write-Log "Falling back to startup shortcut approach..." "WARN"
 
-    # Fallback: Create startup shortcut if S4U task fails
+    # Fallback: Create startup shortcut if interactive task fails
     try {
         $StartupFolder = [System.Environment]::GetFolderPath('Startup')
         $ShortcutPath = Join-Path $StartupFolder "Bytebotd Desktop Agent.lnk"
@@ -358,9 +401,9 @@ try {
         $Shortcut.Save()
 
         Write-Log "✓ Startup shortcut created as fallback: $ShortcutPath" "SUCCESS"
-        Write-Log "NOTE: Startup shortcut requires user login (less reliable than S4U task)" "WARN"
+        Write-Log "NOTE: Startup shortcut requires user login (same as Interactive task)" "WARN"
     } catch {
-        Write-Log "ERROR: Both S4U task and startup shortcut failed: $_" "ERROR"
+        Write-Log "ERROR: Both interactive task and startup shortcut failed: $_" "ERROR"
         exit 1
     }
 }

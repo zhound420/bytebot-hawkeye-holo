@@ -134,6 +134,15 @@ export class NutService {
     mouse.config.autoDelayMs = 100;
     keyboard.config.autoDelayMs = 100;
 
+    // Ensure native adapter also respects delay (workaround for nut-js Issue #188)
+    // Even though v4.2.6+ should have this fixed, adding as safety measure for Windows
+    try {
+      (keyboard as any).nativeAdapter?.keyboard?.setKeyboardDelay?.(100);
+      this.logger.log('✓ Set native keyboard delay: 100ms');
+    } catch (e) {
+      this.logger.warn(`Could not set native keyboard delay: ${e}`);
+    }
+
     // Create screenshot directory if it doesn't exist (cross-platform)
     this.screenshotDir = path.join(os.tmpdir(), 'bytebot-screenshots');
     import('fs').then((fs) => {
@@ -175,6 +184,8 @@ export class NutService {
     if (keys.length === 0) {
       return;
     }
+
+    // All platforms use nut.js (including Windows)
     const nutKeys = keys.map((key) => this.validateKey(key));
     await keyboard.pressKey(...nutKeys);
     await this.delay(100);
@@ -395,6 +406,12 @@ export class NutService {
   async typeText(text: string, delayMs: number = 0): Promise<void> {
     this.logger.log(`Typing text: ${text}`);
 
+    // Windows-specific: Brief delay to ensure window is ready for keyboard input
+    if (isWindows()) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    // All platforms use nut.js keyboard (including Windows)
     try {
       for (let i = 0; i < text.length; i++) {
         const char = text[i];
@@ -407,9 +424,11 @@ export class NutService {
           if (keyInfo.withShift) {
             // Hold shift key, press the character key, and release shift key
             await keyboard.pressKey(Key.LeftShift, keyInfo.keyCode);
+            await this.delay(50); // Windows needs delay for keystroke registration
             await keyboard.releaseKey(Key.LeftShift, keyInfo.keyCode);
           } else {
             await keyboard.pressKey(keyInfo.keyCode);
+            await this.delay(50); // Windows needs delay for keystroke registration
             await keyboard.releaseKey(keyInfo.keyCode);
           }
           if (delayMs > 0 && i < text.length - 1) {
@@ -420,6 +439,7 @@ export class NutService {
         }
       }
     } catch (error) {
+      this.logger.error(`Failed to type text: ${error.message}`);
       throw new Error(`Failed to type text: ${error.message}`);
     }
   }

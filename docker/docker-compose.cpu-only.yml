@@ -1,0 +1,22 @@
+# Docker Compose CPU-Only Override
+# This file is automatically applied when no NVIDIA GPU is detected.
+#
+# Purpose: Remove Holo 1.5-7B dependencies to allow stack startup without GPU
+# Fallback: Computer vision uses Tesseract.js OCR for text detection
+#
+# This overlay is applied by start-stack.sh when HAS_GPU=false
+
+services:
+  # Remove Holo dependency from bytebot-agent
+  bytebot-agent:
+    depends_on:
+      postgres:
+        condition: service_started
+      bytebot-llm-proxy:
+        condition: service_healthy
+      # bytebot-holo dependency REMOVED - CPU mode uses Tesseract.js OCR
+
+  # Remove Holo dependency from bytebot-desktop
+  bytebot-desktop:
+    depends_on: {}
+    # All dependencies REMOVED - desktop runs standalone in CPU mode

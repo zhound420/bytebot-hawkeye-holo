@@ -115,6 +115,10 @@ for model in "${SELECTED_MODELS[@]}"; do
 done
 echo ""
 
+echo -e "${CYAN}Note: Function calling support will be tested at runtime.${NC}"
+echo -e "${CYAN}To manually test capabilities, run: ${YELLOW}./scripts/validate-lmstudio-capabilities.sh${NC}"
+echo ""
+
 # Generate LiteLLM config entries
 CONFIG_FILE="${PROJECT_ROOT}/packages/bytebot-llm-proxy/litellm-config.yaml"
 TEMP_CONFIG="${CONFIG_FILE}.tmp"
@@ -163,10 +167,12 @@ fi
             echo "    model_info:"
             echo "      supports_vision: true"
             echo "      base_model: lmstudio"
+            echo "      supports_function_calling: true"
         else
             echo "    model_info:"
             echo "      supports_vision: false"
             echo "      base_model: lmstudio"
+            echo "      supports_function_calling: true"
         fi
     done
 
@@ -231,4 +237,8 @@ echo "  1. Restart the stack to load new models:"
 echo -e "     ${CYAN}./scripts/stop-stack.sh && ./scripts/start-stack.sh${NC}"
 echo "  2. Models will appear in the UI model picker under 'Local Models'"
 echo "  3. To reconfigure: ${CYAN}./scripts/setup-lmstudio.sh${NC}"
+echo ""
+echo -e "${CYAN}Optional:${NC}"
+echo "  • To manually test function calling capabilities:"
+echo -e "    ${CYAN}./scripts/validate-lmstudio-capabilities.sh${NC}"
 echo ""

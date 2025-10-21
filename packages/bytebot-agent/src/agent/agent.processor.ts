@@ -74,6 +74,7 @@ import {
   buildAgentSystemPrompt,
 } from './agent.constants';
 import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
+import { buildLMStudioSystemPrompt } from './lmstudio-prompts';
 import { supportsVision } from './vision-capability.util';
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
@@ -1459,17 +1460,33 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
         `(task.directVisionMode=${task.directVisionMode}, FORCE=${FORCE_DIRECT_VISION_MODE})`,
       );
 
-      // Use direct vision prompt if enabled, otherwise use tier-specific CV-first prompt
-      let systemPrompt = effectiveDirectVisionMode
-        ? buildAgentSystemPrompt(currentDate, currentTime, timeZone, true)
-        : buildTierSpecificAgentSystemPrompt(
-            rules.tier,
-            rules.maxCvAttempts,
-            currentDate,
-            currentTime,
-            timeZone,
-            supportsVision(model),  // Pass vision capability for appropriate prompts
-          );
+      // Determine which system prompt to use based on model type
+      let systemPrompt: string;
+      let promptType: string;
+
+      if (model.provider === 'lmstudio') {
+        // LMStudio models get simplified prompt optimized for local models
+        systemPrompt = buildLMStudioSystemPrompt(currentDate, currentTime, timeZone);
+        promptType = 'LMStudio Simplified';
+        this.logger.log(
+          `Task ${task.id}: Using SIMPLIFIED PROMPT for LMStudio model (local model optimization)`,
+        );
+      } else if (effectiveDirectVisionMode) {
+        // Commercial vision models in direct vision mode
+        systemPrompt = buildAgentSystemPrompt(currentDate, currentTime, timeZone, true);
+        promptType = 'Direct Vision';
+      } else {
+        // Default: tier-specific CV-first prompt for commercial models
+        systemPrompt = buildTierSpecificAgentSystemPrompt(
+          rules.tier,
+          rules.maxCvAttempts,
+          currentDate,
+          currentTime,
+          timeZone,
+          supportsVision(model),  // Pass vision capability for appropriate prompts
+        );
+        promptType = `Tier ${rules.tier} CV-First`;
+      }
 
       // Phase 3.1: Inject blocker context from previous failed attempts
       const blockerContext = await this.taskBlockerService.getBlockerContext(taskId);
@@ -1482,7 +1499,7 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       // Log which prompt system is being used
       this.logger.log(
-        `Task ${task.id}: Using ${effectiveDirectVisionMode ? 'Direct Vision' : `Tier ${rules.tier} CV-First`} prompt system`,
+        `Task ${task.id}: Using ${promptType} prompt system`,
       );
 
       // Log tools available to model (for debugging)

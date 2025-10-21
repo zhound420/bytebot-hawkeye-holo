@@ -917,7 +917,22 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
         EXPECT_HOLO_CONTAINER=false
         # CPU-only mode: disable Holo and skip container
         export BYTEBOT_CV_USE_HOLO=false
+
+        # Apply CPU-only compose overlay (removes Holo dependencies)
+        COMPOSE_FILES+=("-f" "docker-compose.cpu-only.yml")
+
+        # Persist setting to docker/.env
+        if [ -f ".env" ]; then
+            if grep -q "^BYTEBOT_CV_USE_HOLO=" .env; then
+                sed -i.bak 's|^BYTEBOT_CV_USE_HOLO=.*|BYTEBOT_CV_USE_HOLO=false|' .env
+                rm .env.bak
+            else
+                echo "BYTEBOT_CV_USE_HOLO=false" >> .env
+            fi
+        fi
+
         echo -e "${BLUE}Skipping Holo container (CPU-only mode)${NC}"
+        echo -e "${YELLOW}  → Applied CPU-only compose overlay (removed Holo dependencies)${NC}"
         echo -e "${YELLOW}  → Set BYTEBOT_CV_USE_HOLO=false in docker/.env${NC}"
     fi
 

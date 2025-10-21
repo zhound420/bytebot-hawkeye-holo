@@ -395,6 +395,12 @@ export class NutService {
   async typeText(text: string, delayMs: number = 0): Promise<void> {
     this.logger.log(`Typing text: ${text}`);
 
+    // Windows-specific: Brief delay to ensure window is ready for keyboard input
+    // Windows needs time after window focus changes for keyboard input queue to be ready
+    if (isWindows()) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     try {
       for (let i = 0; i < text.length; i++) {
         const char = text[i];

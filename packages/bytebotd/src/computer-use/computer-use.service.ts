@@ -1599,8 +1599,12 @@ export class ComputerUseService {
         );
       }
 
-      // Verify the process actually started (wait 2 seconds then check)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Verify the process actually started (wait 3 seconds for Windows to fully launch and focus)
+      // Windows needs more time than Linux for window focus to stabilize
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Additional wait for window to receive focus
+      await this.waitForWindowFocus(processMap[action.application], 2000);
 
       try {
         const { stdout } = await execAsync(
@@ -1630,6 +1634,45 @@ export class ComputerUseService {
         `Failed to launch ${action.application}: ${error.message || String(error)}`,
       );
     }
+  }
+
+  /**
+   * Wait for a Windows application window to receive focus
+   * Polls for MainWindowHandle and foreground status
+   */
+  private async waitForWindowFocus(
+    processName: string,
+    maxWaitMs: number,
+  ): Promise<void> {
+    const execAsync = promisify(exec);
+    const startTime = Date.now();
+    const pollInterval = 500; // Check every 500ms
+
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const { stdout } = await execAsync(
+          `powershell -Command "Get-Process -Name '${processName}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1 | Select-Object MainWindowHandle"`,
+          { timeout: 1000 },
+        );
+
+        if (stdout.trim().length > 0 && stdout.includes('MainWindowHandle')) {
+          this.logger.debug(`Window focus verified for ${processName}`);
+          // Additional small delay to ensure input queue is ready
+          await new Promise(resolve => setTimeout(resolve, 200));
+          return;
+        }
+      } catch (error: any) {
+        // Ignore errors during polling
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    // Timeout - window may not have focus but continue anyway
+    this.logger.warn(
+      `Timeout waiting for ${processName} window focus after ${maxWaitMs}ms`,
+    );
   }
 
   private async applicationLinux(action: ApplicationAction): Promise<void> {

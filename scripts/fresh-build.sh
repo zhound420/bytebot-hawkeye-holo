@@ -839,7 +839,7 @@ if [ -d "node_modules" ]; then
     echo "Cleaning bytebot-cv node_modules for fresh install..."
     rm -rf node_modules
 fi
-npm install --no-save
+env PATH="/usr/bin:/bin:$PATH" npm install --no-save
 npm run build
 echo -e "${GREEN}✓ CV package built${NC}"
 cd ../..

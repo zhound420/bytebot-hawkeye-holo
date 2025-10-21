@@ -159,6 +159,11 @@ if [ -f "$REPO_ROOT/docker/oem/diagnose.ps1" ]; then
     cp "$REPO_ROOT/docker/oem/diagnose.ps1" "$TEMP_BUILD/bytebot/packages/bytebotd/"
 fi
 
+# Copy keyboard diagnostic test script
+if [ -f "$REPO_ROOT/packages/bytebotd/test-keyboard-windows.js" ]; then
+    cp "$REPO_ROOT/packages/bytebotd/test-keyboard-windows.js" "$TEMP_BUILD/bytebot/packages/bytebotd/"
+fi
+
 echo -e "${GREEN}✓ Helper scripts copied${NC}"
 echo ""
 

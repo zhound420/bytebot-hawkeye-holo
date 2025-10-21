@@ -174,6 +174,11 @@ Run Bytebot with **Tiny11 2311** (stripped Windows 11) or **Nano11 25H2** (minim
 - Scheduled task runs as current user on login, not in background Session 0
 - Auto-login configured in Windows container ensures task starts automatically
 
+**Windows Dependencies (Auto-installed):**
+- **Visual C++ Redistributable 2015-2022** - Required for nut.js native addon (.node files)
+- Node.js 20 portable - JavaScript runtime
+- 7za.exe - Fast ZIP extraction (bundled, no download needed)
+
 **BTRFS Filesystem Support:**
 - ✅ Windows containers work directly on BTRFS (no workaround needed)
 - Uses `DISK_IO=threads` and `DISK_CACHE=writeback` to avoid O_DIRECT requirement

@@ -200,6 +200,47 @@ if (Test-Path $SharpPath) {
 
 Write-Log ""
 
+# Step 3.5: Install Visual C++ Redistributable (required for nut.js native addon)
+Write-Log "Step 3.5: Installing Visual C++ Redistributable..."
+
+try {
+    # Check if already installed (registry key check)
+    $VCRedistInstalled = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+
+    if ($VCRedistInstalled -and $VCRedistInstalled.Installed -eq 1) {
+        Write-Log "✓ Visual C++ Redistributable already installed (version $($VCRedistInstalled.Version))" "SUCCESS"
+    } else {
+        Write-Log "Downloading Visual C++ Redistributable 2015-2022 (x64)..."
+        $VCRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        $VCRedistExe = Join-Path $env:TEMP "vc_redist.x64.exe"
+
+        # Download VC++ Redistributable
+        Invoke-WebRequest -Uri $VCRedistUrl -OutFile $VCRedistExe -UseBasicParsing
+        Write-Log "✓ Downloaded Visual C++ Redistributable"
+
+        # Install silently (no restart required)
+        Write-Log "Installing Visual C++ Redistributable (this may take 1-2 minutes)..."
+        $InstallProcess = Start-Process -FilePath $VCRedistExe -ArgumentList "/install", "/quiet", "/norestart" -Wait -NoNewWindow -PassThru
+
+        if ($InstallProcess.ExitCode -eq 0 -or $InstallProcess.ExitCode -eq 3010) {
+            Write-Log "✓ Visual C++ Redistributable installed successfully" "SUCCESS"
+        } elseif ($InstallProcess.ExitCode -eq 1638) {
+            Write-Log "✓ Visual C++ Redistributable already installed (newer version)" "SUCCESS"
+        } else {
+            Write-Log "WARN: Visual C++ Redistributable installation returned exit code $($InstallProcess.ExitCode)" "WARN"
+            Write-Log "nut.js may not work without Visual C++ Redistributable" "WARN"
+        }
+
+        # Clean up
+        Remove-Item $VCRedistExe -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    Write-Log "WARN: Failed to install Visual C++ Redistributable: $_" "WARN"
+    Write-Log "nut.js keyboard/mouse automation may not work" "WARN"
+}
+
+Write-Log ""
+
 # Step 4: Create data directories
 Write-Log "Step 4: Creating data directories..."
 

@@ -187,20 +187,15 @@ rm "$TEMP_CONFIG"
 echo -e "${GREEN}✓ LiteLLM config updated${NC}"
 echo ""
 
-# Update docker/.env file
-ENV_FILE="${PROJECT_ROOT}/docker/.env"
+# Update docker/.env.defaults file (system config - Docker Compose loads both .env.defaults and .env)
+ENV_FILE="${PROJECT_ROOT}/docker/.env.defaults"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo -e "${YELLOW}⚠ docker/.env not found, creating from defaults...${NC}"
-    if [ -f "${PROJECT_ROOT}/docker/.env.defaults" ]; then
-        cp "${PROJECT_ROOT}/docker/.env.defaults" "$ENV_FILE"
-    else
-        echo -e "${RED}✗ docker/.env.defaults not found${NC}"
-        exit 1
-    fi
+    echo -e "${RED}✗ docker/.env.defaults not found${NC}"
+    exit 1
 fi
 
-echo -e "${BLUE}Updating docker/.env...${NC}"
+echo -e "${BLUE}Updating docker/.env.defaults (system configuration)...${NC}"
 
 # Update or add LMSTUDIO variables
 if grep -q "^LMSTUDIO_ENABLED=" "$ENV_FILE"; then
@@ -230,7 +225,7 @@ echo -e "${CYAN}Summary:${NC}"
 echo "  • Server: ${LMSTUDIO_URL}"
 echo "  • Models enabled: ${#SELECTED_MODELS[@]}"
 echo "  • Config: packages/bytebot-llm-proxy/litellm-config.yaml"
-echo "  • Environment: docker/.env"
+echo "  • System config: docker/.env.defaults"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Restart the stack to load new models:"

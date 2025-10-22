@@ -337,27 +337,45 @@ docker logs bytebot-holo | grep -A 5 "GPU Diagnostics"
 
 ### Required Files
 
-1. **docker/.env** - Docker Compose environment
+The system uses a two-file architecture to separate user secrets from system configuration:
+
+1. **docker/.env** (user-managed, gitignored) - API keys only
    ```bash
-   cp docker/.env.defaults docker/.env
+   # Create from template
+   cp docker/.env.example docker/.env
+
    # Edit with your API keys
+   ANTHROPIC_API_KEY=sk-...
+   OPENAI_API_KEY=sk-...
+   GEMINI_API_KEY=...
+   OPENROUTER_API_KEY=sk-...
    ```
 
-2. **docker/.env.defaults** - System defaults (auto-managed by scripts)
+2. **docker/.env.defaults** (script-managed, tracked) - System configuration
+   - Auto-managed by scripts (setup-holo.sh, setup-lmstudio.sh, start-stack.sh)
+   - Contains Holo settings, feature flags, resource limits
+   - **Do not** manually edit unless you know what you're doing
 
-### Key Variables
+Both files are loaded by Docker Compose (`.env.defaults` first, then `.env` overrides).
 
+### Key Variables by File
+
+**docker/.env (API keys - user-managed):**
 ```bash
-# OmniParser Integration
+ANTHROPIC_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=sk-...
+```
+
+**docker/.env.defaults (system config - script-managed):**
+```bash
 BYTEBOT_CV_USE_HOLO=true
 HOLO_URL=http://host.docker.internal:9989  # Apple Silicon
 HOLO_DEVICE=auto  # auto, cuda, mps, cpu
 HOLO_MIN_CONFIDENCE=0.3
-
-# API Keys
-ANTHROPIC_API_KEY=sk-...
-OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=...
+LMSTUDIO_ENABLED=false
+LMSTUDIO_BASE_URL=http://192.168.x.x:1234/v1
 ```
 
 ---

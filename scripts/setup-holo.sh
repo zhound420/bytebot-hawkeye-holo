@@ -229,31 +229,28 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
 
     cd ../..
 
-    # Update docker/.env to point to native Holo
-    if [[ -f "docker/.env" ]]; then
+    # Update docker/.env.defaults to point to native Holo (Docker Compose will load both .env.defaults and .env)
+    if [[ -f "docker/.env.defaults" ]]; then
         echo ""
         echo -e "${BLUE}Configuring Docker to use native Holo 1.5-7B...${NC}"
 
-        # Create backup
-        cp docker/.env docker/.env.backup
-
         # Update URL to point to host
-        if grep -q "HOLO_URL=" docker/.env; then
-            sed -i.bak 's|HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' docker/.env
-            rm docker/.env.bak
+        if grep -q "HOLO_URL=" docker/.env.defaults; then
+            sed -i.bak 's|HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         else
-            echo "HOLO_URL=http://host.docker.internal:9989" >> docker/.env
+            echo "HOLO_URL=http://host.docker.internal:9989" >> docker/.env.defaults
         fi
 
         # Set device to mps
-        if grep -q "HOLO_DEVICE=" docker/.env; then
-            sed -i.bak 's|HOLO_DEVICE=.*|HOLO_DEVICE=mps|' docker/.env
-            rm docker/.env.bak
+        if grep -q "HOLO_DEVICE=" docker/.env.defaults; then
+            sed -i.bak 's|HOLO_DEVICE=.*|HOLO_DEVICE=mps|' docker/.env.defaults
+            rm docker/.env.defaults.bak
         else
-            echo "HOLO_DEVICE=mps" >> docker/.env
+            echo "HOLO_DEVICE=mps" >> docker/.env.defaults
         fi
 
-        echo -e "${GREEN}✓ Docker configuration updated (docker/.env)${NC}"
+        echo -e "${GREEN}✓ Docker system configuration updated (docker/.env.defaults)${NC}"
     fi
 
     echo ""

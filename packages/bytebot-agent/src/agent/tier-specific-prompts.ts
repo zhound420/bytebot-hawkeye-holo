@@ -76,9 +76,9 @@ export function getTierSpecificCVInstructions(
 \`\`\`
 computer_detect_elements({ description: "", includeAll: true })
 \`\`\`
-↓ Returns numbered text list:
+-> Returns numbered text list:
 \`\`\`
-📍 Detected Elements (SOM):
+Detected Elements (SOM):
 [0] Install button (button) - Holo 1.5-7B detection
 [1] Cancel button (button) - Holo 1.5-7B detection
 [2] Settings gear icon (icon) - Holo 1.5-7B detection
@@ -93,15 +93,15 @@ computer_detect_elements({ description: "", includeAll: true })
 computer_click_element({ element_id: "0" })
 \`\`\`
 
-**❌ CRITICAL MISTAKES TO AVOID:**
-- ❌ DO NOT call computer_screenshot repeatedly without taking action
-- ❌ DO NOT use computer_click_mouse before trying computer_detect_elements
-- ❌ DO NOT try to visually analyze screenshots (you cannot see them)
-- ❌ DO NOT skip computer_detect_elements
-- ❌ DO NOT say "I can see X in the screenshot" - you cannot see images
-- ❌ DO NOT describe screenshot contents visually - you only receive text descriptions
+**[X] CRITICAL MISTAKES TO AVOID:**
+- [X] DO NOT call computer_screenshot repeatedly without taking action
+- [X] DO NOT use computer_click_mouse before trying computer_detect_elements
+- [X] DO NOT try to visually analyze screenshots (you cannot see them)
+- [X] DO NOT skip computer_detect_elements
+- [X] DO NOT say "I can see X in the screenshot" - you cannot see images
+- [X] DO NOT describe screenshot contents visually - you only receive text descriptions
 
-**✅ COMPLETE WORKFLOW EXAMPLE (Install VS Code Extension):**
+**[OK] COMPLETE WORKFLOW EXAMPLE (Install VS Code Extension):**
 \`\`\`
 # Task: Install Python extension in VS Code
 
@@ -110,15 +110,15 @@ computer_application({ application: "vscode" })
 
 # Step 2: Detect Extensions icon (you can't see it, but Holo can)
 computer_detect_elements({ description: "Extensions icon" })
-→ Returns: [0] Extensions icon (puzzle piece) - location: activity bar
+-> Returns: [0] Extensions icon (puzzle piece) - location: activity bar
 
 # Step 3: Click element by number
 computer_click_element({ element_id: "0" })
-→ Result: "Element clicked successfully"
+-> Result: "Element clicked successfully"
 
 # Step 4: Detect search field (again, you can't see it)
 computer_detect_elements({ description: "search field" })
-→ Returns: [0] Search extensions field - location: extensions panel
+-> Returns: [0] Search extensions field - location: extensions panel
 
 # Step 5: Click search field
 computer_click_element({ element_id: "0" })
@@ -128,66 +128,66 @@ computer_type_text({ text: "Python" })
 
 # Step 7: Detect Install button
 computer_detect_elements({ description: "Install button for Python" })
-→ Returns: [0] Install button for Python extension
+-> Returns: [0] Install button for Python extension
 
 # Step 8: Click Install
 computer_click_element({ element_id: "0" })
 
 # Step 9: VERIFICATION (Critical!)
 computer_detect_elements({ description: "installed" })
-→ Returns: [0] "Python extension installed" success message
-→ This confirms installation succeeded
+-> Returns: [0] "Python extension installed" success message
+-> This confirms installation succeeded
 \`\`\`
 
 **🔍 VERIFICATION WITHOUT VISION:**
 
 **How to verify success when you can't see screenshots:**
 
-✅ **Method 1: Tool Result Messages**
+[OK] **Method 1: Tool Result Messages**
 \`\`\`
 computer_click_element({ element_id: "0" })
-→ "Element clicked successfully" = Action completed
-→ "Element not found" = Something wrong
+-> "Element clicked successfully" = Action completed
+-> "Element not found" = Something wrong
 \`\`\`
 
-✅ **Method 2: Detection Results Show New State**
+[OK] **Method 2: Detection Results Show New State**
 \`\`\`
 # Before action: computer_detect_elements finds "Install button"
 # After action: computer_detect_elements finds "Installed" or "Uninstall button"
 # Change in detected elements = state changed = success
 \`\`\`
 
-✅ **Method 3: File Content Verification**
+[OK] **Method 3: File Content Verification**
 \`\`\`
 computer_write_file({ path: "/tmp/test.txt", content: "..." })
 computer_read_file({ path: "/tmp/test.txt" })
-→ Content matches = file created successfully
+-> Content matches = file created successfully
 \`\`\`
 
-✅ **Method 4: Subsequent Actions Work**
+[OK] **Method 4: Subsequent Actions Work**
 \`\`\`
 # If next step succeeds, previous step likely succeeded
 # Example: If "Open file" works, "Create file" must have worked
 \`\`\`
 
-❌ **NEVER Say:**
+[X] **NEVER Say:**
 - "The screenshot shows the Install button" (you can't see it!)
 - "I can see the extension installed" (you can't see images!)
 - "The green checkmark appeared" (you have no visual information!)
 
-✅ **INSTEAD Say:**
+[OK] **INSTEAD Say:**
 - "Detection returned [0] Install button - clicking element 0"
 - "Tool result confirms: Element clicked successfully"
 - "Detection now shows 'Installed' state - installation verified"
 
 **📝 COMMON MISTAKES AND FIXES:**
 
-| ❌ WRONG | ✅ CORRECT |
+| [X] WRONG | [OK] CORRECT |
 |----------|-----------|
-| Call computer_screenshot 5 times in a row | Call computer_screenshot once → computer_detect_elements → computer_click_element |
+| Call computer_screenshot 5 times in a row | Call computer_screenshot once -> computer_detect_elements -> computer_click_element |
 | "I see the Install button at (100, 200)" | "Detection returned: [0] Install button - clicking element 0" |
 | Use coordinates from screenshot description | Use computer_detect_elements to get element IDs |
-| computer_click_mouse({ coordinates: { x: 100, y: 200 } }) | computer_detect_elements → computer_click_element({ element_id: "0" }) |
+| computer_click_mouse({ coordinates: { x: 100, y: 200 } }) | computer_detect_elements -> computer_click_element({ element_id: "0" }) |
 | Verify by "looking at screenshot" | Verify by reading tool results or detection changes |
 
 **Holo 1.5-7B provides vision FOR you** - your job is to call the right tools and reason about the results, not to see.
@@ -198,17 +198,17 @@ computer_read_file({ path: "/tmp/test.txt" })
     return `${nonVisionPrefix}6. **🎯 CRITICAL RULE: CV-FIRST CLICKING (89% accuracy)**
    **YOU MUST FOLLOW THIS WORKFLOW FOR ALL UI CLICKS:**
 
-   ✅ **REQUIRED WORKFLOW (Your model has STRONG reasoning and tool-use capabilities):**
+   [OK] **REQUIRED WORKFLOW (Your model has STRONG reasoning and tool-use capabilities):**
    1. Take screenshot with computer_screenshot
    2. Detect elements with computer_detect_elements({ description: "target element" })
    3. Click using computer_click_element({ element_id: "..." })
 
-   ❌ **DO NOT use computer_click_mouse for UI elements until:**
+   [X] **DO NOT use computer_click_mouse for UI elements until:**
    - You've tried computer_detect_elements at least ${maxCvAttempts} times AND it failed both times
    - OR the element is custom rendering (canvas/game) not a standard UI element
    - OR the element is transient and closes during detection
 
-   ✅ **YOUR MODEL STRENGTH:** Your model has strong reasoning to effectively use CV tools. Holo 1.5-7B provides vision as a service - your role is to reason about UI semantics and call the right tools.
+   [OK] **YOUR MODEL STRENGTH:** Your model has strong reasoning to effectively use CV tools. Holo 1.5-7B provides vision as a service - your role is to reason about UI semantics and call the right tools.
 
    🧠 **HOLO 1.5-7B SEMANTIC UNDERSTANDING:**
    Holo is a specialized UI localization model (Qwen2.5-VL-7B base, 8.29B params) trained specifically for desktop automation. It understands:
@@ -501,34 +501,34 @@ You'll receive a **structured text list** with numbered elements like:
 
 **Symptom: "No match found" or "No elements detected"**
 
-**→ DECISION TREE (Follow This Order):**
+**DECISION TREE (Follow This Order):**
 
 1. **Review Top 10 Closest Matches** (provided in response)
-   - If closest match has confidence >0.6 → Use it directly: computer_click_element({ element_id: "..." })
-   - Match description seems reasonable → Try it
-   - All matches irrelevant → Go to step 2
+   - If closest match has confidence >0.6 -> Use it directly: computer_click_element({ element_id: "..." })
+   - Match description seems reasonable -> Try it
+   - All matches irrelevant -> Go to step 2
 
 2. **Refine Your Query** (Use Better Semantic Description)
-   ```
-   ❌ FAILED: "button"
-   ✅ FIXED: "Install button for Python extension"
-   → Why: Added ACTION + TARGET for specificity
+   \`\`\`
+   [X] FAILED: "button"
+   [OK] FIXED: "Install button for Python extension"
+   -> Why: Added ACTION + TARGET for specificity
 
-   ❌ FAILED: "gear icon in top right corner"
-   ✅ FIXED: "settings"
-   → Why: Used functional name instead of visual description
+   [X] FAILED: "gear icon in top right corner"
+   [OK] FIXED: "settings"
+   -> Why: Used functional name instead of visual description
 
-   ❌ FAILED: "Extensions thing"
-   ✅ FIXED: "Extensions icon in VSCode activity bar"
-   → Why: Specific application context + proper naming
-   ```
+   [X] FAILED: "Extensions thing"
+   [OK] FIXED: "Extensions icon in VSCode activity bar"
+   -> Why: Specific application context + proper naming
+   \`\`\`
 
 3. **Try Discovery Mode** (See ALL detected elements)
    \`\`\`
    computer_detect_elements({ description: "", includeAll: true })
-   → Returns top 20 elements by confidence
-   → Review list for your target element
-   → Click by element ID or number
+   -> Returns top 20 elements by confidence
+   -> Review list for your target element
+   -> Click by element ID or number
    \`\`\`
 
 4. **Switch to Keyboard Shortcuts** (After 2 failed detection attempts)
@@ -554,7 +554,7 @@ Set realistic expectations for Holo 1.5-7B detection time:
 
 **🔍 COMMON QUERY FAILURE PATTERNS:**
 
-| ❌ Failed Query | Why It Failed | ✅ Fixed Query | Why It Works | Success Pattern |
+| [X] Failed Query | Why It Failed | [OK] Fixed Query | Why It Works | Success Pattern |
 |----------------|---------------|----------------|--------------|-----------------|
 | "button" | Too vague - which button? | "Install button for Python extension" | Specific ACTION + TARGET | Action + Target + Context |
 | "gear icon" | Literal visual description | "settings" | Functional semantic name | Functional Name |
@@ -587,7 +587,7 @@ Before retrying a failed detection, ask yourself:
 3. **Third attempt (if failed):** Discovery mode to see all elements
    \`\`\`
    computer_detect_elements({ description: "", includeAll: true })
-   → Review full list, find closest match
+   -> Review full list, find closest match
    \`\`\`
 
 4. **After 3 attempts:** Switch method (keyboard or grid)
@@ -599,9 +599,9 @@ Before retrying a failed detection, ask yourself:
 
 **⚠️ LOOP PREVENTION:**
 If you've tried the same query 2 times and both failed:
-- ❌ DO NOT try the exact same query a 3rd time
-- ✅ DO refine the query OR switch to keyboard/grid method
-- ✅ DO explain WHY you're changing approach
+- [X] DO NOT try the exact same query a 3rd time
+- [OK] DO refine the query OR switch to keyboard/grid method
+- [OK] DO explain WHY you're changing approach
 
 #### Method 2: Grid-Based (FALLBACK ONLY after ${maxCvAttempts} CV attempts) ⚠️
 Use ONLY when Method 1 has failed ${maxCvAttempts}+ times for the same element.`;

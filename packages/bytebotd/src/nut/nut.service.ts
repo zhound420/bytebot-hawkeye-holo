@@ -489,18 +489,18 @@ export class NutService {
   private async pasteTextWindows(text: string): Promise<void> {
     const execAsync = promisify(exec);
 
-    // Escape text for PowerShell - use here-string to handle special characters
-    // Replace single quotes with two single quotes for PowerShell escaping
-    const escapedText = text.replace(/'/g, "''");
-    const command = `powershell -Command "Set-Clipboard -Value @'\n${escapedText}\n'@"`;
+    // Use Base64 encoding to handle ALL special characters reliably
+    // This avoids PowerShell escaping issues with quotes, newlines, here-string terminators, etc.
+    const base64Text = Buffer.from(text, 'utf-8').toString('base64');
+    const command = `powershell -Command "[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${base64Text}')) | Set-Clipboard"`;
 
     this.logger.log(
-      `[KEYBOARD] Windows clipboard: Setting ${text.length} chars via PowerShell`,
+      `[KEYBOARD] Windows clipboard: Setting ${text.length} chars via PowerShell (Base64)`,
     );
-    this.logger.debug(`[KEYBOARD] PowerShell command: ${command.substring(0, 200)}...`);
+    this.logger.debug(`[KEYBOARD] PowerShell command length: ${command.length} bytes`);
 
     try {
-      // Use PowerShell Set-Clipboard with here-string for reliable handling
+      // Use PowerShell Set-Clipboard with Base64 encoding for 100% reliability
       const { stdout, stderr } = await execAsync(command, { timeout: 5000 });
 
       if (stderr) {

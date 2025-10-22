@@ -35,7 +35,7 @@ const logger = new Logger('MessageTransformer');
  * // Now transformed messages have no Image blocks, only Text descriptions
  */
 export function transformImagesForNonVision(messages: Message[]): Message[] {
-  logger.debug(`Transforming ${messages.length} messages for non-vision model`);
+  logger.log(`📝 NON-VISION MODEL: Transforming images to text descriptions for ${messages.length} messages`);
 
   let imageCount = 0;
   let transformedCount = 0;
@@ -107,9 +107,14 @@ export function transformImagesForNonVision(messages: Message[]): Message[] {
     };
   });
 
-  logger.log(
-    `Transformed ${transformedCount} image blocks in ${messages.length} messages for non-vision model`,
-  );
+  if (transformedCount > 0) {
+    logger.log(
+      `📝 NON-VISION MODEL: ✓ Transformed ${transformedCount} image block(s) to text descriptions. ` +
+      `Model will receive text like "[Screenshot captured at HH:MM:SS...]" instead of actual images.`,
+    );
+  } else {
+    logger.debug(`📝 NON-VISION MODEL: No images to transform in ${messages.length} messages`);
+  }
 
   return transformedMessages;
 }

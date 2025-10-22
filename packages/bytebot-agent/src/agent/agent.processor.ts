@@ -73,7 +73,7 @@ import {
   SUMMARIZATION_SYSTEM_PROMPT,
   buildAgentSystemPrompt,
 } from './agent.constants';
-import { buildTierSpecificAgentSystemPrompt } from './tier-specific-prompts';
+import { buildTierSpecificAgentSystemPrompt, buildTierSpecificDirectVisionPrompt } from './tier-specific-prompts';
 import { buildLMStudioSystemPrompt } from './lmstudio-prompts';
 import { supportsVision } from './vision-capability.util';
 import { SummariesService } from '../summaries/summaries.service';
@@ -1423,7 +1423,14 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
       this.currentModelName = model.name;
       this.currentModel = model; // Store full model for vision capability checks
       const modelTier = this.modelCapabilityService.getModelTier(model.name);
+      const hasVision = supportsVision(model);
       this.logger.debug(`Processing task with model: ${model.name} (tier: ${modelTier})`);
+      this.logger.log(
+        `Task ${task.id}: Model Capabilities - ` +
+        `Vision: ${hasVision ? '👁️  YES (can see images)' : '📝 NO (text-only, images will be converted to descriptions)'} | ` +
+        `Provider: ${model.provider} | ` +
+        `Tier: ${modelTier}`,
+      );
 
       let agentResponse: BytebotAgentResponse;
 
@@ -1472,9 +1479,16 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
           `Task ${task.id}: Using SIMPLIFIED PROMPT for LMStudio model (local model optimization)`,
         );
       } else if (effectiveDirectVisionMode) {
-        // Commercial vision models in direct vision mode
-        systemPrompt = buildAgentSystemPrompt(currentDate, currentTime, timeZone, true);
-        promptType = 'Direct Vision';
+        // Commercial vision models in direct vision mode (tier-aware)
+        systemPrompt = buildTierSpecificDirectVisionPrompt(
+          rules.tier,
+          currentDate,
+          currentTime,
+          timeZone,
+          supportsVision(model),
+          model.name || 'unknown',
+        );
+        promptType = `Tier ${rules.tier} Direct Vision`;
       } else {
         // Default: tier-specific CV-first prompt for commercial models
         systemPrompt = buildTierSpecificAgentSystemPrompt(

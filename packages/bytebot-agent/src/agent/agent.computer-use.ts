@@ -1182,7 +1182,7 @@ async function typeKeys(input: {
   console.log(`Typing keys: ${keys}`);
 
   try {
-    await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1191,6 +1191,13 @@ async function typeKeys(input: {
         delay,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `type_keys failed (${response.status}): ${errorText}`,
+      );
+    }
   } catch (error) {
     console.error('Error in type_keys action:', error);
     throw error;
@@ -1205,7 +1212,7 @@ async function pressKeys(input: {
   console.log(`Pressing keys: ${keys}`);
 
   try {
-    await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1214,6 +1221,13 @@ async function pressKeys(input: {
         press,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `press_keys failed (${response.status}): ${errorText}`,
+      );
+    }
   } catch (error) {
     console.error('Error in press_keys action:', error);
     throw error;
@@ -1228,7 +1242,7 @@ async function typeText(input: {
   console.log(`Typing text: ${text}`);
 
   try {
-    await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1237,6 +1251,13 @@ async function typeText(input: {
         delay,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `type_text failed (${response.status}): ${errorText}`,
+      );
+    }
   } catch (error) {
     console.error('Error in type_text action:', error);
     throw error;
@@ -1248,7 +1269,7 @@ async function pasteText(input: { text: string }): Promise<void> {
   console.log(`Pasting text: ${text}`);
 
   try {
-    await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
+    const response = await fetch(`${BYTEBOT_DESKTOP_BASE_URL}/computer-use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1256,6 +1277,13 @@ async function pasteText(input: { text: string }): Promise<void> {
         text,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `paste_text failed (${response.status}): ${errorText}`,
+      );
+    }
   } catch (error) {
     console.error('Error in paste_text action:', error);
     throw error;

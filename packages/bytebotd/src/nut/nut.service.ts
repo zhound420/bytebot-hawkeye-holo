@@ -404,10 +404,13 @@ export class NutService {
    * @param delayMs Delay between keypresses in ms.
    */
   async typeText(text: string, delayMs: number = 0): Promise<void> {
-    this.logger.log(`Typing text: ${text}`);
+    this.logger.log(
+      `[KEYBOARD] Starting typeText: "${text.substring(0, 100)}..." (${text.length} chars)`,
+    );
 
     // Windows-specific: Brief delay to ensure window is ready for keyboard input
     if (isWindows()) {
+      this.logger.log('[KEYBOARD] Windows detected - applying 500ms pre-delay');
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
@@ -421,6 +424,9 @@ export class NutService {
         }
         const keyInfo = this.charToKeyInfo(char);
         if (keyInfo) {
+          this.logger.debug(
+            `[KEYBOARD] Typing char ${i + 1}/${text.length}: "${char}" (withShift: ${keyInfo.withShift})`,
+          );
           if (keyInfo.withShift) {
             // Hold shift key, press the character key, and release shift key
             await keyboard.pressKey(Key.LeftShift, keyInfo.keyCode);
@@ -435,11 +441,20 @@ export class NutService {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
           }
         } else {
+          this.logger.error(
+            `[KEYBOARD] No key mapping for char: "${char}" (code: ${char.charCodeAt(0)})`,
+          );
           throw new Error(`No key mapping found for character: ${char}`);
         }
       }
+      this.logger.log(
+        `[KEYBOARD] Successfully typed ${text.length} characters`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to type text: ${error.message}`);
+      this.logger.error(
+        `[KEYBOARD] FAILED to type text: ${error.message}`,
+        error.stack,
+      );
       throw new Error(`Failed to type text: ${error.message}`);
     }
   }
@@ -477,16 +492,36 @@ export class NutService {
     // Escape text for PowerShell - use here-string to handle special characters
     // Replace single quotes with two single quotes for PowerShell escaping
     const escapedText = text.replace(/'/g, "''");
+    const command = `powershell -Command "Set-Clipboard -Value @'\n${escapedText}\n'@"`;
+
+    this.logger.log(
+      `[KEYBOARD] Windows clipboard: Setting ${text.length} chars via PowerShell`,
+    );
+    this.logger.debug(`[KEYBOARD] PowerShell command: ${command.substring(0, 200)}...`);
 
     try {
       // Use PowerShell Set-Clipboard with here-string for reliable handling
-      await execAsync(
-        `powershell -Command "Set-Clipboard -Value @'\n${escapedText}\n'@"`,
-        { timeout: 5000 }
-      );
-      this.logger.debug('Windows clipboard set successfully');
+      const { stdout, stderr } = await execAsync(command, { timeout: 5000 });
+
+      if (stderr) {
+        this.logger.warn(`[KEYBOARD] PowerShell stderr: ${stderr}`);
+      }
+      if (stdout) {
+        this.logger.debug(`[KEYBOARD] PowerShell stdout: ${stdout}`);
+      }
+
+      this.logger.log('[KEYBOARD] Windows clipboard set successfully');
     } catch (error) {
-      this.logger.error(`Failed to set Windows clipboard: ${error.message}`);
+      this.logger.error(
+        `[KEYBOARD] FAILED to set Windows clipboard: ${error.message}`,
+        error.stack,
+      );
+      if (error.stderr) {
+        this.logger.error(`[KEYBOARD] PowerShell stderr: ${error.stderr}`);
+      }
+      if (error.stdout) {
+        this.logger.error(`[KEYBOARD] PowerShell stdout: ${error.stdout}`);
+      }
       throw error;
     }
   }

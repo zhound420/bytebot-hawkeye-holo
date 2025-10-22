@@ -5,6 +5,9 @@ services:
   # Uses stripped Windows 11 (Tiny11) for faster install and lower resource usage
   # Pre-baked image provides 96% faster startup (30-60s vs 8-15 min)
   bytebot-windows:
+    env_file:
+      - .env.defaults
+      - .env
     image: bytebot-windows-prebaked:latest
     container_name: bytebot-windows
     privileged: true
@@ -56,7 +59,7 @@ services:
       # fresh-build.sh/start-stack.sh automatically enables this mount if ISO exists in iso-cache/
       # To manually download: ./scripts/download-windows-iso.sh (choose Tiny11 or Nano11)
       # This line will be auto-updated with the actual ISO filename during script execution
-      # - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
+      - ./iso-cache/tiny11-2311-x64.iso:/custom.iso:ro
 
     networks:
       - bytebot-network
@@ -73,6 +76,9 @@ services:
 
   # Holo 1.5-7B service for UI element detection
   bytebot-holo:
+    env_file:
+      - .env.defaults
+      - .env
     image: bytebot-holo:latest
     container_name: bytebot-holo
     build:
@@ -102,6 +108,9 @@ services:
 
   # PostgreSQL database for agent state
   postgres:
+    env_file:
+      - .env.defaults
+      - .env
     image: postgres:15-alpine
     container_name: bytebot-postgres
     environment:
@@ -120,6 +129,9 @@ services:
 
   # Bytebot Agent (orchestrates AI tasks)
   bytebot-agent:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ..
       dockerfile: packages/bytebot-agent/Dockerfile
@@ -150,6 +162,9 @@ services:
 
   # Bytebot UI (web frontend)
   bytebot-ui:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ..
       dockerfile: packages/bytebot-ui/Dockerfile
@@ -173,6 +188,9 @@ services:
 
   # LiteLLM Proxy for multi-provider model routing
   bytebot-llm-proxy:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ../packages/
       dockerfile: bytebot-llm-proxy/Dockerfile

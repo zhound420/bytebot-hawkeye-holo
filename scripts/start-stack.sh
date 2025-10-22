@@ -810,18 +810,6 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
             rm .env.defaults.bak
         fi
 
-        # Copy Holo settings from .env.defaults to .env (Docker Compose reads .env)
-        if [ -f ".env" ]; then
-            echo -e "${BLUE}Syncing Holo settings to .env...${NC}"
-            # Update or add HOLO_URL in .env
-            if grep -q "^HOLO_URL=" .env; then
-                sed -i.bak 's|^HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' .env
-                rm .env.bak
-            else
-                echo "HOLO_URL=http://host.docker.internal:9989" >> .env
-            fi
-        fi
-
         echo ""
         echo -e "${BLUE}Starting Docker stack (without Holo container)...${NC}"
 
@@ -861,17 +849,6 @@ if [[ "$ARCH" == "arm64" ]] && [[ "$OS" == "Darwin" ]]; then
         if grep -q "HOLO_URL=http://bytebot-holo:9989" .env.defaults 2>/dev/null; then
             sed -i.bak 's|HOLO_URL=http://bytebot-holo:9989|HOLO_URL=http://host.docker.internal:9989|' .env.defaults
             rm .env.defaults.bak
-        fi
-
-        # Copy Holo settings from .env.defaults to .env (Docker Compose reads .env)
-        if [ -f ".env" ]; then
-            # Update or add HOLO_URL in .env
-            if grep -q "^HOLO_URL=" .env; then
-                sed -i.bak 's|^HOLO_URL=.*|HOLO_URL=http://host.docker.internal:9989|' .env
-                rm .env.bak
-            else
-                echo "HOLO_URL=http://host.docker.internal:9989" >> .env
-            fi
         fi
 
         # Start stack without container
@@ -921,19 +898,19 @@ elif [[ "$ARCH" == "x86_64" ]] || [[ "$ARCH" == "amd64" ]]; then
         # Apply CPU-only compose overlay (removes Holo dependencies)
         COMPOSE_FILES+=("-f" "docker-compose.cpu-only.yml")
 
-        # Persist setting to docker/.env
-        if [ -f ".env" ]; then
-            if grep -q "^BYTEBOT_CV_USE_HOLO=" .env; then
-                sed -i.bak 's|^BYTEBOT_CV_USE_HOLO=.*|BYTEBOT_CV_USE_HOLO=false|' .env
-                rm .env.bak
+        # Persist setting to docker/.env.defaults (Docker Compose will load both .env.defaults and .env)
+        if [ -f ".env.defaults" ]; then
+            if grep -q "^BYTEBOT_CV_USE_HOLO=" .env.defaults; then
+                sed -i.bak 's|^BYTEBOT_CV_USE_HOLO=.*|BYTEBOT_CV_USE_HOLO=false|' .env.defaults
+                rm .env.defaults.bak
             else
-                echo "BYTEBOT_CV_USE_HOLO=false" >> .env
+                echo "BYTEBOT_CV_USE_HOLO=false" >> .env.defaults
             fi
         fi
 
         echo -e "${BLUE}Skipping Holo container (CPU-only mode)${NC}"
         echo -e "${YELLOW}  → Applied CPU-only compose overlay (removed Holo dependencies)${NC}"
-        echo -e "${YELLOW}  → Set BYTEBOT_CV_USE_HOLO=false in docker/.env${NC}"
+        echo -e "${YELLOW}  → Set BYTEBOT_CV_USE_HOLO=false in docker/.env.defaults${NC}"
     fi
 
     if [[ "$HAS_GPU" == "true" ]]; then

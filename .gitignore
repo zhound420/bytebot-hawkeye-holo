@@ -203,3 +203,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Windows container pre-built artifacts (copied to /oem mount)
 docker/oem/artifacts/
+
+# Docker environment files (API keys)
+# Note: .env.defaults is tracked (system config), .env is NOT tracked (API keys)
+docker/.env

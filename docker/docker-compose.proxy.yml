@@ -2,6 +2,9 @@ name: bytebot
 
 services:
   bytebot-desktop:
+    env_file:
+      - .env.defaults
+      - .env
     # Build from source by default; override BYTEBOT_DESKTOP_IMAGE to use a registry image
     build:
       context: ..
@@ -47,6 +50,9 @@ services:
       - bytebot-network
 
   postgres:
+    env_file:
+      - .env.defaults
+      - .env
     image: ${BYTEBOT_POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: bytebot-postgres
     restart: unless-stopped
@@ -62,6 +68,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   bytebot-agent:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ..
       dockerfile: packages/bytebot-agent/Dockerfile
@@ -99,6 +108,9 @@ services:
       - bytebot-network
 
   bytebot-llm-proxy:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ../packages/
       dockerfile: bytebot-llm-proxy/Dockerfile
@@ -117,6 +129,9 @@ services:
       - bytebot-network
 
   bytebot-ui:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ..
       dockerfile: packages/bytebot-ui/Dockerfile
@@ -139,6 +154,9 @@ services:
       - bytebot-network
 
   bytebot-holo:
+    env_file:
+      - .env.defaults
+      - .env
     build:
       context: ../packages/bytebot-holo
       dockerfile: Dockerfile

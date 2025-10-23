@@ -1,5 +1,33 @@
 model_list:
-  # Anthropic Claude models (as of January 2025)
+  # Anthropic Claude models (as of October 2025)
+  # Claude 4.5 series (latest)
+  - model_name: claude-sonnet-4.5
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5-20250929
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: claude-haiku-4.5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251015
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
+  # Claude 4.1 series
+  - model_name: claude-opus-4.1
+    litellm_params:
+      model: anthropic/claude-opus-4-1-20250801
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
+  # Claude 4 series
+  - model_name: claude-sonnet-4
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250629
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: true
+  # Claude 3.5 series (October 2024)
   - model_name: claude-3.5-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
@@ -12,6 +40,7 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: false
+  # Claude 3 series (early 2024)
   - model_name: claude-3-opus
     litellm_params:
       model: anthropic/claude-3-opus-20240229
@@ -145,7 +174,27 @@ model_list:
       vertex_location: os.environ/VERTEX_LOCATION
     model_info:
       supports_vision: true
-  # Google Gemini models (as of January 2025)
+  # Google Gemini models (as of March 2025+)
+  # Gemini 2.5 series (latest)
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro-exp
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gemini-2.5-flash-lite
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  # Gemini 2.0 series (January 2025)
   - model_name: gemini-2.0-flash-exp
     litellm_params:
       model: gemini/gemini-2.0-flash-exp
@@ -158,6 +207,13 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
     model_info:
       supports_vision: true
+  - model_name: gemini-computer-use
+    litellm_params:
+      model: gemini/gemini-2.0-flash-exp-cu-12-17
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  # Gemini 1.5 series (stable)
   - model_name: gemini-1.5-pro
     litellm_params:
       model: gemini/gemini-1.5-pro-latest

@@ -225,33 +225,36 @@ export class TasksController {
       }
     }
 
-    // 2. Fetch OpenAI models dynamically (if API key set)
-    // Add direct OpenAI models if API key is set, regardless of proxy URL
-    if (openaiApiKey) {
-      try {
-        const openaiModels = await this.openaiService.listModels();
-        allModels.push(...openaiModels);
-        this.logger.log(`Fetched ${openaiModels.length} OpenAI models dynamically (direct API)`);
-      } catch (error) {
-        this.logger.warn(`OpenAI models unavailable: ${error.message}`);
-        // Fallback to hardcoded list
-        allModels.push(...OPENAI_MODELS);
+    // 2. Only fetch from direct APIs if NOT using proxy (to avoid duplicates)
+    // If proxy is configured, all models (Anthropic, OpenAI, Google, OpenRouter) come from proxy
+    // If no proxy, fetch from direct provider APIs
+    if (!proxyUrl) {
+      // Fetch OpenAI models dynamically (if API key set)
+      if (openaiApiKey) {
+        try {
+          const openaiModels = await this.openaiService.listModels();
+          allModels.push(...openaiModels);
+          this.logger.log(`Fetched ${openaiModels.length} OpenAI models dynamically (direct API)`);
+        } catch (error) {
+          this.logger.warn(`OpenAI models unavailable: ${error.message}`);
+          // Fallback to hardcoded list
+          allModels.push(...OPENAI_MODELS);
+        }
       }
-    }
 
-    // 3. Add Anthropic models (hardcoded, curated list - no dynamic API available)
-    // Add direct Anthropic models if API key is set, regardless of proxy URL
-    // This allows both direct API (AnthropicService) and proxy (LiteLLM) paths to work
-    if (anthropicApiKey) {
-      allModels.push(...ANTHROPIC_MODELS);
-      this.logger.log(`Added ${ANTHROPIC_MODELS.length} Anthropic models from curated list (direct API)`);
-    }
+      // Add Anthropic models (hardcoded, curated list - no dynamic API available)
+      if (anthropicApiKey) {
+        allModels.push(...ANTHROPIC_MODELS);
+        this.logger.log(`Added ${ANTHROPIC_MODELS.length} Anthropic models from curated list (direct API)`);
+      }
 
-    // 4. Add Google Gemini models (hardcoded - could add dynamic fetching later)
-    // Add direct Google models if API key is set, regardless of proxy URL
-    if (geminiApiKey) {
-      allModels.push(...GOOGLE_MODELS);
-      this.logger.log(`Added ${GOOGLE_MODELS.length} Google models from curated list (direct API)`);
+      // Add Google Gemini models (hardcoded list)
+      if (geminiApiKey) {
+        allModels.push(...GOOGLE_MODELS);
+        this.logger.log(`Added ${GOOGLE_MODELS.length} Google models from curated list (direct API)`);
+      }
+    } else {
+      this.logger.log('Using proxy for all models - skipping direct API fetching to avoid duplicates');
     }
 
     // If no models found at all, return fallback hardcoded lists

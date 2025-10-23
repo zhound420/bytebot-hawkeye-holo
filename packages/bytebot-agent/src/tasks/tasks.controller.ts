@@ -35,15 +35,21 @@ type AgentTelemetrySessionInfo = {
   sessionDurationMs: number | null;
 };
 
-const geminiApiKey = process.env.GEMINI_API_KEY;
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const openaiApiKey = process.env.OPENAI_API_KEY;
+/**
+ * Get fallback model list based on current API key availability
+ * Called fresh each time to ensure API keys are checked dynamically
+ */
+function getFallbackModels(): BytebotAgentModel[] {
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
 
-const models = [
-  ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
-  ...(openaiApiKey ? OPENAI_MODELS : []),
-  ...(geminiApiKey ? GOOGLE_MODELS : []),
-];
+  return [
+    ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
+    ...(openaiApiKey ? OPENAI_MODELS : []),
+    ...(geminiApiKey ? GOOGLE_MODELS : []),
+  ];
+}
 
 @Controller('tasks')
 export class TasksController {
@@ -86,6 +92,11 @@ export class TasksController {
   @Get('models')
   async getModels() {
     const allModels: BytebotAgentModel[] = [];
+
+    // Check API key availability dynamically (not at module load time)
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
 
     // 1. Try LiteLLM proxy first (includes LMStudio and other proxy models)
     const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
@@ -162,22 +173,16 @@ export class TasksController {
           const apiBase = model.litellm_params?.api_base?.toLowerCase() || '';
           const baseModel = model.model_info?.base_model?.toLowerCase() || '';
 
-          // Detect LMStudio (local models)
+          // Detect LMStudio (local models) and OpenRouter - these need special routing
+          // All other models from LiteLLM proxy will keep provider = 'proxy' for correct routing
           if (baseModel === 'lmstudio' || apiBase.includes('lmstudio') || model.model_name?.startsWith('local-')) {
             provider = 'lmstudio';
           }
-          // Detect OpenRouter
           else if (modelName.includes('openrouter/') || apiBase.includes('openrouter.ai')) {
             provider = 'openrouter';
           }
-          // Detect direct providers
-          else if (modelName.includes('anthropic/')) {
-            provider = 'anthropic';
-          } else if (modelName.includes('openai/') || modelName.includes('gpt-')) {
-            provider = 'openai';
-          } else if (modelName.includes('gemini/') || modelName.includes('vertex_ai/')) {
-            provider = 'google';
-          }
+          // All Anthropic, OpenAI, Google models from LiteLLM stay as provider='proxy'
+          // This ensures they are routed to ProxyService, not direct provider services
 
           // Detect advanced feature support
           const supportsPromptCaching = modelName.includes('anthropic/claude');
@@ -193,7 +198,7 @@ export class TasksController {
 
           return {
             provider,
-            name: model.litellm_params.model,
+            name: model.model_name,
             title: model.model_name,
             contextWindow,
             supportsVision,
@@ -244,7 +249,7 @@ export class TasksController {
     // If no models found at all, return fallback hardcoded lists
     if (allModels.length === 0) {
       this.logger.warn('No models available from any source, using fallback lists');
-      return models; // Return original hardcoded models constant
+      return getFallbackModels(); // Return dynamically evaluated fallback based on current API keys
     }
 
     return allModels;

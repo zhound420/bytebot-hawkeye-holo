@@ -64,9 +64,8 @@ export class ProxyService implements BytebotAgentService {
     modelMetadata: BytebotAgentModel,
     tier: ModelTier,
   ): 'low' | 'medium' | 'high' | undefined {
-    // Only send reasoning_effort if model explicitly supports it
-    // Note: OpenAI's API rejects this parameter for o1-mini despite LiteLLM metadata claiming support
-    // Disabled until we verify which models actually support it
+    // Check if model explicitly supports reasoning effort via metadata
+    // This can be set in litellm-config.yaml: supports_reasoning_effort: true
     if (!modelMetadata.supportsReasoningEffort) {
       return undefined;
     }
@@ -482,21 +481,59 @@ export class ProxyService implements BytebotAgentService {
               `Tool call: ${toolCall.function.name}, raw args: ${toolCall.function.arguments}`,
             );
 
-            // Handle Anthropic-style tool calls: {name: "tool", input: {...}}
-            // Some models (like openai-gpt-oss-20b) generate this format
-            // We need to unwrap the nested 'input' field
-            if (parsedInput.name && parsedInput.input && typeof parsedInput.input === 'object') {
-              this.logger.debug(
-                `Detected Anthropic-style tool call for ${toolCall.function.name}`,
+            // Handle Anthropic-style tool calls with nested wrapper structures
+            // Some LM Studio models generate: {name: "tool", input: {...}}
+            // Or variations: {name: "tool", parameters: {...}}, {arguments: {...}}
+            let unwrapAttempts = 0;
+            const maxUnwrapDepth = 3; // Prevent infinite loops
+
+            while (unwrapAttempts < maxUnwrapDepth) {
+              let didUnwrap = false;
+
+              // Pattern 1: {name: "tool", input: {...}}
+              if (parsedInput.name && parsedInput.input && typeof parsedInput.input === 'object') {
+                this.logger.debug(
+                  `[Unwrap ${unwrapAttempts + 1}] Detected Anthropic-style tool call (input field) for ${toolCall.function.name}`,
+                );
+                this.logger.debug(`Before unwrap: ${JSON.stringify(parsedInput)}`);
+                parsedInput = parsedInput.input;
+                this.logger.debug(`After unwrap: ${JSON.stringify(parsedInput)}`);
+                didUnwrap = true;
+              }
+              // Pattern 2: {name: "tool", parameters: {...}}
+              else if (parsedInput.name && parsedInput.parameters && typeof parsedInput.parameters === 'object') {
+                this.logger.debug(
+                  `[Unwrap ${unwrapAttempts + 1}] Detected wrapped tool call (parameters field) for ${toolCall.function.name}`,
+                );
+                parsedInput = parsedInput.parameters;
+                didUnwrap = true;
+              }
+              // Pattern 3: {arguments: {...}} (nested arguments)
+              else if (parsedInput.arguments && typeof parsedInput.arguments === 'object' && !Array.isArray(parsedInput.arguments)) {
+                this.logger.debug(
+                  `[Unwrap ${unwrapAttempts + 1}] Detected nested arguments for ${toolCall.function.name}`,
+                );
+                parsedInput = parsedInput.arguments;
+                didUnwrap = true;
+              }
+
+              if (!didUnwrap) {
+                break; // No more unwrapping needed
+              }
+
+              unwrapAttempts++;
+            }
+
+            if (unwrapAttempts >= maxUnwrapDepth) {
+              this.logger.warn(
+                `Reached max unwrap depth (${maxUnwrapDepth}) for tool ${toolCall.function.name} - possible malformed structure`,
               );
-              this.logger.debug(`Before unwrap: ${JSON.stringify(parsedInput)}`);
-              parsedInput = parsedInput.input;
-              this.logger.debug(`After unwrap: ${JSON.stringify(parsedInput)}`);
             }
           } catch (e) {
             this.logger.warn(
-              `Failed to parse tool call arguments: ${toolCall.function.arguments}`,
+              `Failed to parse tool call arguments for ${toolCall.function.name}: ${toolCall.function.arguments}`,
             );
+            this.logger.error(`Parse error: ${e.message}`);
             parsedInput = {};
           }
 

@@ -186,9 +186,13 @@ export class TasksController {
 
           // Detect advanced feature support
           const supportsPromptCaching = modelName.includes('anthropic/claude');
-          // Note: OpenAI's API rejects reasoning_effort for o-series models despite LiteLLM metadata claiming support
-          // Disabled until verified which models actually support it
-          const supportsReasoningEffort = false;
+
+          // Reasoning effort support - check metadata from litellm-config.yaml
+          // Can be set via: litellm_params.supports_reasoning_effort: true
+          // or model_info.supports_reasoning_effort: true
+          const supportsReasoningEffort =
+            model.litellm_params?.supports_reasoning_effort === true ||
+            model.model_info?.supports_reasoning_effort === true;
 
           // Extract function calling support from litellm config
           const supportsToolCalling =
@@ -221,12 +225,13 @@ export class TasksController {
       }
     }
 
-    // 2. Fetch OpenAI models dynamically (if API key set and proxy not used)
-    if (!proxyUrl && openaiApiKey) {
+    // 2. Fetch OpenAI models dynamically (if API key set)
+    // Add direct OpenAI models if API key is set, regardless of proxy URL
+    if (openaiApiKey) {
       try {
         const openaiModels = await this.openaiService.listModels();
         allModels.push(...openaiModels);
-        this.logger.log(`Fetched ${openaiModels.length} OpenAI models dynamically`);
+        this.logger.log(`Fetched ${openaiModels.length} OpenAI models dynamically (direct API)`);
       } catch (error) {
         this.logger.warn(`OpenAI models unavailable: ${error.message}`);
         // Fallback to hardcoded list
@@ -235,15 +240,18 @@ export class TasksController {
     }
 
     // 3. Add Anthropic models (hardcoded, curated list - no dynamic API available)
-    if (!proxyUrl && anthropicApiKey) {
+    // Add direct Anthropic models if API key is set, regardless of proxy URL
+    // This allows both direct API (AnthropicService) and proxy (LiteLLM) paths to work
+    if (anthropicApiKey) {
       allModels.push(...ANTHROPIC_MODELS);
-      this.logger.log(`Added ${ANTHROPIC_MODELS.length} Anthropic models from curated list`);
+      this.logger.log(`Added ${ANTHROPIC_MODELS.length} Anthropic models from curated list (direct API)`);
     }
 
     // 4. Add Google Gemini models (hardcoded - could add dynamic fetching later)
-    if (!proxyUrl && geminiApiKey) {
+    // Add direct Google models if API key is set, regardless of proxy URL
+    if (geminiApiKey) {
       allModels.push(...GOOGLE_MODELS);
-      this.logger.log(`Added ${GOOGLE_MODELS.length} Google models from curated list`);
+      this.logger.log(`Added ${GOOGLE_MODELS.length} Google models from curated list (direct API)`);
     }
 
     // If no models found at all, return fallback hardcoded lists

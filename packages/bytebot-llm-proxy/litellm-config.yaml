@@ -1,50 +1,61 @@
 model_list:
-  - model_name: claude-opus-4
+  # Anthropic Claude models (as of January 2025)
+  - model_name: claude-3.5-sonnet
     litellm_params:
-      model: anthropic/claude-opus-4-20250514
+      model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
-  - model_name: claude-sonnet-4
+  - model_name: claude-3.5-haiku
     litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_vision: false
+  - model_name: claude-3-opus
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
-  - model_name: claude-4.1
+  - model_name: claude-3-sonnet
     litellm_params:
-      model: anthropic/claude-4.1
+      model: anthropic/claude-3-sonnet-20240229
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
-  - model_name: claude-haiku-4.5
+  - model_name: claude-3-haiku
     litellm_params:
-      model: anthropic/claude-haiku-4-5
+      model: anthropic/claude-3-haiku-20240307
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       supports_vision: true
+  # OpenAI models (as of January 2025)
   - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: true
-  - model_name: o3-pro
+  - model_name: gpt-4o-mini
     litellm_params:
-      model: openai/o3-pro
+      model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
-  - model_name: o3
+    model_info:
+      supports_vision: true
+  - model_name: gpt-4-turbo
     litellm_params:
-      model: openai/o3
+      model: openai/gpt-4-turbo
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: openai/gpt-3.5-turbo
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
-  - model_name: o3-mini
-    litellm_params:
-      model: openai/o3-mini
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: false
+  # OpenAI o-series reasoning models
   - model_name: o1
     litellm_params:
       model: openai/o1
@@ -63,91 +74,28 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
-  - model_name: gpt-4o-mini
+  # OpenAI o3-mini (January 2025) with reasoning effort variants
+  - model_name: o3-mini
     litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gpt-4.1
-    litellm_params:
-      model: openai/gpt-4.1
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  # GPT-5 models - may fail gracefully if not yet released
-  - model_name: gpt-5-thinking
-    litellm_params:
-      model: openai/gpt-5
+      model: openai/o3-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
-  - model_name: gpt-5-main
+  - model_name: o3-mini-low
     litellm_params:
-      model: openai/gpt-5-chat-latest
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gpt-5-mini
-    litellm_params:
-      model: openai/gpt-5-mini
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gpt-5-nano
-    litellm_params:
-      model: openai/gpt-5-nano
+      model: openai/o3-mini-low
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
-  # OpenAI GPT Image models (Image Generation)
-  - model_name: gpt-image-1
+  - model_name: o3-mini-medium
     litellm_params:
-      model: openai/gpt-image-1
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gpt-image-1-mini
-    litellm_params:
-      model: openai/gpt-image-1-mini
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: true
-  # OpenAI o-series reasoning models
-  - model_name: o3
-    litellm_params:
-      model: openai/o3
+      model: openai/o3-mini-medium
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
-  - model_name: o3-pro
+  - model_name: o3-mini-high
     litellm_params:
-      model: openai/o3-pro
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: false
-  - model_name: o1-2024
-    litellm_params:
-      model: openai/o1
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: false
-  - model_name: o1-preview-2024
-    litellm_params:
-      model: openai/o1-preview
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: false
-  # OpenAI Codex models
-  - model_name: codex-davinci-002
-    litellm_params:
-      model: openai/code-davinci-002
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_vision: false
-  - model_name: codex-cushman-001
-    litellm_params:
-      model: openai/code-cushman-001
+      model: openai/o3-mini-high
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       supports_vision: false
@@ -165,6 +113,19 @@ model_list:
       vertex_location: us-central1
     model_info:
       supports_vision: true
+  # Google Gemini models (as of January 2025)
+  - model_name: gemini-2.0-flash-exp
+    litellm_params:
+      model: gemini/gemini-2.0-flash-exp
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
+  - model_name: gemini-2.0-flash-thinking-exp
+    litellm_params:
+      model: gemini/gemini-2.0-flash-thinking-exp-01-21
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_vision: true
   - model_name: gemini-1.5-pro
     litellm_params:
       model: gemini/gemini-1.5-pro-latest
@@ -175,32 +136,6 @@ model_list:
     litellm_params:
       model: gemini/gemini-1.5-flash-latest
       api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gemini-2.5-pro
-    litellm_params:
-      model: gemini/gemini-2.5-pro-preview
-      api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: gemini-2.5-flash
-    litellm_params:
-      model: gemini/gemini-2.5-flash
-      api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      supports_vision: true
-  # Gemini 2.5 Computer Use Preview - Direct Google API
-  - model_name: gemini-2.5-computer-use-preview
-    litellm_params:
-      model: gemini/gemini-2.5-computer-use-preview-10-2025
-      api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      supports_vision: true
-  # Gemini 2.5 Computer Use Preview - via OpenRouter (if available)
-  - model_name: openrouter-gemini-2.5-computer-use-preview
-    litellm_params:
-      model: openrouter/google/gemini-2.5-computer-use-preview-10-2025
-      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
   - model_name: qwen3-vl-235b-a22b-instruct
@@ -227,15 +162,44 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
+  # New Qwen3-VL 32B models (October 2025)
+  - model_name: qwen3-vl-32b-instruct
+    litellm_params:
+      model: openrouter/qwen/qwen3-vl-32b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+      supports_reasoning_effort: true
+    model_info:
+      supports_vision: true
+      supports_reasoning_effort: true
+  - model_name: qwen3-vl-32b-thinking
+    litellm_params:
+      model: openrouter/qwen/qwen3-vl-32b-thinking
+      api_key: os.environ/OPENROUTER_API_KEY
+      supports_reasoning_effort: true
+    model_info:
+      supports_vision: true
+      supports_reasoning_effort: true
+  # Qwen2.5-VL 32B (previous generation, stable)
+  - model_name: qwen2.5-vl-32b-instruct
+    litellm_params:
+      model: openrouter/qwen/qwen2.5-vl-32b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+      supports_reasoning_effort: true
+    model_info:
+      supports_vision: true
+      supports_reasoning_effort: true
+  # OpenRouter Stealth Models
+  - model_name: openrouter-andromeda-alpha
+    litellm_params:
+      model: openrouter/openrouter/andromeda-alpha
+      api_key: os.environ/OPENROUTER_API_KEY
+      supports_reasoning_effort: true
+    model_info:
+      supports_vision: true
+      supports_reasoning_effort: true
   - model_name: openrouter-claude-3.5-sonnet
     litellm_params:
       model: openrouter/anthropic/claude-3.5-sonnet
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: openrouter-claude-3.7-sonnet
-    litellm_params:
-      model: openrouter/anthropic/claude-3.7-sonnet
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: true
@@ -336,19 +300,6 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
-  # OpenAI GPT-5 Image series (Combined text + image generation)
-  - model_name: openrouter-gpt-5-image
-    litellm_params:
-      model: openrouter/openai/gpt-5-image
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: openrouter-gpt-5-image-mini
-    litellm_params:
-      model: openrouter/openai/gpt-5-image-mini
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: true
   # DeepSeek V3 series
   - model_name: openrouter-deepseek-chat-v3.1
     litellm_params:
@@ -399,19 +350,6 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       supports_vision: false
-  # Google Gemini 2.5 via OpenRouter
-  - model_name: openrouter-gemini-2.5-pro
-    litellm_params:
-      model: openrouter/google/gemini-2.5-pro-preview
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: true
-  - model_name: openrouter-gemini-2.5-flash
-    litellm_params:
-      model: openrouter/google/gemini-2.5-flash
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      supports_vision: true
   # inclusionAI Ling series (Trillion-parameter sparse models)
   - model_name: openrouter-ling-1t
     litellm_params:
@@ -453,8 +391,27 @@ model_list:
 
 
 
+
+
+
+
+
+
+
+
+
 # LMStudio Local Models - AUTO-GENERATED by scripts/setup-lmstudio.sh
 # To reconfigure, run: ./scripts/setup-lmstudio.sh
+  - model_name: local-qwen-qwen3-vl-8b
+    litellm_params:
+      model: openai/qwen/qwen3-vl-8b
+      api_base: os.environ/LMSTUDIO_BASE_URL
+      api_key: lm-studio
+      supports_function_calling: true
+    model_info:
+      supports_vision: true
+      base_model: lmstudio
+      supports_function_calling: true
   - model_name: local-qwen-qwen3-coder-30b
     litellm_params:
       model: openai/qwen/qwen3-coder-30b
@@ -488,16 +445,6 @@ model_list:
   - model_name: local-qwen-qwen3-vl-30b
     litellm_params:
       model: openai/qwen/qwen3-vl-30b
-      api_base: os.environ/LMSTUDIO_BASE_URL
-      api_key: lm-studio
-      supports_function_calling: true
-    model_info:
-      supports_vision: true
-      base_model: lmstudio
-      supports_function_calling: true
-  - model_name: local-qwen-qwen3-vl-8b
-    litellm_params:
-      model: openai/qwen/qwen3-vl-8b
       api_base: os.environ/LMSTUDIO_BASE_URL
       api_key: lm-studio
       supports_function_calling: true

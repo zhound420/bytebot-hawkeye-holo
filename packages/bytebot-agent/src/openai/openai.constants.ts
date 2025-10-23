@@ -44,6 +44,35 @@ export const OPENAI_MODELS: BytebotAgentModel[] = [
     contextWindow: 128000,
     supportsVision: false,
   },
+  // o3-mini series (reasoning models with effort control - January 2025)
+  {
+    provider: 'openai',
+    name: 'o3-mini',
+    title: 'o3 Mini',
+    contextWindow: 200000,
+    supportsVision: false,
+  },
+  {
+    provider: 'openai',
+    name: 'o3-mini-low',
+    title: 'o3 Mini (Low)',
+    contextWindow: 200000,
+    supportsVision: false,
+  },
+  {
+    provider: 'openai',
+    name: 'o3-mini-medium',
+    title: 'o3 Mini (Medium)',
+    contextWindow: 200000,
+    supportsVision: false,
+  },
+  {
+    provider: 'openai',
+    name: 'o3-mini-high',
+    title: 'o3 Mini (High)',
+    contextWindow: 200000,
+    supportsVision: false,
+  },
   // GPT-4 Turbo (previous generation)
   {
     provider: 'openai',

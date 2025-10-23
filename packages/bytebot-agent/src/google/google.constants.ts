@@ -1,11 +1,18 @@
 import { BytebotAgentModel } from '../agent/agent.types';
 
 export const GOOGLE_MODELS: BytebotAgentModel[] = [
-  // Gemini 2.0 series (Latest - December 2024)
+  // Gemini 2.0 series (Latest - January 2025)
   {
     provider: 'google',
     name: 'gemini-2.0-flash-exp',
     title: 'Gemini 2.0 Flash (Experimental)',
+    contextWindow: 1000000,
+    supportsVision: true,
+  },
+  {
+    provider: 'google',
+    name: 'gemini-2.0-flash-thinking-exp-01-21',
+    title: 'Gemini 2.0 Flash Thinking (Experimental)',
     contextWindow: 1000000,
     supportsVision: true,
   },

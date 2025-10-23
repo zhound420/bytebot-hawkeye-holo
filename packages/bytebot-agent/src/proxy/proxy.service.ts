@@ -114,7 +114,7 @@ export class ProxyService implements BytebotAgentService {
       const completionRequest: OpenAI.Chat.ChatCompletionCreateParams = {
         model: modelName,
         messages: chatMessages,
-        max_tokens: 8192,
+        max_completion_tokens: 8192,
         ...(useTools && { tools: getProxyTools(directVisionMode) }),
         ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
       };

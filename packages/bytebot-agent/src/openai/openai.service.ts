@@ -53,31 +53,57 @@ export class OpenAIService implements BytebotAgentService {
         ? messages  // Keep images for vision models
         : transformImagesForNonVision(messages);  // Replace images with text for non-vision models
 
-      const openaiMessages = this.formatMessagesForOpenAI(processedMessages);
-
       const maxTokens = 8192;
-      const response = await openaiClient.responses.create(
-        {
-          model: modelName,
-          max_output_tokens: maxTokens,
-          input: openaiMessages,
-          instructions: systemPrompt,
-          tools: useTools ? getOpenAITools(directVisionMode) : [],
-          reasoning: isReasoning ? { effort: 'medium' } : null,
-          store: false,
-          include: isReasoning ? ['reasoning.encrypted_content'] : [],
-        },
-        { signal },
-      );
 
-      return {
-        contentBlocks: this.formatOpenAIResponse(response.output),
-        tokenUsage: {
-          inputTokens: response.usage?.input_tokens || 0,
-          outputTokens: response.usage?.output_tokens || 0,
-          totalTokens: response.usage?.total_tokens || 0,
-        },
-      };
+      // Reasoning models (o1, o3) use Responses API
+      // Regular models (gpt-4o, gpt-4o-mini) use Chat Completions API
+      if (isReasoning) {
+        const openaiMessages = this.formatMessagesForOpenAI(processedMessages);
+        const response = await openaiClient.responses.create(
+          {
+            model: modelName,
+            max_output_tokens: maxTokens,
+            input: openaiMessages,
+            instructions: systemPrompt,
+            tools: useTools ? getOpenAITools(directVisionMode) : [],
+            reasoning: { effort: 'medium' },
+            store: false,
+            include: ['reasoning.encrypted_content'],
+          },
+          { signal },
+        );
+
+        return {
+          contentBlocks: this.formatOpenAIResponse(response.output),
+          tokenUsage: {
+            inputTokens: response.usage?.input_tokens || 0,
+            outputTokens: response.usage?.output_tokens || 0,
+            totalTokens: response.usage?.total_tokens || 0,
+          },
+        };
+      } else {
+        // Use Chat Completions API for regular models
+        const chatMessages = this.formatMessagesForChat(systemPrompt, processedMessages);
+        const chatTools = useTools ? this.convertToolsForChat(getOpenAITools(directVisionMode)) : [];
+        const response = await openaiClient.chat.completions.create(
+          {
+            model: modelName,
+            max_completion_tokens: maxTokens,
+            messages: chatMessages,
+            tools: chatTools,
+          },
+          { signal },
+        );
+
+        return {
+          contentBlocks: this.formatChatResponse(response),
+          tokenUsage: {
+            inputTokens: response.usage?.prompt_tokens || 0,
+            outputTokens: response.usage?.completion_tokens || 0,
+            totalTokens: response.usage?.total_tokens || 0,
+          },
+        };
+      }
     } catch (error: any) {
       console.log('error', error);
       console.log('error name', error.name);
@@ -451,6 +477,195 @@ export class OpenAIService implements BytebotAgentService {
             type: MessageContentType.Text,
             text: JSON.stringify(item),
           } as TextContentBlock);
+      }
+    }
+
+    return contentBlocks;
+  }
+
+  /**
+   * Convert Responses API tools to Chat Completions API format
+   * Responses API: { type: 'function', name, description, parameters }
+   * Chat API: { type: 'function', function: { name, description, parameters } }
+   */
+  private convertToolsForChat(
+    responsesTools: OpenAI.Responses.FunctionTool[],
+  ): OpenAI.Chat.Completions.ChatCompletionTool[] {
+    return responsesTools.map((tool) => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+    }));
+  }
+
+  /**
+   * Format messages for Chat Completions API
+   * Converts Bytebot messages to OpenAI chat format with system prompt
+   */
+  private formatMessagesForChat(
+    systemPrompt: string,
+    messages: Message[],
+  ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+    const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+
+    // Add system message first
+    chatMessages.push({
+      role: 'system',
+      content: systemPrompt,
+    });
+
+    // Convert messages to chat format
+    for (const message of messages) {
+      const messageContentBlocks = message.content as MessageContentBlock[];
+
+      if (
+        messageContentBlocks.every((block) => isUserActionContentBlock(block))
+      ) {
+        // Handle user action content blocks
+        const userActionContentBlocks = messageContentBlocks.flatMap(
+          (block) => block.content,
+        );
+        for (const block of userActionContentBlocks) {
+          if (isComputerToolUseContentBlock(block)) {
+            chatMessages.push({
+              role: 'user',
+              content: `User performed action: ${block.name}\n${JSON.stringify(block.input, null, 2)}`,
+            });
+          } else if (isImageContentBlock(block)) {
+            chatMessages.push({
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${block.source.media_type};base64,${block.source.data}`,
+                    detail: 'high',
+                  },
+                },
+              ],
+            });
+          }
+        }
+      } else {
+        // Convert content blocks to chat format
+        for (const block of messageContentBlocks) {
+          switch (block.type) {
+            case MessageContentType.Text: {
+              if (message.role === Role.USER) {
+                chatMessages.push({
+                  role: 'user',
+                  content: block.text,
+                });
+              } else {
+                chatMessages.push({
+                  role: 'assistant',
+                  content: block.text,
+                });
+              }
+              break;
+            }
+            case MessageContentType.ToolUse:
+              // For assistant messages with tool use
+              if (message.role === Role.ASSISTANT) {
+                const toolBlock = block as ToolUseContentBlock;
+                chatMessages.push({
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: toolBlock.id,
+                      type: 'function',
+                      function: {
+                        name: toolBlock.name,
+                        arguments: JSON.stringify(toolBlock.input),
+                      },
+                    },
+                  ],
+                });
+              }
+              break;
+
+            case MessageContentType.ToolResult: {
+              // Handle tool results
+              const toolResult = block;
+              for (const content of toolResult.content) {
+                if (content.type === MessageContentType.Text) {
+                  chatMessages.push({
+                    role: 'tool',
+                    tool_call_id: toolResult.tool_use_id,
+                    content: content.text,
+                  });
+                }
+                if (content.type === MessageContentType.Image) {
+                  chatMessages.push({
+                    role: 'tool',
+                    tool_call_id: toolResult.tool_use_id,
+                    content: 'screenshot',
+                  });
+                }
+              }
+              break;
+            }
+
+            default:
+              // Handle unknown content types as text
+              chatMessages.push({
+                role: 'user',
+                content: JSON.stringify(block),
+              });
+          }
+        }
+      }
+    }
+
+    return chatMessages;
+  }
+
+  /**
+   * Format Chat Completions API response to content blocks
+   */
+  private formatChatResponse(
+    response: OpenAI.Chat.Completions.ChatCompletion,
+  ): MessageContentBlock[] {
+    const contentBlocks: MessageContentBlock[] = [];
+    const choice = response.choices[0];
+
+    if (!choice) {
+      return contentBlocks;
+    }
+
+    const message = choice.message;
+
+    // Handle text content
+    if (message.content) {
+      contentBlocks.push({
+        type: MessageContentType.Text,
+        text: message.content,
+      } as TextContentBlock);
+    }
+
+    // Handle refusal
+    if (message.refusal) {
+      contentBlocks.push({
+        type: MessageContentType.Text,
+        text: `Refusal: ${message.refusal}`,
+      } as TextContentBlock);
+    }
+
+    // Handle tool calls
+    if (message.tool_calls) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall.type === 'function') {
+          contentBlocks.push({
+            type: MessageContentType.ToolUse,
+            id: toolCall.id,
+            name: toolCall.function.name,
+            input: JSON.parse(toolCall.function.arguments),
+          } as ToolUseContentBlock);
+        }
       }
     }
 

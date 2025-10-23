@@ -7,6 +7,14 @@ import { BytebotAgentModel } from '../agent/agent.types';
  * This list must be manually updated when new models are released.
  */
 export const ANTHROPIC_MODELS: BytebotAgentModel[] = [
+  // Claude Opus 4 (May 2025 - Latest flagship model)
+  {
+    provider: 'anthropic',
+    name: 'claude-opus-4-20250514',
+    title: 'Claude Opus 4',
+    contextWindow: 200000,
+    supportsVision: true,
+  },
   // Claude 3.5 series (latest generation)
   {
     provider: 'anthropic',
@@ -46,4 +54,4 @@ export const ANTHROPIC_MODELS: BytebotAgentModel[] = [
   },
 ];
 
-export const DEFAULT_MODEL = ANTHROPIC_MODELS[0]; // Claude 3.5 Sonnet
+export const DEFAULT_MODEL = ANTHROPIC_MODELS[0]; // Claude Opus 4

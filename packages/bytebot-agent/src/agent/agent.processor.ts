@@ -849,7 +849,17 @@ Focus on words that would appear in UI element descriptions. Be specific and use
       }
 
       const model = task.model as unknown as BytebotAgentModel;
-      const service = this.services[model.provider];
+
+      // Route to ProxyService if model came from LiteLLM proxy
+      const useProxyService =
+        model.provider === 'proxy' ||
+        model.provider === 'lmstudio' ||
+        model.provider === 'openrouter';
+
+      const service = useProxyService
+        ? this.proxyService
+        : this.services[model.provider];
+
       if (!service) {
         throw new Error(`Service ${model.provider} not available`);
       }
@@ -1434,7 +1444,17 @@ Do NOT take screenshots without acting. Do NOT repeat previous actions. Choose o
 
       let agentResponse: BytebotAgentResponse;
 
-      const service = this.services[model.provider];
+      // Route to ProxyService if model came from LiteLLM proxy
+      // (provider will be 'proxy', 'lmstudio', or 'openrouter' for proxy models)
+      const useProxyService =
+        model.provider === 'proxy' ||
+        model.provider === 'lmstudio' ||
+        model.provider === 'openrouter';
+
+      const service = useProxyService
+        ? this.proxyService
+        : this.services[model.provider];
+
       if (!service) {
         this.logger.warn(
           `No service found for model provider: ${model.provider}`,

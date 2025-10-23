@@ -63,6 +63,50 @@ export function ModelSelect({
       : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
   };
 
+  // Get provider-specific badge
+  const getProviderBadge = (model: Model) => {
+    switch (model.provider) {
+      case "anthropic":
+        return (
+          <span className="ml-1 rounded-md bg-purple-50 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+            Claude
+          </span>
+        );
+      case "openai":
+        return (
+          <span className="ml-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            OpenAI
+          </span>
+        );
+      case "google":
+        return (
+          <span className="ml-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+            Gemini
+          </span>
+        );
+      case "openrouter":
+        return (
+          <span className="ml-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+            OpenRouter
+          </span>
+        );
+      case "lmstudio":
+        return (
+          <span className="ml-1 rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
+            Local
+          </span>
+        );
+      case "proxy":
+        return (
+          <span className="ml-1 rounded-md bg-gray-50 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-950 dark:text-gray-300">
+            Proxy
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   // Get function calling warning badge if model doesn't support it
   const getFunctionCallingWarning = (model: Model) => {
     if (model.supportsToolCalling === false) {
@@ -91,8 +135,9 @@ export function ModelSelect({
           {selectedModel && getModelIcon(selectedModel)}
           <SelectValue placeholder="Select a model">
             {selectedModel && (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1">
                 {selectedModel.title}
+                {getProviderBadge(selectedModel)}
                 <span className={`ml-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${getBadgeClasses(selectedModel)}`}>
                   {getCapabilityLabel(selectedModel)}
                 </span>
@@ -177,6 +222,7 @@ export function ModelSelect({
                     {m.title}
                   </span>
                   <div className="flex items-center gap-1">
+                    {getProviderBadge(m)}
                     <span className="ml-2 rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       Vision
                     </span>
@@ -211,6 +257,7 @@ export function ModelSelect({
                     {m.title}
                   </span>
                   <div className="flex items-center gap-1">
+                    {getProviderBadge(m)}
                     <span className="ml-2 rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                       Text-Only
                     </span>

@@ -124,7 +124,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
+      # LMSTUDIO_BASE_URL is set in .env.defaults, don't override here
     networks:
       - bytebot-network
 

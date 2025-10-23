@@ -201,6 +201,11 @@ export function CVActivityIndicator({ className, compact = false, inline = false
   const [detectionData, setDetectionData] = useState<CVDetectionData | null>(null);
 
   useEffect(() => {
+    // Skip all CV polling when in Direct Vision Mode
+    if (directVisionMode) {
+      return;
+    }
+
     let mounted = true;
 
     const fetchActivity = async () => {
@@ -251,11 +256,10 @@ export function CVActivityIndicator({ className, compact = false, inline = false
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [inline]);
+  }, [inline, directVisionMode]);
 
-  // If Direct Vision Mode is enabled, show special UI
+  // If Direct Vision Mode is enabled, show special UI without any CV data
   if (directVisionMode) {
-    // Show compact Direct Vision Mode indicator
     return (
       <div className={cn(
         "rounded-lg border border-purple-500/20 bg-purple-500/10 px-2 py-1.5 dark:border-purple-500/30 dark:bg-purple-500/20",

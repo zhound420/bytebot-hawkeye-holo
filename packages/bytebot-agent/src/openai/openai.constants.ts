@@ -7,7 +7,7 @@ import { BytebotAgentModel } from 'src/agent/agent.types';
  * In normal operation, models are fetched from OpenAI's /v1/models API.
  */
 export const OPENAI_MODELS: BytebotAgentModel[] = [
-  // GPT-4o series (latest multimodal models)
+  // GPT-4o series (current generation multimodal models)
   {
     provider: 'openai',
     name: 'gpt-4o',
@@ -20,6 +20,50 @@ export const OPENAI_MODELS: BytebotAgentModel[] = [
     name: 'gpt-4o-mini',
     title: 'GPT-4o Mini',
     contextWindow: 128000,
+    supportsVision: true,
+  },
+  // GPT-5 series (August 2025) - Best for coding and agentic tasks
+  {
+    provider: 'openai',
+    name: 'gpt-5',
+    title: 'GPT-5',
+    contextWindow: 400000,
+    supportsVision: true,
+  },
+  {
+    provider: 'openai',
+    name: 'gpt-5-mini',
+    title: 'GPT-5 Mini',
+    contextWindow: 400000,
+    supportsVision: true,
+  },
+  {
+    provider: 'openai',
+    name: 'gpt-5-nano',
+    title: 'GPT-5 Nano',
+    contextWindow: 400000,
+    supportsVision: true,
+  },
+  // GPT-4.1 series (April 2025) - Superior coding and vision
+  {
+    provider: 'openai',
+    name: 'gpt-4.1',
+    title: 'GPT-4.1',
+    contextWindow: 1000000,
+    supportsVision: true,
+  },
+  {
+    provider: 'openai',
+    name: 'gpt-4.1-mini',
+    title: 'GPT-4.1 Mini',
+    contextWindow: 1000000,
+    supportsVision: true,
+  },
+  {
+    provider: 'openai',
+    name: 'gpt-4.1-nano',
+    title: 'GPT-4.1 Nano',
+    contextWindow: 1000000,
     supportsVision: true,
   },
   // o1 series (reasoning models)
@@ -71,29 +115,6 @@ export const OPENAI_MODELS: BytebotAgentModel[] = [
     name: 'o3-mini-high',
     title: 'o3 Mini (High)',
     contextWindow: 200000,
-    supportsVision: false,
-  },
-  // GPT-4 Turbo (previous generation)
-  {
-    provider: 'openai',
-    name: 'gpt-4-turbo',
-    title: 'GPT-4 Turbo',
-    contextWindow: 128000,
-    supportsVision: true,
-  },
-  {
-    provider: 'openai',
-    name: 'gpt-4-turbo-preview',
-    title: 'GPT-4 Turbo Preview',
-    contextWindow: 128000,
-    supportsVision: true,
-  },
-  // GPT-3.5 series (legacy, cost-effective)
-  {
-    provider: 'openai',
-    name: 'gpt-3.5-turbo',
-    title: 'GPT-3.5 Turbo',
-    contextWindow: 16385,
     supportsVision: false,
   },
 ];

@@ -17,6 +17,31 @@ An AI that controls its own computer with enhanced accuracy, smart focus targeti
 
 </div>
 
+## 🔀 Variant Selection
+
+This repository contains the **Holo 1.5-7B variant** of Bytebot Hawkeye. An alternative **OmniParser variant** is also available:
+
+### bytebot-hawkeye-holo (This Repo)
+**Computer Vision**: Holo 1.5-7B (Qwen2.5-VL-based unified model)
+- ✅ Highest accuracy (90%+ localization, ScreenSpot-Pro: 57.94)
+- ✅ Single unified model approach
+- ✅ Official transformers implementation
+- ⚠️ Larger download (~14GB model)
+- 🔗 **You are here**
+
+### [bytebot-hawkeye-op](https://github.com/zhound420/bytebot-hawkeye-op)
+**Computer Vision**: OmniParser v2.0 (YOLOv8 + Florence-2 + OCR ensemble)
+- ✅ Lighter weight (~850MB total models)
+- ✅ Modular multi-component pipeline
+- ✅ Good accuracy (89% clicks, ScreenSpot-Pro: 39.6)
+- 📦 Faster initial setup
+- 🔗 [View OmniParser variant →](https://github.com/zhound420/bytebot-hawkeye-op)
+
+**Both variants share**: Smart Focus System, Set-of-Mark annotations, real-time telemetry, 46 model support, cross-platform containers
+
+**Choose Holo if**: You want maximum accuracy and have 14GB+ disk space
+**Choose OmniParser if**: You prefer faster setup and lighter resource usage
+
 ---
 
 ## 🎯 What is Hawkeye?
